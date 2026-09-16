@@ -363,6 +363,62 @@ PY
   kubectl -n "$namespace" apply -f k8s/service.yaml
 }
 
+
+# Generate a self-signed cert into ssl/ (git-ignored). Default host = first LAN IP.
+cmd_make_self_signed_cert() {
+  local host="${1:-}"
+  if [[ -z "$host" ]]; then
+    host="$(hostname -I | awk '{print $1}')"
+    [[ -n "$host" ]] || fail "cannot detect host IP; pass an explicit host/IP argument"
+  fi
+  command -v openssl >/dev/null 2>&1 || fail "openssl is required"
+  mkdir -p ssl
+  say "Generating self-signed cert for $host into ssl/"
+  openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+    -keyout ssl/privkey.pem -out ssl/fullchain.pem \
+    -subj "/CN=${host}" \
+    -addext "subjectAltName=IP:${host},IP:127.0.0.1,DNS:localhost,DNS:brighto-router"
+  chmod 600 ssl/privkey.pem
+  chmod 644 ssl/fullchain.pem
+  say "Done. Enable with: ./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host $host --port 18443"
+}
+
+# Configure TLS: copy cert/key into ssl/, set .env (LISTEN_ADDR/BASE_URL/TLS_*), restart router.
+cmd_tls() {
+  local cert="" key="" host="" port="18443"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --cert) [[ $# -ge 2 ]] || fail "--cert requires a value"; cert="$2"; shift 2 ;;
+      --key)  [[ $# -ge 2 ]] || fail "--key requires a value";  key="$2";  shift 2 ;;
+      --host) [[ $# -ge 2 ]] || fail "--host requires a value"; host="$2"; shift 2 ;;
+      --port) [[ $# -ge 2 ]] || fail "--port requires a value"; port="$2"; shift 2 ;;
+      *) fail "unknown tls option: $1" ;;
+    esac
+  done
+  [[ -n "$cert" && -n "$key" ]] || fail "usage: ./start.sh tls --cert <cert> --key <key> --host <ip> [--port 18443]"
+  [[ -f "$cert" && -f "$key" ]] || fail "cert or key file not found"
+  if [[ -z "$host" ]]; then
+    host="$(hostname -I | awk '{print $1}')"
+    [[ -n "$host" ]] || fail "cannot detect host IP; pass --host"
+  fi
+
+  ensure_env
+  mkdir -p ssl
+  cp "$cert" ssl/fullchain.pem
+  cp "$key" ssl/privkey.pem
+  chmod 600 ssl/privkey.pem
+  chmod 644 ssl/fullchain.pem
+
+  set_env_var LISTEN_ADDR "0.0.0.0:$port"
+  set_env_var BASE_URL "https://$host:$port"
+  set_env_var TLS_CERT_PATH "/certs/fullchain.pem"
+  set_env_var TLS_KEY_PATH "/certs/privkey.pem"
+
+  say "TLS enabled (LISTEN_ADDR=0.0.0.0:$port, BASE_URL=https://$host:$port). Recreating router."
+  compose up -d --force-recreate router
+  compose ps
+}
+
 cmd="${1:-help}"
 shift || true
 case "$cmd" in
@@ -452,6 +508,12 @@ case "$cmd" in
     say "Building release binary"
     cargo build --release --locked
     ;;
+  tls)
+    cmd_tls "$@"
+    ;;
+  make-self-signed-cert)
+    cmd_make_self_signed_cert "$@"
+    ;;
   help|-h|--help)
     cat <<'USAGE'
 BrighTO-Router helper
@@ -473,6 +535,8 @@ Daily operation:
   ./start.sh smoke       Run a short non-release benchmark smoke
   ./start.sh gate        Run the release gate from Makefile
   ./start.sh build       Build target/release/brighto-router
+  ./start.sh make-self-signed-cert [HOST]    Generate a self-signed cert into ssl/
+  ./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host HOST --port 18443   Enable HTTPS and recreate router
 
 Default local admin key:
   brightoIsGreat@2026

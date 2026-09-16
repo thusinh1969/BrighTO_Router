@@ -11,7 +11,7 @@ publish = false
 tokio       = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net", "io-util", "fs"] }
 tokio-util  = { version = "0.7.19", features = ["io"] }
 axum        = { version = "0.8.9", default-features = false, features = ["http1", "http2", "json", "query", "tokio", "matched-path", "tracing"] }
-axum-server = { version = "0.8.0" }                      # graceful shutdown; enable tls-rustls only if TLS is terminated in the binary
+axum-server = { version = "0.8.0", features = ["tls-rustls"] }  # tls-rustls uses rustls/aws-lc-rs (matches reqwest+sqlx provider)
 tower       = { version = "0.5.3", features = ["util", "timeout", "limit"] }
 tower-http  = { version = "0.7.1", features = ["trace", "request-id", "set-header", "limit", "timeout"] }
 http        = "1.5.0"

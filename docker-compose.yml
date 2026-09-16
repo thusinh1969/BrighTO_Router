@@ -12,6 +12,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router}
     volumes:
       - router-data:/var/lib/brighto-router
+      - ./ssl:/certs:ro               # optional TLS cert/key (TLS_CERT_PATH/TLS_KEY_PATH point here)
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
     stop_grace_period: 5m
