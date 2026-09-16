@@ -2,7 +2,7 @@
 name = "brighto-router"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.94"          # MSRV = MSRV của sqlx 0.9
+rust-version = "1.94"          # Minimum supported Rust version required by sqlx 0.9
 license = "Apache-2.0"
 publish = false
 
@@ -11,7 +11,7 @@ publish = false
 tokio       = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "net", "io-util", "fs"] }
 tokio-util  = { version = "0.7.19", features = ["io"] }
 axum        = { version = "0.8.9", default-features = false, features = ["http1", "http2", "json", "query", "tokio", "matched-path", "tracing"] }
-axum-server = { version = "0.8.0" }                      # graceful shutdown; bật tính năng "tls-rustls" nếu muốn TLS trong binary
+axum-server = { version = "0.8.0" }                      # graceful shutdown; enable tls-rustls only if TLS is terminated in the binary
 tower       = { version = "0.5.3", features = ["util", "timeout", "limit"] }
 tower-http  = { version = "0.7.1", features = ["trace", "request-id", "set-header", "limit", "timeout"] }
 http        = "1.5.0"
@@ -19,40 +19,41 @@ http-body   = "1.0.1"
 bytes       = "1.12.1"
 futures     = "0.3.34"
 
-# --- HTTP client tới backend (vLLM / llama-server / Anthropic) ---
-# default-features=false: tắt native-tls (openssl). "rustls" của reqwest 0.13 = aws-lc-rs.
-# Không bật gzip auto-decode trong proxy: request tới backend ép Accept-Encoding: identity để giữ body/header pass-through và tránh CPU giải nén.
-# KHÔNG bật thêm feature ring ở bất kỳ crate nào: hai crypto provider cùng lúc → rustls panic lúc chạy.
+# --- HTTP client to backends: vLLM, llama-server, Anthropic, and compatible APIs ---
+# default-features=false disables native-tls/OpenSSL. reqwest 0.13 rustls uses aws-lc-rs.
+# Do not enable gzip auto-decode in the proxy. Backend requests force Accept-Encoding: identity to preserve pass-through behavior and avoid decompression CPU.
+# Do not enable ring in another TLS crate at the same time; two rustls crypto providers can panic at runtime.
 reqwest     = { version = "0.13.5", default-features = false, features = ["rustls", "stream", "json"] }
 
-# --- JSON: chỉ deserialize struct nhỏ (model, stream, usage), không bao giờ parse cả messages ---
+# --- JSON: only deserialize small structs such as model, stream, and usage; do not parse full messages in the hot path ---
 serde       = { version = "1.0.229", features = ["derive"] }
 serde_json  = { version = "1.0.151", features = ["raw_value"] }
-memchr      = "2.8.3"                                    # tìm "usage" trong chunk trước khi parse
+memchr      = "2.8.3"                                    # scan chunks for "usage" before parsing
 
-# --- trạng thái trong RAM ---
-arc-swap    = "1.9.2"                                    # snapshot config, đổi không lock
-dashmap     = "6.2.1"                                    # counter inflight per backend (local từng instance)
-# (Redis KHÔNG có trong default profile — fastest profile dùng counter RAM per-instance.
-#  Khi cần strict global quota multi-instance, thêm redis feature riêng sau benchmark chứng minh cần.)
+# --- in-memory state ---
+arc-swap    = "1.9.2"                                    # lock-free config snapshot swap
+dashmap     = "6.2.1"                                    # per-instance backend inflight counters
+# Keep the default fastest path PostgreSQL-only.
+# If strict multi-instance global quotas become a measured production requirement,
+# add Redis behind an optional feature instead of the default router binary.
 
-# --- DB: config + ledger (production = PostgreSQL ONLY; bỏ any/sqlite để typing rõ ràng) ---
-# tls-rustls-aws-lc-rs để CÙNG provider với reqwest (xem chú thích ở reqwest).
-# macros + migrate chỉ để chạy #[sqlx::test(migrations = "migrations")] trong test.
+# --- DB: config and ledger. Production/default runtime is PostgreSQL only. ---
+# tls-rustls-aws-lc-rs matches the reqwest TLS provider.
+# macros + migrate support sqlx test migrations.
 sqlx        = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "macros", "migrate"] }
 
 # --- observability ---
 tracing             = "0.1.44"
 tracing-subscriber  = { version = "0.3.23", features = ["env-filter", "json", "fmt"] }
 metrics                     = "0.24.6"
-metrics-exporter-prometheus = { version = "0.18.3", default-features = false }   # tự phục vụ /metrics qua axum, không cần http-listener riêng
+metrics-exporter-prometheus = { version = "0.18.3", default-features = false }   # /metrics is served through axum; no extra listener
 
-# --- tiện ích ---
-sha2        = "0.11.0"                                   # băm API key
+# --- utilities ---
+sha2        = "0.11.0"                                   # API-key hashing
 hex         = "0.4.3"
-uuid        = { version = "1.26.1", features = ["v7", "serde"] }   # request_id sắp xếp theo thời gian
+uuid        = { version = "1.26.1", features = ["v7", "serde"] }   # time-sortable request IDs
 chrono      = { version = "0.4.45", features = ["serde", "clock"] }
-rand        = "0.10.2"                                   # API mới: rand::rng(), .random_range(..)
+rand        = "0.10.2"
 anyhow      = "1.0.104"
 thiserror   = "2.0.20"
 clap        = { version = "4.6.7", features = ["derive", "env"] }
@@ -61,7 +62,7 @@ dotenvy     = "0.15.7"
 [dev-dependencies]
 tokio = { version = "1.53.1", features = ["test-util"] }
 
-# Mock upstream cho tầng A/B/E của BENCHMARK.md (trả lời ~0ms, không che overhead router).
+# Mock upstream for benchmark and failure-mode tests; fast responses make router overhead visible.
 [[bin]]
 name = "brighto-router-mock"
 path = "src/bin/mock_upstream.rs"
@@ -70,8 +71,8 @@ path = "src/bin/mock_upstream.rs"
 opt-level     = 3
 lto           = "fat"
 codegen-units = 1
-debug         = "line-tables-only"   # đủ để đọc backtrace production, không phình binary
+debug         = "line-tables-only"   # enough for production backtraces without a large binary
 strip         = false
 
 [profile.dev]
-opt-level = 1                        # dev vẫn phải chạy được payload 200K mà không rùa
+opt-level = 1                        # development builds still need acceptable large-payload behavior
