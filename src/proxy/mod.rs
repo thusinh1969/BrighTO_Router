@@ -17,7 +17,7 @@ use http_body::{Frame, SizeHint};
 use serde_json::Value;
 
 use crate::budget::{BudgetReservation, ConcurrencyGuard};
-use crate::contract::{ApiKey, AppState, Backend, BackendFormat, ModelRoute, UsageEvent};
+use crate::contract::{ApiKey, AppState, BackendFormat, ModelRoute, UsageEvent};
 use crate::route::{BackendExclusions, BackendLease};
 
 /// Quick check trước khi parse — tránh parse cả body 1MB. memchr, không cấp phát.
@@ -94,13 +94,15 @@ fn must_drop_header(name: &str) -> bool {
 
 /// Build request tới backend: filter header, inject auth backend (key đã resolve lúc load),
 /// thêm x-request-id. Dùng client pool dùng chung từ state.
+#[allow(clippy::too_many_arguments)]
 fn build_reqwest_request(
     client: &reqwest::Client,
     method: &Method,
     url: &str,
     headers: &HeaderMap,
     body: reqwest::Body,
-    backend: &Backend,
+    format: BackendFormat,
+    auth_key: &str,
     request_id: &str,
 ) -> Result<reqwest::Request, String> {
     let mut req_headers = reqwest::header::HeaderMap::new();
@@ -111,9 +113,9 @@ fn build_reqwest_request(
         req_headers.insert(name.clone(), value.clone());
     }
 
-    // Key rỗng/None = provider không cần key (llama.cpp/vLLM/Ollama). Chỉ gắn auth khi key có giá trị.
-    let key = backend.api_key.as_deref().unwrap_or("");
-    match backend.format {
+    // auth_key rỗng = provider không cần key (llama.cpp/vLLM/Ollama / auth_mode=none). Chỉ gắn auth khi có giá trị.
+    let key = auth_key;
+    match format {
         BackendFormat::OpenAi => {
             if !key.is_empty() {
                 let v = HeaderValue::from_str(&format!("Bearer {key}"))
@@ -905,13 +907,15 @@ pub async fn proxy_forward(
         };
 
         let url = build_target_url(&backend.base_url, &uri);
+        let auth_key = ctx.route.provider_key.as_deref().unwrap_or("");
         let built = build_reqwest_request(
             &state.client,
             &method,
             &url,
             &headers,
             request_body,
-            &backend,
+            backend.format,
+            auth_key,
             &ctx.request_id,
         );
         let pre_forward_ms = start.elapsed().as_millis() as u64;
@@ -1036,20 +1040,6 @@ fn now_secs() -> i64 {
 mod tests {
     use super::*;
 
-    fn anthropic_backend() -> Backend {
-        Backend {
-            id: 1,
-            name: "anthropic".into(),
-            base_url: "http://127.0.0.1:9000".into(),
-            api_key_ref: "A".into(),
-            api_key: Some("anthropic-backend-secret".into()),
-            weight: 1,
-            max_inflight: 0,
-            format: BackendFormat::Anthropic,
-            enabled: true,
-        }
-    }
-
     #[test]
     fn target_url_supports_host_and_sdk_base_urls() {
         let uri: Uri = "/v1/chat/completions?stream=true".parse().unwrap();
@@ -1083,7 +1073,8 @@ mod tests {
             "http://127.0.0.1:9000/v1/messages",
             &headers,
             reqwest::Body::from(Bytes::from("{}")),
-            &anthropic_backend(),
+            BackendFormat::Anthropic,
+            "anthropic-backend-secret",
             "rid-1",
         )
         .unwrap();
@@ -1107,7 +1098,8 @@ mod tests {
             "http://127.0.0.1:9000/v1/messages",
             &headers,
             reqwest::Body::from(Bytes::from("{}")),
-            &anthropic_backend(),
+            BackendFormat::Anthropic,
+            "anthropic-backend-secret",
             "rid-2",
         )
         .unwrap();
@@ -1132,7 +1124,8 @@ mod tests {
             "http://127.0.0.1:9000/v1/messages",
             &headers,
             reqwest::Body::from(Bytes::from("{}")),
-            &anthropic_backend(),
+            BackendFormat::Anthropic,
+            "anthropic-backend-secret",
             "rid-encoding",
         )
         .unwrap();
