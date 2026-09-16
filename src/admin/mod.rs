@@ -6,7 +6,7 @@ use std::{
     io::Read,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -22,8 +22,9 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
+use crate::auth;
 use crate::config::{DbConfigLoader, resolve_backend_key};
-use crate::contract::{AppState, Budget, KeyHash};
+use crate::contract::{ApiKey, AppState, Budget, KeyHash};
 
 // ===== Admin state =====
 
@@ -264,7 +265,21 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/routes", get(list_routes).post(upsert_route))
         .route("/teams/{id}", patch(update_team))
         .route("/keys/{id}", delete(disable_key))
+        .route("/teams", get(list_teams))
+        .route("/keys", get(list_keys))
+        .route("/stats", get(get_stats))
         .route("/usage", get(get_usage))
+        .layer(Extension(state))
+}
+
+/// Router con cho /portal/* — user tự phục vụ (auth bằng API key, KHÔNG phải admin key).
+/// User xem key/team của mình + usage/charts/logs. Không lộ plaintext key.
+pub fn user_router(runtime: Arc<AppState>) -> Router {
+    let state = Arc::new(AdminState::from_env(runtime));
+    Router::new()
+        .route("/me", get(me))
+        .route("/me/usage", get(me_usage))
+        .route("/me/stats", get(me_stats))
         .layer(Extension(state))
 }
 
@@ -375,6 +390,7 @@ struct RouteResponse {
 #[derive(Deserialize)]
 struct UsageQuery {
     team: Option<i64>,
+    key: Option<i64>,
     from: Option<i64>,
     to: Option<i64>,
 }
@@ -397,6 +413,77 @@ struct UsageRow {
     stream: bool,
     client_aborted: bool,
     error_class: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TeamListRow {
+    id: i64,
+    name: String,
+    budget: Option<Budget>,
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+struct KeyListRow {
+    id: i64,
+    prefix: String,
+    team_id: i64,
+    team_name: String,
+    owner: String,
+    allowed_models: Vec<String>,
+    budget: Option<Budget>,
+    rpm_limit: Option<i64>,
+    concurrency_limit: Option<i64>,
+    expires_at: Option<i64>,
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+struct StatRow {
+    /// epoch giây đầu ngày (bucket 1 ngày)
+    day: i64,
+    model: String,
+    input_tokens: i64,
+    output_tokens: i64,
+    requests: i64,
+}
+
+#[derive(Deserialize)]
+struct StatsQuery {
+    team: Option<i64>,
+    days: Option<u32>,
+}
+
+#[derive(Deserialize)]
+struct MeStatsQuery {
+    days: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct MeResponse {
+    key: MeKey,
+    team: MeTeam,
+}
+
+#[derive(Serialize)]
+struct MeKey {
+    id: i64,
+    prefix: String,
+    owner: String,
+    allowed_models: Vec<String>,
+    budget: Option<Budget>,
+    rpm_limit: Option<u32>,
+    concurrency_limit: Option<u32>,
+    expires_at: Option<i64>,
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+struct MeTeam {
+    id: i64,
+    name: String,
+    budget: Option<Budget>,
+    enabled: bool,
 }
 
 // ===== Handlers =====
@@ -917,32 +1004,31 @@ async fn disable_key(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn get_usage(
-    Extension(state): Extension<Arc<AdminState>>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Query(params): Query<UsageQuery>,
-) -> Result<Json<Vec<UsageRow>>, ApiError> {
-    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
-    let pool = state.pool().await?;
-
+async fn query_usage_rows(
+    pool: &PgPool,
+    team: Option<i64>,
+    key: Option<i64>,
+    from: Option<i64>,
+    to: Option<i64>,
+) -> Result<Vec<UsageRow>, ApiError> {
     let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT ts, request_id, key_id, team_id, model, backend_id, status, \
          input_tokens, output_tokens, estimated, ttfb_ms, total_ms, router_overhead_ms, \
          stream, client_aborted, error_class \
          FROM usage_ledger WHERE 1=1",
     );
-
-    if let Some(team) = params.team {
+    if let Some(team) = team {
         builder.push(" AND team_id = ").push_bind(team);
     }
-    if let Some(from) = params.from {
+    if let Some(key) = key {
+        builder.push(" AND key_id = ").push_bind(key);
+    }
+    if let Some(from) = from {
         builder.push(" AND ts >= ").push_bind(from);
     }
-    if let Some(to) = params.to {
+    if let Some(to) = to {
         builder.push(" AND ts <= ").push_bind(to);
     }
-
     builder.push(" ORDER BY ts DESC LIMIT 1000");
     let query = builder.build();
     let rows = query.fetch_all(pool).await?;
@@ -968,8 +1054,220 @@ async fn get_usage(
             error_class: row.try_get("error_class")?,
         });
     }
+    Ok(result)
+}
 
-    Ok(Json(result))
+async fn get_usage(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(params): Query<UsageQuery>,
+) -> Result<Json<Vec<UsageRow>>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    Ok(Json(
+        query_usage_rows(pool, params.team, params.key, params.from, params.to).await?,
+    ))
+}
+
+// ===== Portal: user tự phục vụ (auth bằng API key, không phải admin key) =====
+
+fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+fn extract_api_key(headers: &HeaderMap) -> Option<String> {
+    if let Some(auth) = headers.get(header::AUTHORIZATION)
+        && let Ok(auth_str) = auth.to_str()
+        && let Some(stripped) = auth_str.strip_prefix("Bearer ")
+    {
+        return Some(stripped.trim().to_string());
+    }
+    if let Some(key) = headers.get("x-api-key")
+        && let Ok(key_str) = key.to_str()
+    {
+        return Some(key_str.trim().to_string());
+    }
+    None
+}
+
+/// Xác thực user bằng client API key. Trả ApiKey nếu hợp lệ + team còn enabled.
+fn authorize_user_key(state: &AdminState, headers: &HeaderMap) -> Result<ApiKey, ApiError> {
+    let plaintext =
+        extract_api_key(headers).ok_or_else(|| ApiError::unauthorized("missing API key"))?;
+    let hash = auth::hash_key(&plaintext);
+    let snap = state.runtime.cfg.load_full();
+    auth::authorize_key(&snap, &hash)
+        .map_err(|_| ApiError::unauthorized("invalid or disabled API key"))
+}
+
+async fn list_teams(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<TeamListRow>>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    let rows =
+        sqlx::query::<sqlx::Postgres>("SELECT id, name, budget, enabled FROM teams ORDER BY id")
+            .fetch_all(pool)
+            .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let budget_json: Option<String> = row.try_get("budget")?;
+        out.push(TeamListRow {
+            id: row.try_get("id")?,
+            name: row.try_get("name")?,
+            budget: budget_json.map(|s| serde_json::from_str(&s)).transpose()?,
+            enabled: row.try_get("enabled")?,
+        });
+    }
+    Ok(Json(out))
+}
+
+async fn list_keys(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<KeyListRow>>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    let rows = sqlx::query::<sqlx::Postgres>(
+        "SELECT k.id, k.key_prefix, k.team_id, COALESCE(t.name, '') AS team_name, k.owner, \
+         k.allowed_models, k.budget, k.rpm_limit, k.concurrency_limit, k.expires_at, k.enabled \
+         FROM api_keys k LEFT JOIN teams t ON t.id = k.team_id ORDER BY k.id",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let allowed_json: String = row.try_get("allowed_models")?;
+        let budget_json: Option<String> = row.try_get("budget")?;
+        out.push(KeyListRow {
+            id: row.try_get("id")?,
+            prefix: row.try_get("key_prefix")?,
+            team_id: row.try_get("team_id")?,
+            team_name: row.try_get("team_name")?,
+            owner: row.try_get("owner")?,
+            allowed_models: serde_json::from_str(&allowed_json).unwrap_or_default(),
+            budget: budget_json.map(|s| serde_json::from_str(&s)).transpose()?,
+            rpm_limit: row.try_get("rpm_limit")?,
+            concurrency_limit: row.try_get("concurrency_limit")?,
+            expires_at: row.try_get("expires_at")?,
+            enabled: row.try_get("enabled")?,
+        });
+    }
+    Ok(Json(out))
+}
+
+async fn query_stats(
+    pool: &PgPool,
+    team: Option<i64>,
+    key: Option<i64>,
+    days: u32,
+) -> Result<Vec<StatRow>, ApiError> {
+    let days = days.clamp(1, 365);
+    let since = now_secs() - i64::from(days) * 86_400;
+    let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT (ts / 86400) * 86400 AS day, model, \
+         CAST(COALESCE(SUM(input_tokens), 0) AS BIGINT) AS input_tokens, \
+         CAST(COALESCE(SUM(output_tokens), 0) AS BIGINT) AS output_tokens, \
+         COUNT(*) AS requests \
+         FROM usage_ledger WHERE ts >= ",
+    );
+    builder.push_bind(since);
+    if let Some(team) = team {
+        builder.push(" AND team_id = ").push_bind(team);
+    }
+    if let Some(key) = key {
+        builder.push(" AND key_id = ").push_bind(key);
+    }
+    builder.push(" GROUP BY 1, 2 ORDER BY 1, 2");
+    let query = builder.build();
+    let rows = query.fetch_all(pool).await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(StatRow {
+            day: row.try_get("day")?,
+            model: row.try_get("model")?,
+            input_tokens: row.try_get("input_tokens")?,
+            output_tokens: row.try_get("output_tokens")?,
+            requests: row.try_get("requests")?,
+        });
+    }
+    Ok(out)
+}
+
+async fn get_stats(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(params): Query<StatsQuery>,
+) -> Result<Json<Vec<StatRow>>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    Ok(Json(
+        query_stats(pool, params.team, None, params.days.unwrap_or(30)).await?,
+    ))
+}
+
+async fn me(
+    Extension(state): Extension<Arc<AdminState>>,
+    headers: HeaderMap,
+) -> Result<Json<MeResponse>, ApiError> {
+    let key = authorize_user_key(&state, &headers)?;
+    let snap = state.runtime.cfg.load_full();
+    let team = snap
+        .teams
+        .get(&key.team_id)
+        .cloned()
+        .ok_or_else(|| ApiError::unauthorized("team not found or disabled"))?;
+    Ok(Json(MeResponse {
+        key: MeKey {
+            id: key.id,
+            prefix: key.key_prefix.clone(),
+            owner: key.owner.clone(),
+            allowed_models: key.allowed_models.clone(),
+            budget: key.budget.clone(),
+            rpm_limit: key.rpm_limit,
+            concurrency_limit: key.concurrency_limit,
+            expires_at: key.expires_at,
+            enabled: key.enabled,
+        },
+        team: MeTeam {
+            id: team.id,
+            name: team.name,
+            budget: team.budget,
+            enabled: team.enabled,
+        },
+    }))
+}
+
+async fn me_usage(
+    Extension(state): Extension<Arc<AdminState>>,
+    headers: HeaderMap,
+    Query(params): Query<UsageQuery>,
+) -> Result<Json<Vec<UsageRow>>, ApiError> {
+    let key = authorize_user_key(&state, &headers)?;
+    let pool = state.pool().await?;
+    Ok(Json(
+        query_usage_rows(pool, None, Some(key.id), params.from, params.to).await?,
+    ))
+}
+
+async fn me_stats(
+    Extension(state): Extension<Arc<AdminState>>,
+    headers: HeaderMap,
+    Query(params): Query<MeStatsQuery>,
+) -> Result<Json<Vec<StatRow>>, ApiError> {
+    let key = authorize_user_key(&state, &headers)?;
+    let pool = state.pool().await?;
+    Ok(Json(
+        query_stats(pool, None, Some(key.id), params.days.unwrap_or(30)).await?,
+    ))
 }
 
 #[cfg(test)]
@@ -1098,5 +1396,61 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.status, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn extract_api_key_prefers_bearer_then_x_api_key() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, "Bearer secret-key".parse().unwrap());
+        assert_eq!(extract_api_key(&headers).as_deref(), Some("secret-key"));
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-api-key", "xkey".parse().unwrap());
+        assert_eq!(extract_api_key(&headers).as_deref(), Some("xkey"));
+
+        assert!(extract_api_key(&HeaderMap::new()).is_none());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn stats_aggregate_daily_by_model(pool: PgPool) -> anyhow::Result<()> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let today = (now / 86_400) * 86_400;
+
+        let insert = |rid: &str, model: &str, input: i64, output: i64| {
+            sqlx::query(
+                "INSERT INTO usage_ledger \
+                 (ts, request_id, key_id, team_id, model, backend_id, status, \
+                  input_tokens, output_tokens, estimated, ttfb_ms, total_ms, router_overhead_ms, stream, client_aborted) \
+                 VALUES ($1, $2, 1, 1, $3, 1, 200, $4, $5, false, 0, 0, 0, false, false)",
+            )
+            .bind(today)
+            .bind(rid)
+            .bind(model)
+            .bind(input)
+            .bind(output)
+            .execute(&pool)
+        };
+        insert("r1", "model-a", 100, 10).await?;
+        insert("r2", "model-a", 50, 5).await?;
+        insert("r3", "model-b", 30, 3).await?;
+
+        let stats = query_stats(&pool, None, None, 30).await.expect("stats");
+        let a = stats
+            .iter()
+            .find(|s| s.model == "model-a")
+            .expect("model-a present");
+        assert_eq!(a.input_tokens, 150);
+        assert_eq!(a.output_tokens, 15);
+        assert_eq!(a.requests, 2);
+        let b = stats
+            .iter()
+            .find(|s| s.model == "model-b")
+            .expect("model-b present");
+        assert_eq!(b.input_tokens, 30);
+        assert_eq!(b.requests, 1);
+        Ok(())
     }
 }
