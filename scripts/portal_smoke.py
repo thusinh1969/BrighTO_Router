@@ -110,6 +110,17 @@ def main():
         key_id = body.get("id")
         check("POST /admin/keys returns lc- key", r.status_code == 200 and key.startswith("lc-"))
 
+        # New SOTA endpoints: reveal key, settings, add provider.
+        r = requests.get(base + "/admin/keys/%d/reveal" % key_id, headers=admin)
+        check("GET /admin/keys/{id}/reveal returns plaintext", r.status_code == 200 and r.json()["key"] == key)
+        r = requests.get(base + "/admin/settings", headers=admin)
+        ok = r.status_code == 200 and "version" in r.json() and "database_ok" in r.json()
+        check("GET /admin/settings returns runtime info", ok)
+        r = requests.post(base + "/admin/backends", headers=admin,
+                          json={"name": "smoke-provider", "base_url": "https://example.com",
+                                "api_key_ref": "env:SMOKE_KEY", "format": "openai", "enabled": False})
+        check("POST /admin/backends creates provider", r.status_code == 200 and r.json().get("id"))
+
         # Insert a real usage row for this key so stats/usage are non-trivial.
         now = int(time.time())
         sh("psql", "-h", "127.0.0.1", "-p", str(pg_port), "-U", "llm_router",
