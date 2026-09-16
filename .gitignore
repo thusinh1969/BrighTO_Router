@@ -4,6 +4,7 @@ target/
 !.env.example
 
 # local secrets
+.model
 ssl/
 .deepseek_key
 *.key
