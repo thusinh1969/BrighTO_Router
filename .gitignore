@@ -4,6 +4,7 @@ target/
 !.env.example
 
 # local secrets
+ssl/
 .deepseek_key
 *.key
 *.pem
