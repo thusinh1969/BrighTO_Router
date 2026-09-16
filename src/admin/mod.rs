@@ -6,6 +6,7 @@ use std::{
     io::Read,
     net::{IpAddr, SocketAddr},
     sync::Arc,
+    time::Duration,
 };
 
 use axum::{
@@ -21,7 +22,7 @@ use sha2::{Digest, Sha256};
 use sqlx::Row;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
-use crate::config::DbConfigLoader;
+use crate::config::{DbConfigLoader, resolve_backend_key};
 use crate::contract::{AppState, Budget, KeyHash};
 
 // ===== Admin state =====
@@ -257,6 +258,10 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/", get(portal))
         .route("/teams", post(create_team))
         .route("/keys", post(create_key))
+        .route("/backends", get(list_backends))
+        .route("/backends/{id}", patch(update_backend))
+        .route("/backends/{id}/models", get(fetch_backend_models))
+        .route("/routes", post(upsert_route))
         .route("/teams/{id}", patch(update_team))
         .route("/keys/{id}", delete(disable_key))
         .route("/usage", get(get_usage))
@@ -318,6 +323,55 @@ struct PatchTeam {
     enabled: Option<bool>,
 }
 
+#[derive(Serialize)]
+struct BackendResponse {
+    id: i64,
+    name: String,
+    base_url: String,
+    api_key_ref: String,
+    key_resolved: bool,
+    weight: i64,
+    max_inflight: i64,
+    format: String,
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+struct PatchBackend {
+    name: Option<String>,
+    base_url: Option<String>,
+    api_key_ref: Option<String>,
+    weight: Option<u32>,
+    max_inflight: Option<u32>,
+    format: Option<String>,
+    enabled: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct ModelListResponse {
+    backend_id: i64,
+    backend_name: String,
+    models: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct UpsertRoute {
+    model_name: String,
+    backend_ids: Vec<i64>,
+    fallback_backend_id: Option<i64>,
+    chars_per_token: Option<f64>,
+    first_byte_timeout: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct RouteResponse {
+    model_name: String,
+    backend_ids: Vec<i64>,
+    fallback_backend_id: Option<i64>,
+    chars_per_token: f64,
+    first_byte_timeout: u64,
+}
+
 #[derive(Deserialize)]
 struct UsageQuery {
     team: Option<i64>,
@@ -346,6 +400,309 @@ struct UsageRow {
 }
 
 // ===== Handlers =====
+
+fn normalize_backend_format(value: &str) -> Result<&'static str, ApiError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "openai" | "open_ai" => Ok("openai"),
+        "anthropic" => Ok("anthropic"),
+        _ => Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "format must be openai or anthropic",
+        )),
+    }
+}
+
+fn non_empty_trimmed(value: String, field: &str) -> Result<String, ApiError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            format!("{field} must not be empty"),
+        ));
+    }
+    Ok(trimmed.to_owned())
+}
+
+fn join_provider_url(base_url: &str, route: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+    let has_path_prefix = trimmed
+        .split_once("://")
+        .and_then(|(_, rest)| rest.split_once('/'))
+        .is_some();
+    let path = if has_path_prefix {
+        route.strip_prefix("/v1").unwrap_or(route)
+    } else {
+        route
+    };
+    if path.starts_with('/') {
+        format!("{trimmed}{path}")
+    } else {
+        format!("{trimmed}/{path}")
+    }
+}
+
+async fn list_backends(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<BackendResponse>>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    let rows = sqlx::query::<sqlx::Postgres>(
+        "SELECT id, name, base_url, api_key_ref, weight, max_inflight, format, enabled FROM backends ORDER BY id",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let api_key_ref: String = row.try_get("api_key_ref")?;
+        out.push(BackendResponse {
+            id: row.try_get("id")?,
+            name: row.try_get("name")?,
+            base_url: row.try_get("base_url")?,
+            key_resolved: resolve_backend_key(&api_key_ref)
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false),
+            api_key_ref,
+            weight: row.try_get("weight")?,
+            max_inflight: row.try_get("max_inflight")?,
+            format: row.try_get("format")?,
+            enabled: row.try_get("enabled")?,
+        });
+    }
+    Ok(Json(out))
+}
+
+async fn update_backend(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(payload): Json<PatchBackend>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+
+    let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new("UPDATE backends SET ");
+    let mut first = true;
+
+    if let Some(name) = payload.name {
+        if !first {
+            builder.push(", ");
+        }
+        builder
+            .push("name = ")
+            .push_bind(non_empty_trimmed(name, "name")?);
+        first = false;
+    }
+    if let Some(base_url) = payload.base_url {
+        if !first {
+            builder.push(", ");
+        }
+        builder
+            .push("base_url = ")
+            .push_bind(non_empty_trimmed(base_url, "base_url")?);
+        first = false;
+    }
+    if let Some(api_key_ref) = payload.api_key_ref {
+        if !first {
+            builder.push(", ");
+        }
+        builder
+            .push("api_key_ref = ")
+            .push_bind(non_empty_trimmed(api_key_ref, "api_key_ref")?);
+        first = false;
+    }
+    if let Some(weight) = payload.weight {
+        if weight == 0 {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "weight must be at least 1",
+            ));
+        }
+        if !first {
+            builder.push(", ");
+        }
+        builder.push("weight = ").push_bind(weight as i64);
+        first = false;
+    }
+    if let Some(max_inflight) = payload.max_inflight {
+        if !first {
+            builder.push(", ");
+        }
+        builder
+            .push("max_inflight = ")
+            .push_bind(max_inflight as i64);
+        first = false;
+    }
+    if let Some(format) = payload.format {
+        if !first {
+            builder.push(", ");
+        }
+        builder
+            .push("format = ")
+            .push_bind(normalize_backend_format(&format)?);
+        first = false;
+    }
+    if let Some(enabled) = payload.enabled {
+        if !first {
+            builder.push(", ");
+        }
+        builder.push("enabled = ").push_bind(enabled);
+        first = false;
+    }
+
+    if first {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "no fields to update",
+        ));
+    }
+    builder.push(" WHERE id = ").push_bind(id);
+    let result = builder.build().execute(pool).await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("backend not found"));
+    }
+
+    state.reload_now().await?;
+    Ok(Json(json!({ "id": id })))
+}
+
+async fn fetch_backend_models(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<ModelListResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    let row = sqlx::query::<sqlx::Postgres>(
+        "SELECT name, base_url, api_key_ref, format FROM backends WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| ApiError::not_found("backend not found"))?;
+
+    let name: String = row.try_get("name")?;
+    let base_url: String = row.try_get("base_url")?;
+    let api_key_ref: String = row.try_get("api_key_ref")?;
+    let format: String = row.try_get("format")?;
+    let key = resolve_backend_key(&api_key_ref)
+        .filter(|v| !v.trim().is_empty())
+        .ok_or_else(|| {
+            ApiError::new(StatusCode::BAD_REQUEST, "backend API key is not configured")
+        })?;
+    let url = join_provider_url(&base_url, "/v1/models");
+    let mut req = state
+        .runtime
+        .client
+        .get(url)
+        .timeout(Duration::from_secs(15));
+    match normalize_backend_format(&format)? {
+        "openai" => {
+            req = req.bearer_auth(key);
+        }
+        "anthropic" => {
+            req = req
+                .header("x-api-key", key)
+                .header("anthropic-version", "2023-06-01");
+        }
+        _ => unreachable!(),
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::internal(format!("fetch models: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            format!("provider models endpoint returned {}", resp.status()),
+        ));
+    }
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| ApiError::internal(format!("parse models response: {e}")))?;
+    let models = body
+        .get("data")
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.get("id").and_then(|v| v.as_str()).map(str::to_owned))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Ok(Json(ModelListResponse {
+        backend_id: id,
+        backend_name: name,
+        models,
+    }))
+}
+
+async fn upsert_route(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(payload): Json<UpsertRoute>,
+) -> Result<Json<RouteResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let model_name = non_empty_trimmed(payload.model_name, "model_name")?;
+    if payload.backend_ids.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "backend_ids must not be empty",
+        ));
+    }
+    if payload.backend_ids.iter().any(|id| *id <= 0) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "backend_ids must be positive integers",
+        ));
+    }
+    let chars_per_token = payload.chars_per_token.unwrap_or(4.0);
+    if !chars_per_token.is_finite() || chars_per_token <= 0.0 {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "chars_per_token must be greater than zero",
+        ));
+    }
+    let first_byte_timeout = payload.first_byte_timeout.unwrap_or(180);
+    if first_byte_timeout == 0 {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "first_byte_timeout must be greater than zero",
+        ));
+    }
+    let backend_ids_json = serde_json::to_string(&payload.backend_ids)?;
+    let pool = state.pool().await?;
+
+    sqlx::query::<sqlx::Postgres>(
+        "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout) \
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (model_name) DO UPDATE SET \
+         backend_ids = EXCLUDED.backend_ids, fallback_backend_id = EXCLUDED.fallback_backend_id, \
+         chars_per_token = EXCLUDED.chars_per_token, first_byte_timeout = EXCLUDED.first_byte_timeout",
+    )
+    .bind(&model_name)
+    .bind(&backend_ids_json)
+    .bind(payload.fallback_backend_id)
+    .bind(chars_per_token)
+    .bind(first_byte_timeout as i64)
+    .execute(pool)
+    .await?;
+
+    state.reload_now().await?;
+    Ok(Json(RouteResponse {
+        model_name,
+        backend_ids: payload.backend_ids,
+        fallback_backend_id: payload.fallback_backend_id,
+        chars_per_token,
+        first_byte_timeout,
+    }))
+}
 
 async fn create_team(
     Extension(state): Extension<Arc<AdminState>>,
@@ -593,6 +950,33 @@ mod tests {
         ));
         assert!(ip_matches_cidr("10.0.0.5".parse().unwrap(), "10.0.0.0/8"));
         assert!(ip_matches_cidr("::1".parse().unwrap(), "::1/128"));
+    }
+
+    #[test]
+    fn provider_url_join_handles_host_and_sdk_base_urls() {
+        assert_eq!(
+            join_provider_url("https://api.openai.com", "/v1/models"),
+            "https://api.openai.com/v1/models"
+        );
+        assert_eq!(
+            join_provider_url("https://api.moonshot.ai/v1", "/v1/models"),
+            "https://api.moonshot.ai/v1/models"
+        );
+        assert_eq!(
+            join_provider_url(
+                "https://dashscope.example.com/compatible-mode/v1",
+                "/v1/models"
+            ),
+            "https://dashscope.example.com/compatible-mode/v1/models"
+        );
+    }
+
+    #[test]
+    fn backend_format_validation_is_strict() {
+        assert_eq!(normalize_backend_format("openai").unwrap(), "openai");
+        assert_eq!(normalize_backend_format("Open_AI").unwrap(), "openai");
+        assert_eq!(normalize_backend_format("anthropic").unwrap(), "anthropic");
+        assert!(normalize_backend_format("gemini").is_err());
     }
 
     #[test]

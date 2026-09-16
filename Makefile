@@ -3,12 +3,15 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 -include .env
 export
 
-.PHONY: start stop status logs restart migrate migrate-new prepare dev build test check audit gate gate-smoke bench-gate bench-gate-smoke clean image up down help
+.PHONY: install start stop status logs restart migrate seed k8s migrate-new prepare dev build test check audit gate gate-smoke bench-gate bench-gate-smoke clean image up down help
 
 help:
-	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "%-20s %s\n", $$1, $$2}'
+	@grep -h -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "%-20s %s\n", $$1, $$2}'
 
-start:             ## start Postgres, migrations, and router via Docker Compose
+install:           ## first-time install: Postgres, migrations, seed, router
+	./start.sh install
+
+start:             ## start Postgres, migrations, seed, and router via Docker Compose
 	./start.sh start
 
 stop:              ## stop the Docker Compose stack
@@ -26,6 +29,12 @@ restart:           ## restart the stack via Docker Compose
 migrate:           ## run migrations against DATABASE_URL or the Compose Postgres
 	./start.sh migrate
 
+seed:              ## seed Default Team and provider templates
+	./start.sh seed
+
+k8s:               ## install to Kubernetes; pass ARGS="--replicas 2" if needed
+	./start.sh install --k8s $(ARGS)
+
 migrate-new:       ## make migrate-new NAME=add_teams
 	sqlx migrate add -r $(NAME)
 
@@ -38,7 +47,7 @@ dev:               ## run router locally with .env loaded by cargo runtime
 build:             ## build production binary at target/release/brighto-router
 	cargo build --release --locked
 
-test:              ## run Rust tests with an available Postgres test database
+test:              ## run Rust tests; starts temporary Postgres if default DB is not reachable
 	./scripts/test_postgres.sh
 
 check:             ## fmt + hot-path guard + clippy
@@ -58,7 +67,7 @@ gate-smoke:        ## fast smoke gate; not release proof
 	$(MAKE) check
 	$(MAKE) bench-gate-smoke
 
-bench-gate:        ## full SOTA matrix -> bench/results/<ts>/
+bench-gate:        ## full benchmark matrix -> bench/results/<ts>/
 	python3 scripts/bench_real.py
 
 bench-gate-smoke:  ## short benchmark smoke; does not enforce release thresholds

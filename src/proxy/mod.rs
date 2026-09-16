@@ -45,10 +45,31 @@ pub fn is_stream_request(body: &[u8]) -> bool {
         || memchr::memmem::find(body, b"\"stream\": true").is_some()
 }
 
-/// Ghép base_url + path_and_query của request gốc, tránh trailing slash đúp.
+/// Join backend base URL and incoming path.
+///
+/// If base_url has no path, preserve the incoming path exactly:
+///   https://api.openai.com + /v1/chat/completions -> https://api.openai.com/v1/chat/completions
+/// If base_url already contains an API prefix, treat it like an OpenAI SDK base URL and strip
+/// the leading /v1 from the incoming route:
+///   https://api.moonshot.ai/v1 + /v1/chat/completions -> https://api.moonshot.ai/v1/chat/completions
+///   https://example.com/compatible-mode/v1 + /v1/models -> https://example.com/compatible-mode/v1/models
 fn build_target_url(base_url: &str, uri: &Uri) -> String {
-    let path = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
-    format!("{}{}", base_url.trim_end_matches('/'), path)
+    let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
+    let trimmed = base_url.trim_end_matches('/');
+    let has_path_prefix = trimmed
+        .split_once("://")
+        .and_then(|(_, rest)| rest.split_once('/'))
+        .is_some();
+    let path = if has_path_prefix {
+        path_and_query.strip_prefix("/v1").unwrap_or(path_and_query)
+    } else {
+        path_and_query
+    };
+    if path.starts_with('/') {
+        format!("{trimmed}{path}")
+    } else {
+        format!("{trimmed}/{path}")
+    }
 }
 
 /// Header hop-by-hop hoặc secret không được forward tới backend.
@@ -1024,6 +1045,23 @@ mod tests {
             format: BackendFormat::Anthropic,
             enabled: true,
         }
+    }
+
+    #[test]
+    fn target_url_supports_host_and_sdk_base_urls() {
+        let uri: Uri = "/v1/chat/completions?stream=true".parse().unwrap();
+        assert_eq!(
+            build_target_url("https://api.openai.com", &uri),
+            "https://api.openai.com/v1/chat/completions?stream=true"
+        );
+        assert_eq!(
+            build_target_url("https://api.moonshot.ai/v1", &uri),
+            "https://api.moonshot.ai/v1/chat/completions?stream=true"
+        );
+        assert_eq!(
+            build_target_url("https://dashscope.example.com/compatible-mode/v1", &uri),
+            "https://dashscope.example.com/compatible-mode/v1/chat/completions?stream=true"
+        );
     }
 
     #[test]

@@ -1,6 +1,5 @@
-```html
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,6 +9,7 @@
     section { border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 2rem; }
     label { display: block; margin: 0.75rem 0 0.25rem; }
     input, textarea { width: 100%; padding: 0.4rem; border: 1px solid #ccc; border-radius: 4px; }
+    input[type="checkbox"] { width: auto; }
     button { margin-top: 1rem; padding: 0.5rem 1.2rem; cursor: pointer; }
     pre { background: #f5f5f5; padding: 0.75rem; border-radius: 6px; overflow-x: auto; }
     table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
@@ -27,57 +27,96 @@
     <input id="admin-key" type="password" placeholder="ADMIN_MASTER_KEY">
   </section>
 
+
   <section>
-    <h2>Tạo team</h2>
-    <label>Tên team</label>
+    <h2>Provider backends</h2>
+    <p>Run <code>./start.sh seed</code> once if this table is empty. Put provider API keys in <code>.env</code> with <code>./start.sh set-key openai sk-...</code>; the database stores only env references such as <code>env:OPENAI_API_KEY</code>.</p>
+    <button onclick="loadBackends()">Load providers</button>
+    <table id="backend-table">
+      <thead>
+        <tr><th>ID</th><th>Name</th><th>Enabled</th><th>Key ready</th><th>Base URL</th><th>Format</th><th>Action</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <pre id="backend-error"></pre>
+
+    <h3>Update backend</h3>
+    <label>Backend ID</label>
+    <input id="backend-id" type="number" placeholder="1">
+    <label>Base URL</label>
+    <input id="backend-base-url" placeholder="https://api.openai.com">
+    <label>API key reference</label>
+    <input id="backend-key-ref" placeholder="env:OPENAI_API_KEY">
+    <label>Format</label>
+    <input id="backend-format" placeholder="openai or anthropic">
+    <label><input id="backend-enabled" type="checkbox"> Enabled</label>
+    <button onclick="updateBackend()">Save backend</button>
+    <pre id="backend-result"></pre>
+
+    <h3>Fetch models and create route</h3>
+    <label>Backend ID</label>
+    <input id="models-backend-id" type="number" placeholder="1">
+    <button onclick="fetchModels()">Fetch models</button>
+    <div id="models-list"></div>
+    <label>Manual model name</label>
+    <input id="route-model" placeholder="gpt-4o-mini">
+    <label>Route backend IDs</label>
+    <input id="route-backends" placeholder="1 or 1,2,3">
+    <button onclick="createRouteFromInputs()">Create or update route</button>
+    <pre id="route-result"></pre>
+  </section>
+
+  <section>
+    <h2>Create team</h2>
+    <label>Team name</label>
     <input id="team-name" placeholder="team-a">
-    <label>Budget JSON (tuỳ chọn)</label>
+    <label>Budget JSON (optional)</label>
     <textarea id="team-budget" rows="3">{"period":"month","max_tokens":1000000}</textarea>
     <label><input id="team-enabled" type="checkbox" checked> Enabled</label>
-    <button onclick="createTeam()">Tạo team</button>
+    <button onclick="createTeam()">Create team</button>
     <pre id="team-result"></pre>
   </section>
 
   <section>
-    <h2>Tạo API key</h2>
+    <h2>Create API key</h2>
     <label>Team ID</label>
     <input id="key-team-id" type="number" value="1">
     <label>Owner</label>
     <input id="key-owner" placeholder="user@example.com">
-    <label>Allowed models (CSV, rỗng = tất cả)</label>
+    <label>Allowed models (CSV, empty = all)</label>
     <input id="key-models" placeholder="gpt-4o,deepseek-v3">
-    <label>Budget JSON (tuỳ chọn)</label>
+    <label>Budget JSON (optional)</label>
     <textarea id="key-budget" rows="3"></textarea>
-    <label>RPM limit (tuỳ chọn)</label>
+    <label>RPM limit (optional)</label>
     <input id="key-rpm" type="number">
-    <label>Concurrency limit (tuỳ chọn)</label>
+    <label>Concurrency limit (optional)</label>
     <input id="key-concurrency" type="number">
-    <label>Expires at (unix giây, tuỳ chọn)</label>
+    <label>Expires at (Unix seconds, optional)</label>
     <input id="key-expires" type="number">
-    <button onclick="createKey()">Tạo key</button>
+    <button onclick="createKey()">Create key</button>
     <pre id="key-result"></pre>
     <div class="note" id="key-note"></div>
   </section>
 
   <section>
-    <h2>Set budget team</h2>
+    <h2>Set team budget</h2>
     <label>Team ID</label>
     <input id="patch-team-id" type="number" value="1">
     <label>Budget JSON</label>
     <textarea id="patch-budget" rows="3">{"period":"day","max_tokens":500000}</textarea>
-    <button onclick="patchTeam()">Cập nhật budget</button>
+    <button onclick="patchTeam()">Update budget</button>
     <pre id="patch-result"></pre>
   </section>
 
   <section>
-    <h2>Usage 30 ngày</h2>
-    <label>Team ID (tuỳ chọn)</label>
+    <h2>Usage last 30 days</h2>
+    <label>Team ID (optional)</label>
     <input id="usage-team" type="number">
-    <label>From unix (tuỳ chọn)</label>
+    <label>From Unix seconds (optional)</label>
     <input id="usage-from" type="number">
-    <label>To unix (tuỳ chọn)</label>
+    <label>To Unix seconds (optional)</label>
     <input id="usage-to" type="number">
-    <button onclick="loadUsage()">Tải usage</button>
+    <button onclick="loadUsage()">Load usage</button>
     <table id="usage-table">
       <thead>
         <tr>
@@ -121,6 +160,102 @@
         typeof data === 'string' ? data : JSON.stringify(data, null, 2);
     }
 
+    let backendRows = new Map();
+
+    function fillBackendForm(row) {
+      document.getElementById('backend-id').value = row.id;
+      document.getElementById('backend-base-url').value = row.base_url;
+      document.getElementById('backend-key-ref').value = row.api_key_ref;
+      document.getElementById('backend-format').value = row.format;
+      document.getElementById('backend-enabled').checked = row.enabled;
+      document.getElementById('models-backend-id').value = row.id;
+    }
+
+    async function loadBackends() {
+      const tbody = document.querySelector('#backend-table tbody');
+      const err = document.getElementById('backend-error');
+      tbody.innerHTML = '';
+      err.textContent = '';
+      try {
+        const data = await api('/admin/backends', 'GET');
+        backendRows = new Map(data.map(row => [row.id, row]));
+        for (const row of data) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${row.id}</td><td>${row.name}</td><td>${row.enabled}</td>`
+            + `<td>${row.key_resolved}</td><td>${row.base_url}</td><td>${row.format}</td>`
+            + `<td><button type="button" onclick="fillBackendForm(backendRows.get(${row.id}))">Edit</button></td>`;
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        err.textContent = String(e);
+      }
+    }
+
+    async function updateBackend() {
+      try {
+        const id = Number(document.getElementById('backend-id').value);
+        const payload = { enabled: document.getElementById('backend-enabled').checked };
+        const base = document.getElementById('backend-base-url').value.trim();
+        const keyRef = document.getElementById('backend-key-ref').value.trim();
+        const format = document.getElementById('backend-format').value.trim();
+        if (base) payload.base_url = base;
+        if (keyRef) payload.api_key_ref = keyRef;
+        if (format) payload.format = format;
+        const data = await api(`/admin/backends/${id}`, 'PATCH', payload);
+        show('backend-result', data);
+        await loadBackends();
+      } catch (e) {
+        show('backend-result', String(e));
+      }
+    }
+
+    async function fetchModels() {
+      const box = document.getElementById('models-list');
+      box.innerHTML = '';
+      try {
+        const id = Number(document.getElementById('models-backend-id').value);
+        const data = await api(`/admin/backends/${id}/models`, 'GET');
+        document.getElementById('route-backends').value = String(id);
+        if (!data.models.length) {
+          box.textContent = 'Provider returned no models.';
+          return;
+        }
+        for (const model of data.models) {
+          const btn = document.createElement('button');
+          btn.textContent = `Use ${model}`;
+          btn.onclick = () => createRoute(model, [id]);
+          box.appendChild(btn);
+          box.appendChild(document.createTextNode(' '));
+        }
+      } catch (e) {
+        box.textContent = String(e);
+      }
+    }
+
+    async function createRoute(model, backendIds) {
+      const payload = {
+        model_name: model,
+        backend_ids: backendIds,
+        chars_per_token: 4.0,
+        first_byte_timeout: 180,
+      };
+      const data = await api('/admin/routes', 'POST', payload);
+      show('route-result', data);
+    }
+
+    async function createRouteFromInputs() {
+      try {
+        const model = document.getElementById('route-model').value.trim();
+        const backendIds = document.getElementById('route-backends').value
+          .split(',')
+          .map(s => Number(s.trim()))
+          .filter(Boolean);
+        await createRoute(model, backendIds);
+      } catch (e) {
+        show('route-result', String(e));
+      }
+    }
+
     async function createTeam() {
       try {
         const budgetText = document.getElementById('team-budget').value.trim();
@@ -159,7 +294,7 @@
 
         const data = await api('/admin/keys', 'POST', payload);
         show('key-result', data);
-        note.textContent = 'Key plaintext chỉ hiển thị lần này. Hãy lưu ngay.';
+        note.textContent = 'The plaintext key is shown only once. Save it now.';
       } catch (e) {
         show('key-result', String(e));
       }
@@ -210,4 +345,3 @@
   </script>
 </body>
 </html>
-```

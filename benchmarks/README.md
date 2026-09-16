@@ -18,6 +18,7 @@ This is the benchmark guide to read first. It answers four questions:
 - **p99** means 99th percentile latency. 99% of requests are faster, 1% are slower.
 - **TTFB** means time to first byte: how long the client waits before the first response byte arrives.
 - **RPS** means requests per second.
+- **Offered rate** means the request rate the load generator tries to start. It is a local test setting, not a global standard.
 - **RSS** means resident set size: physical memory used by the router process on Linux.
 - **Concurrency** means how many requests are in flight at the same time.
 
@@ -31,6 +32,16 @@ This is the benchmark guide to read first. It answers four questions:
 | `500k` | 500,000 tokens | 1, 50, then 200 after review | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Measurement-first stress proof until a reviewed baseline exists | Extreme prompt pass-through must stay stable. We record memory and correctness first; we do not invent a speed target before the machine is calibrated. |
 | `1m` | 1,000,000 tokens. The name means 1M. | 1, 50, then 200 after review | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Measurement-first stress proof until a reviewed baseline exists | This proves the router can survive very large prompts without runaway memory. It is for capacity planning on high-memory servers, not a fake everyday target. |
 
+## How to read offered rate
+
+An example such as `1k c=50 offered rate 4000 RPS` means:
+
+- use the `1k` token-class payload;
+- keep at most 50 requests active at the same time;
+- ask the load generator to start up to 4,000 requests per second.
+
+This is not a global standard. The globally defensible part is the comparison method: direct backend versus router on the same machine, same payload, same concurrency, same duration, same logging, and same network path. The exact offered-rate numbers must be calibrated per machine.
+
 ## How to read concurrency
 
 | Concurrency | Meaning | Why it matters |
@@ -40,6 +51,19 @@ This is the benchmark guide to read first. It answers four questions:
 | 200 | Two hundred requests active at once | Shows whether queues, connection pools, ledger writing, and memory stay controlled under heavy load. |
 
 A practical example: a team of 100 people with 5 model backends may have many small requests, some long research prompts, and several long streams at the same time. The router must choose a healthy backend, enforce key/team budgets, keep client API keys private, and write usage without making model responses slower. Concurrency 50 is the everyday stress point. Concurrency 200 is the overload/capacity signal.
+
+## Gate-name legend
+
+The release contract uses short gate names so scripts can report failures compactly:
+
+| Gate | Plain meaning |
+|---|---|
+| `B1` | Median latency overhead. |
+| `B2` | 99th-percentile latency overhead. |
+| `B3` | Whether 200k prompts add much more overhead than 1k prompts. |
+| `B4` | Streaming time-to-first-byte overhead. |
+| `B6` | High-rate throughput for small prompts. |
+| `B10` | Usage-ledger lag from router completion to PostgreSQL insert. |
 
 ## What the output files tell you
 
