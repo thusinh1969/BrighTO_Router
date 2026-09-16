@@ -1972,6 +1972,8 @@ struct TotalsRow {
     error_rate_pct: f64,
     p95_ttfb_ms: f64,
     p95_total_ms: f64,
+    /// Router overhead p95 (ms) — chỉ số quan trọng nhất của router, tách khỏi provider latency.
+    p95_router_overhead_ms: f64,
     /// Ước lượng cost tổng (USD) chỉ từ những route có đủ cả 2 giá. None khi không có route giá.
     estimated_cost_usd: Option<f64>,
     /// Số request có cost tính được (route có đủ input+output price).
@@ -2009,11 +2011,21 @@ struct KeyGroupRow {
 }
 
 #[derive(Serialize)]
+struct BucketRow {
+    bucket: String,
+    requests: i64,
+    p95_ttfb_ms: f64,
+    p95_total_ms: f64,
+    p95_router_overhead_ms: f64,
+}
+
+#[derive(Serialize)]
 struct SummaryResponse {
     totals: TotalsRow,
     by_model: Vec<GroupRow>,
     by_team: Vec<TeamGroupRow>,
     by_key: Vec<KeyGroupRow>,
+    by_bucket: Vec<BucketRow>,
 }
 
 /// Gắn bộ filter usage chung vào WHERE. `alias` = "" cho query usage_ledger trực tiếp, "u." cho JOIN.
@@ -2158,7 +2170,9 @@ async fn get_summary(
 
     let mut pb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY ttfb_ms) AS p95_ttfb, \
-         percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS p95_total FROM usage_ledger",
+         percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS p95_total, \
+         percentile_cont(0.95) WITHIN GROUP (ORDER BY router_overhead_ms) AS p95_overhead \
+         FROM usage_ledger",
     );
     push_usage_filters(
         &mut pb,
@@ -2174,6 +2188,7 @@ async fn get_summary(
     let prow = pb.build().fetch_one(pool).await?;
     let p95_ttfb_ms: Option<f64> = prow.try_get("p95_ttfb")?;
     let p95_total_ms: Option<f64> = prow.try_get("p95_total")?;
+    let p95_overhead_ms: Option<f64> = prow.try_get("p95_overhead")?;
 
     let mut mb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT model, COUNT(*) AS requests, \
@@ -2278,6 +2293,34 @@ async fn get_summary(
         })
         .collect();
 
+    // Performance diagnostics: latency theo prompt-size bucket (tránh 200k prompt nhiễu latency thường).
+    let mut bkb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT CASE              WHEN input_tokens < 2000 THEN '<2k'              WHEN input_tokens < 32000 THEN '2k-32k'              WHEN input_tokens < 128000 THEN '32k-128k'              ELSE '128k+' END AS bucket,          COUNT(*) AS requests,          percentile_cont(0.95) WITHIN GROUP (ORDER BY ttfb_ms) AS p95_ttfb,          percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS p95_total,          percentile_cont(0.95) WITHIN GROUP (ORDER BY router_overhead_ms) AS p95_overhead          FROM usage_ledger",
+    );
+    push_usage_filters(
+        &mut bkb,
+        "",
+        team,
+        key,
+        backend,
+        model,
+        &status,
+        Some(from),
+        to,
+    );
+    bkb.push(" GROUP BY 1 ORDER BY MIN(input_tokens)");
+    let bkrows = bkb.build().fetch_all(pool).await?;
+    let by_bucket: Vec<BucketRow> = bkrows
+        .iter()
+        .map(|r| BucketRow {
+            bucket: r.try_get("bucket").unwrap_or_default(),
+            requests: r.try_get("requests").unwrap_or(0),
+            p95_ttfb_ms: r.try_get("p95_ttfb").unwrap_or(0.0),
+            p95_total_ms: r.try_get("p95_total").unwrap_or(0.0),
+            p95_router_overhead_ms: r.try_get("p95_overhead").unwrap_or(0.0),
+        })
+        .collect();
+
     let estimated_cost_usd: f64 = by_model.iter().filter_map(|g| g.estimated_cost_usd).sum();
     let cost_known_requests: i64 = by_model
         .iter()
@@ -2294,12 +2337,14 @@ async fn get_summary(
             error_rate_pct,
             p95_ttfb_ms: p95_ttfb_ms.unwrap_or(0.0),
             p95_total_ms: p95_total_ms.unwrap_or(0.0),
+            p95_router_overhead_ms: p95_overhead_ms.unwrap_or(0.0),
             estimated_cost_usd: Some(estimated_cost_usd),
             cost_known_requests,
         },
         by_model,
         by_team,
         by_key,
+        by_bucket,
     }))
 }
 
