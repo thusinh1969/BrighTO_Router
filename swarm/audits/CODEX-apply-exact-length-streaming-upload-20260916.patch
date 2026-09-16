@@ -1,0 +1,992 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index fc206d8..9527ceb 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -259,6 +259,7 @@ dependencies = [
+  "futures",
+  "hex",
+  "http",
++ "http-body",
+  "memchr",
+  "metrics",
+  "metrics-exporter-prometheus",
+diff --git a/Cargo.toml b/Cargo.toml
+index 6ae4bc6..b047304 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -15,6 +15,7 @@ axum-server = { version = "0.8.0" }                      # graceful shutdown; b
+ tower       = { version = "0.5.3", features = ["util", "timeout", "limit"] }
+ tower-http  = { version = "0.7.1", features = ["trace", "request-id", "set-header", "limit", "timeout"] }
+ http        = "1.5.0"
++http-body   = "1.0.1"
+ bytes       = "1.12.1"
+ futures     = "0.3.34"
+ 
+diff --git a/src/handlers.rs b/src/handlers.rs
+index ee6a357..e3e0fa9 100644
+--- a/src/handlers.rs
++++ b/src/handlers.rs
+@@ -6,17 +6,19 @@ use std::sync::atomic::{AtomicU64, Ordering};
+ use std::time::{Instant, SystemTime, UNIX_EPOCH};
+ 
+ use axum::Router;
+-use axum::body::{Body, Bytes, to_bytes};
++use axum::body::{Body, BodyDataStream, Bytes};
+ use axum::extract::State;
+ use axum::http::{HeaderMap, HeaderName, Request, Response, StatusCode, header};
+ use axum::response::IntoResponse;
+ use axum::routing::{get, post};
++use bytes::BytesMut;
++use futures::StreamExt;
+ use serde::Deserialize;
+ use serde_json::value::RawValue;
+ 
+ use crate::auth;
+ use crate::contract::{ApiKey, AppState, BudgetError, ModelRoute};
+-use crate::proxy::{self, ProxyContext};
++use crate::proxy::{self, ProxyContext, ProxyRequestBody};
+ 
+ /// Chỉ parse field top-level, bỏ qua toàn bộ phần còn lại (không cấp phát cho skipped fields).
+ /// stream_options dùng RawValue để biết top-level có key này hay không (serde chỉ map field top-level).
+@@ -30,6 +32,300 @@ struct RequestHead<'a> {
+     stream_options: Option<&'a RawValue>,
+ }
+ 
++#[derive(Debug, Clone, PartialEq, Eq)]
++struct RequestHeadOwned {
++    model: String,
++    stream: bool,
++    stream_options_present: bool,
++}
++
++impl<'a> From<RequestHead<'a>> for RequestHeadOwned {
++    fn from(h: RequestHead<'a>) -> Self {
++        Self {
++            model: h.model.to_string(),
++            stream: h.stream,
++            stream_options_present: h.stream_options.is_some(),
++        }
++    }
++}
++
++const FAST_UPLOAD_MIN_BYTES: u64 = 64 * 1024;
++const HEAD_PREFIX_LIMIT: usize = 16 * 1024;
++
++enum IncomingBody {
++    Buffered {
++        head: RequestHeadOwned,
++        body: Bytes,
++    },
++    StreamingCandidate {
++        head: RequestHeadOwned,
++        prefix: Bytes,
++        rest: BodyDataStream,
++        content_length: u64,
++    },
++}
++
++impl IncomingBody {
++    fn body_len(&self) -> usize {
++        match self {
++            Self::Buffered { body, .. } => body.len(),
++            Self::StreamingCandidate { content_length, .. } => *content_length as usize,
++        }
++    }
++
++    fn head(&self) -> &RequestHeadOwned {
++        match self {
++            Self::Buffered { head, .. } | Self::StreamingCandidate { head, .. } => head,
++        }
++    }
++
++    async fn into_proxy_body(
++        self,
++        allow_streaming_upload: bool,
++        max_body_bytes: usize,
++    ) -> Result<(RequestHeadOwned, ProxyRequestBody), BodyReadError> {
++        match self {
++            Self::Buffered { head, body } => Ok((head, ProxyRequestBody::Buffered(body))),
++            Self::StreamingCandidate {
++                head,
++                prefix,
++                rest,
++                content_length,
++            } if allow_streaming_upload => Ok((
++                head,
++                ProxyRequestBody::Streaming {
++                    prefix,
++                    rest,
++                    content_length,
++                },
++            )),
++            Self::StreamingCandidate { prefix, rest, .. } => {
++                let body = collect_remaining_body(prefix, rest, max_body_bytes).await?;
++                let parsed: RequestHead<'_> =
++                    serde_json::from_slice(&body).map_err(|_| BodyReadError::InvalidJson)?;
++                Ok((parsed.into(), ProxyRequestBody::Buffered(body)))
++            }
++        }
++    }
++}
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++enum BodyReadError {
++    TooLarge,
++    ReadFailed,
++    InvalidJson,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++enum PrefixScan {
++    NeedMore,
++    Found(RequestHeadOwned),
++}
++
++async fn read_incoming_body(
++    body: Body,
++    max_body_bytes: usize,
++    content_length: Option<u64>,
++) -> Result<IncomingBody, BodyReadError> {
++    if let Some(len) = content_length
++        && len > max_body_bytes as u64
++    {
++        return Err(BodyReadError::TooLarge);
++    }
++
++    let try_fast = content_length.is_some_and(|len| len >= FAST_UPLOAD_MIN_BYTES);
++    if !try_fast {
++        let stream = body.into_data_stream();
++        let full = collect_remaining_body(Bytes::new(), stream, max_body_bytes).await?;
++        let head: RequestHead<'_> =
++            serde_json::from_slice(&full).map_err(|_| BodyReadError::InvalidJson)?;
++        return Ok(IncomingBody::Buffered {
++            head: head.into(),
++            body: full,
++        });
++    }
++
++    let content_length = content_length.unwrap_or_default();
++    let mut stream = body.into_data_stream();
++    let mut prefix = BytesMut::new();
++    while let Some(next) = stream.next().await {
++        let chunk = next.map_err(|_| BodyReadError::ReadFailed)?;
++        if prefix.len().saturating_add(chunk.len()) > max_body_bytes {
++            return Err(BodyReadError::TooLarge);
++        }
++        prefix.extend_from_slice(&chunk);
++
++        if let PrefixScan::Found(head) = scan_head_prefix(&prefix) {
++            // Fast path is deliberately narrow: only non-stream requests with explicit top-level
++            // stream=false. Stream=true may need body mutation for stream_options injection.
++            if !head.stream {
++                return Ok(IncomingBody::StreamingCandidate {
++                    head,
++                    prefix: prefix.freeze(),
++                    rest: stream,
++                    content_length,
++                });
++            }
++        }
++
++        if prefix.len() >= HEAD_PREFIX_LIMIT {
++            break;
++        }
++    }
++
++    let full = collect_remaining_body(prefix.freeze(), stream, max_body_bytes).await?;
++    let head: RequestHead<'_> =
++        serde_json::from_slice(&full).map_err(|_| BodyReadError::InvalidJson)?;
++    Ok(IncomingBody::Buffered {
++        head: head.into(),
++        body: full,
++    })
++}
++
++async fn collect_remaining_body(
++    prefix: Bytes,
++    mut rest: BodyDataStream,
++    max_body_bytes: usize,
++) -> Result<Bytes, BodyReadError> {
++    let mut out = BytesMut::with_capacity(prefix.len().min(max_body_bytes));
++    out.extend_from_slice(&prefix);
++    while let Some(next) = rest.next().await {
++        let chunk = next.map_err(|_| BodyReadError::ReadFailed)?;
++        if out.len().saturating_add(chunk.len()) > max_body_bytes {
++            return Err(BodyReadError::TooLarge);
++        }
++        out.extend_from_slice(&chunk);
++    }
++    Ok(out.freeze())
++}
++
++fn parse_content_length(headers: &HeaderMap) -> Option<u64> {
++    headers
++        .get(header::CONTENT_LENGTH)
++        .and_then(|v| v.to_str().ok())
++        .and_then(|s| s.parse::<u64>().ok())
++}
++
++fn scan_head_prefix(data: &[u8]) -> PrefixScan {
++    let mut i = skip_ws(data, 0);
++    if data.get(i) != Some(&b'{') {
++        return PrefixScan::NeedMore;
++    }
++    i += 1;
++    let mut model: Option<String> = None;
++    let mut stream: Option<bool> = None;
++    let mut stream_options_present = false;
++    let mut depth: i32 = 1;
++
++    while i < data.len() {
++        i = skip_ws(data, i);
++        if i >= data.len() {
++            break;
++        }
++        match data[i] {
++            b'}' => {
++                depth -= 1;
++                if depth == 0 {
++                    break;
++                }
++                i += 1;
++            }
++            b'{' | b'[' => {
++                depth += 1;
++                i += 1;
++            }
++            b']' => {
++                depth -= 1;
++                i += 1;
++            }
++            b'"' => {
++                let Some(end) = find_string_end(data, i) else {
++                    return PrefixScan::NeedMore;
++                };
++                if depth == 1 {
++                    let key_slice = &data[i..=end];
++                    let Ok(key) = serde_json::from_slice::<String>(key_slice) else {
++                        return PrefixScan::NeedMore;
++                    };
++                    let mut j = skip_ws(data, end + 1);
++                    if data.get(j) != Some(&b':') {
++                        i = end + 1;
++                        continue;
++                    }
++                    j = skip_ws(data, j + 1);
++                    match key.as_str() {
++                        "model" => {
++                            if data.get(j) == Some(&b'"') {
++                                let Some(v_end) = find_string_end(data, j) else {
++                                    return PrefixScan::NeedMore;
++                                };
++                                if let Ok(v) = serde_json::from_slice::<String>(&data[j..=v_end]) {
++                                    model = Some(v);
++                                }
++                                i = v_end + 1;
++                            } else {
++                                i = j;
++                            }
++                        }
++                        "stream" => {
++                            if data.get(j..j + 4) == Some(b"true") {
++                                stream = Some(true);
++                                i = j + 4;
++                            } else if data.get(j..j + 5) == Some(b"false") {
++                                stream = Some(false);
++                                i = j + 5;
++                            } else {
++                                i = j;
++                            }
++                        }
++                        "stream_options" => {
++                            stream_options_present = true;
++                            i = j;
++                        }
++                        _ => i = end + 1,
++                    }
++                    if let (Some(model), Some(stream)) = (&model, stream) {
++                        return PrefixScan::Found(RequestHeadOwned {
++                            model: model.clone(),
++                            stream,
++                            stream_options_present,
++                        });
++                    }
++                } else {
++                    i = end + 1;
++                }
++            }
++            _ => i += 1,
++        }
++    }
++
++    PrefixScan::NeedMore
++}
++
++fn skip_ws(data: &[u8], mut i: usize) -> usize {
++    while matches!(data.get(i), Some(b' ' | b'\n' | b'\r' | b'\t')) {
++        i += 1;
++    }
++    i
++}
++
++fn find_string_end(data: &[u8], start: usize) -> Option<usize> {
++    let mut escaped = false;
++    let mut i = start.checked_add(1)?;
++    while i < data.len() {
++        let b = data[i];
++        if escaped {
++            escaped = false;
++        } else if b == b'\\' {
++            escaped = true;
++        } else if b == b'"' {
++            return Some(i);
++        }
++        i += 1;
++    }
++    None
++}
++
+ pub fn router(state: Arc<AppState>) -> Router {
+     Router::<Arc<AppState>>::new()
+         .route("/v1/chat/completions", post(chat_completions))
+@@ -138,25 +434,37 @@ async fn handle_generate(state: Arc<AppState>, req: Request<Body>) -> Response<B
+         Err(_) => return build_error(&request_id, StatusCode::UNAUTHORIZED, "invalid API key"),
+     };
+ 
+-    // 2. Đọc body (giới hạn) + chỉ lấy model + stream.
+-    let body_bytes = match to_bytes(body, state.max_body_bytes).await {
++    // 2. Đọc request head. Large non-stream bodies can stay as a streaming upload candidate;
++    // ambiguous or mutating cases fall back to the old full-buffer + serde validation path.
++    let incoming = match read_incoming_body(
++        body,
++        state.max_body_bytes,
++        parse_content_length(&parts.headers),
++    )
++    .await
++    {
+         Ok(b) => b,
+-        Err(_) => {
++        Err(BodyReadError::TooLarge) => {
+             return build_error(
+                 &request_id,
+                 StatusCode::PAYLOAD_TOO_LARGE,
+                 "request body too large",
+             );
+         }
++        Err(BodyReadError::ReadFailed) => {
++            return build_error(
++                &request_id,
++                StatusCode::BAD_REQUEST,
++                "request body read failed",
++            );
++        }
++        Err(BodyReadError::InvalidJson) => {
++            return build_error(&request_id, StatusCode::BAD_REQUEST, "invalid JSON");
++        }
+     };
+-    // serde parse 2 field (borrow, không alloc skipped fields) — ~130us @200K, dưới target 2ms.
+-    let head: RequestHead<'_> = match serde_json::from_slice(&body_bytes) {
+-        Ok(h) => h,
+-        Err(_) => return build_error(&request_id, StatusCode::BAD_REQUEST, "invalid JSON"),
+-    };
+-    let model = head.model;
+-    let stream = head.stream;
+-    let stream_options_present = head.stream_options.is_some();
++    let head = incoming.head();
++    let model_name = head.model.clone();
++    let model = model_name.as_str();
+     if model.is_empty() {
+         return build_error(&request_id, StatusCode::BAD_REQUEST, "model is required");
+     }
+@@ -176,7 +484,36 @@ async fn handle_generate(state: Arc<AppState>, req: Request<Body>) -> Response<B
+     };
+ 
+     // 5. Budget reserve + concurrency (RAII: nếu mọi đường return sau đây, tự rollback/release).
+-    let est_tokens = estimate_tokens(&body_bytes, &route);
++    let allow_streaming_upload =
++        route.backend_ids.len() == 1 && route.fallback_backend_id.is_none();
++    let body_len = incoming.body_len();
++    let est_tokens = estimate_tokens_len(body_len, &route);
++    let (head, proxy_body) = match incoming
++        .into_proxy_body(allow_streaming_upload, state.max_body_bytes)
++        .await
++    {
++        Ok(v) => v,
++        Err(BodyReadError::TooLarge) => {
++            return build_error(
++                &request_id,
++                StatusCode::PAYLOAD_TOO_LARGE,
++                "request body too large",
++            );
++        }
++        Err(BodyReadError::ReadFailed) => {
++            return build_error(
++                &request_id,
++                StatusCode::BAD_REQUEST,
++                "request body read failed",
++            );
++        }
++        Err(BodyReadError::InvalidJson) => {
++            return build_error(&request_id, StatusCode::BAD_REQUEST, "invalid JSON");
++        }
++    };
++    let stream = head.stream;
++    let stream_options_present = head.stream_options_present;
++
+     let reservation = match state.budget.reserve(&key, model, est_tokens) {
+         Ok(r) => Some(r),
+         Err(BudgetError::BudgetExceeded { .. }) => {
+@@ -218,7 +555,7 @@ async fn handle_generate(state: Arc<AppState>, req: Request<Body>) -> Response<B
+         start: started,
+         estimated_input_tokens: est_tokens,
+     };
+-    let req = Request::from_parts(parts, body_bytes);
++    let req = Request::from_parts(parts, proxy_body);
+     proxy::proxy_forward(state, req, ctx).await
+ }
+ 
+@@ -247,11 +584,11 @@ fn generate_request_id() -> String {
+     format!("{ts:x}-{seq:x}")
+ }
+ 
+-fn estimate_tokens(body: &Bytes, route: &ModelRoute) -> u64 {
++fn estimate_tokens_len(body_len: usize, route: &ModelRoute) -> u64 {
+     if route.chars_per_token <= 0.0 {
+         return 1;
+     }
+-    let estimate = (body.len() as f64 / route.chars_per_token).ceil() as u64;
++    let estimate = (body_len as f64 / route.chars_per_token).ceil() as u64;
+     estimate.max(1)
+ }
+ 
+@@ -295,6 +632,23 @@ mod tests {
+         );
+     }
+ 
++    #[test]
++    fn prefix_scan_finds_only_top_level_model_and_stream_false() {
++        let body =
++            br#"{"messages":[{"model":"nested","stream":true}],"model":"top","stream":false}"#;
++        let PrefixScan::Found(h) = scan_head_prefix(body) else {
++            panic!("head must be found");
++        };
++        assert_eq!(h.model, "top");
++        assert!(!h.stream);
++    }
++
++    #[test]
++    fn prefix_scan_does_not_find_missing_stream() {
++        let body = br#"{"model":"top","messages":[{"role":"user","content":"x"}]}"#;
++        assert_eq!(scan_head_prefix(body), PrefixScan::NeedMore);
++    }
++
+     #[test]
+     fn request_ids_are_unique() {
+         let id1 = generate_request_id();
+@@ -335,7 +689,7 @@ mod tests {
+             first_byte_timeout: std::time::Duration::from_secs(180),
+         };
+         let body = Bytes::from_static(b"hello world");
+-        let est = estimate_tokens(&body, &route);
++        let est = estimate_tokens_len(body.len(), &route);
+         assert!(est > 0);
+     }
+ }
+diff --git a/src/proxy/mod.rs b/src/proxy/mod.rs
+index f104624..7136e43 100644
+--- a/src/proxy/mod.rs
++++ b/src/proxy/mod.rs
+@@ -2,15 +2,18 @@
+ //! Một nơi duy nhất forward: handler chỉ lo auth/budget/route, proxy lo mọi thứ phía backend.
+ //! Stream thật (Body::from_stream), splice usage, ledger/budget/metrics finalize từ stream reporter.
+ 
+-use std::sync::Arc;
++use std::pin::Pin;
++use std::sync::{Arc, Mutex};
++use std::task::{Context, Poll};
+ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+ 
+-use axum::body::{Body, Bytes};
++use axum::body::{Body, BodyDataStream, Bytes};
+ use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, Uri};
+ use axum::response::Response;
+ use futures::SinkExt;
+-use futures::StreamExt;
+ use futures::channel::mpsc;
++use futures::{Stream, StreamExt};
++use http_body::{Frame, SizeHint};
+ use serde_json::Value;
+ 
+ use crate::budget::{BudgetReservation, ConcurrencyGuard};
+@@ -75,7 +78,7 @@ fn build_reqwest_request(
+     method: &Method,
+     url: &str,
+     headers: &HeaderMap,
+-    body: Bytes,
++    body: reqwest::Body,
+     backend: &Backend,
+     request_id: &str,
+ ) -> Result<reqwest::Request, String> {
+@@ -122,6 +125,107 @@ fn build_reqwest_request(
+         .map_err(|e| e.to_string())
+ }
+ 
++/// Request body accepted by proxy. Buffered bodies are replayable across pre-first-byte retries.
++/// Streaming upload is the large-prompt fast path: it preserves exact Content-Length through
++/// SizeHint and intentionally disables retry after the upload body is moved to reqwest.
++pub enum ProxyRequestBody {
++    Buffered(Bytes),
++    Streaming {
++        prefix: Bytes,
++        rest: BodyDataStream,
++        content_length: u64,
++    },
++}
++
++impl ProxyRequestBody {
++    fn into_reqwest_body(self) -> reqwest::Body {
++        match self {
++            Self::Buffered(bytes) => reqwest::Body::from(bytes),
++            Self::Streaming {
++                prefix,
++                rest,
++                content_length,
++            } => reqwest::Body::wrap(ExactLengthUploadBody::new(prefix, rest, content_length)),
++        }
++    }
++}
++
++struct ExactLengthUploadBody {
++    inner: Mutex<ExactLengthUploadInner>,
++    content_length: u64,
++}
++
++struct ExactLengthUploadInner {
++    prefix: Option<Bytes>,
++    rest: Pin<Box<BodyDataStream>>,
++    sent: u64,
++    ended: bool,
++}
++
++impl ExactLengthUploadBody {
++    fn new(prefix: Bytes, rest: BodyDataStream, content_length: u64) -> Self {
++        Self {
++            inner: Mutex::new(ExactLengthUploadInner {
++                prefix: Some(prefix),
++                rest: Box::pin(rest),
++                sent: 0,
++                ended: false,
++            }),
++            content_length,
++        }
++    }
++
++    fn lock_inner(&self) -> std::sync::MutexGuard<'_, ExactLengthUploadInner> {
++        match self.inner.lock() {
++            Ok(g) => g,
++            Err(poisoned) => poisoned.into_inner(),
++        }
++    }
++}
++
++impl http_body::Body for ExactLengthUploadBody {
++    type Data = Bytes;
++    type Error = axum::Error;
++
++    fn poll_frame(
++        self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
++        let this = self.as_ref().get_ref();
++        let mut inner = this.lock_inner();
++        if let Some(prefix) = inner.prefix.take() {
++            if prefix.is_empty() {
++                // Continue to the client stream in the same poll; no empty DATA frame.
++            } else {
++                inner.sent = inner.sent.saturating_add(prefix.len() as u64);
++                return Poll::Ready(Some(Ok(Frame::data(prefix))));
++            }
++        }
++
++        match inner.rest.as_mut().poll_next(cx) {
++            Poll::Ready(Some(Ok(chunk))) => {
++                inner.sent = inner.sent.saturating_add(chunk.len() as u64);
++                Poll::Ready(Some(Ok(Frame::data(chunk))))
++            }
++            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
++            Poll::Ready(None) => {
++                inner.ended = true;
++                Poll::Ready(None)
++            }
++            Poll::Pending => Poll::Pending,
++        }
++    }
++
++    fn is_end_stream(&self) -> bool {
++        self.lock_inner().ended
++    }
++
++    fn size_hint(&self) -> SizeHint {
++        let sent = self.lock_inner().sent;
++        SizeHint::with_exact(self.content_length.saturating_sub(sent))
++    }
++}
++
+ fn parse_openai_usage_from_line(line: &[u8]) -> Option<(u64, u64)> {
+     let data = line.strip_prefix(b"data:")?;
+     let data = data.trim_ascii_start();
+@@ -638,7 +742,7 @@ fn tag_router_headers(
+ /// Điểm vào proxy: chọn backend (lease), retry trước byte đầu, forward response (stream thật).
+ pub async fn proxy_forward(
+     state: Arc<AppState>,
+-    req: Request<Bytes>,
++    req: Request<ProxyRequestBody>,
+     mut ctx: ProxyContext,
+ ) -> Response<Body> {
+     let start = ctx.start;
+@@ -648,6 +752,8 @@ pub async fn proxy_forward(
+     let method = parts.method;
+     let uri = parts.uri;
+     let headers = parts.headers;
++    let mut upload_body = Some(body);
++    let upload_replayable = matches!(upload_body, Some(ProxyRequestBody::Buffered(_)));
+ 
+     let reservation = ctx.reservation.take();
+     let concurrency = ctx.concurrency.take();
+@@ -683,15 +789,53 @@ pub async fn proxy_forward(
+             );
+         };
+ 
+-        let request_body = if backend.format == BackendFormat::OpenAi
+-            && stream_request
+-            && !ctx.stream_options_present
+-        {
+-            splice_include_usage(&body)
+-                .map(Bytes::from)
+-                .unwrap_or_else(|| body.clone())
+-        } else {
+-            body.clone()
++        let Some(body_for_attempt) = upload_body.take() else {
++            request_total_for(&ctx, &backend.name, 502);
++            return tag_router_headers(
++                build_response(
++                    StatusCode::BAD_GATEWAY,
++                    reqwest::header::HeaderMap::new(),
++                    Body::from("request body already consumed"),
++                ),
++                &ctx.request_id,
++                Some(&backend.name),
++                start.elapsed().as_millis() as u64,
++            );
++        };
++
++        let request_body = match body_for_attempt {
++            ProxyRequestBody::Buffered(body) => {
++                let bytes = if backend.format == BackendFormat::OpenAi
++                    && stream_request
++                    && !ctx.stream_options_present
++                {
++                    splice_include_usage(&body)
++                        .map(Bytes::from)
++                        .unwrap_or_else(|| body.clone())
++                } else {
++                    body.clone()
++                };
++                upload_body = Some(ProxyRequestBody::Buffered(body));
++                reqwest::Body::from(bytes)
++            }
++            ProxyRequestBody::Streaming { .. }
++                if backend.format == BackendFormat::OpenAi
++                    && stream_request
++                    && !ctx.stream_options_present =>
++            {
++                request_total_for(&ctx, &backend.name, 500);
++                return tag_router_headers(
++                    build_response(
++                        StatusCode::INTERNAL_SERVER_ERROR,
++                        reqwest::header::HeaderMap::new(),
++                        Body::from("streaming upload cannot mutate request body"),
++                    ),
++                    &ctx.request_id,
++                    Some(&backend.name),
++                    start.elapsed().as_millis() as u64,
++                );
++            }
++            streaming @ ProxyRequestBody::Streaming { .. } => streaming.into_reqwest_body(),
+         };
+ 
+         let url = build_target_url(&backend.base_url, &uri);
+@@ -710,24 +854,22 @@ pub async fn proxy_forward(
+             state.backends.note_result(backend_id, false);
+             drop(l);
+             request_total_for(&ctx, &backend.name, 502);
+-            match state.backends.acquire_excluding(&ctx.route, &mut tried) {
+-                Some(next) => {
+-                    lease = Some(next);
+-                    continue;
+-                }
+-                None => {
+-                    return tag_router_headers(
+-                        build_response(
+-                            StatusCode::BAD_GATEWAY,
+-                            reqwest::header::HeaderMap::new(),
+-                            Body::from("request build failed"),
+-                        ),
+-                        &ctx.request_id,
+-                        Some(&backend.name),
+-                        pre_forward_ms,
+-                    );
+-                }
++            if upload_replayable
++                && let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried)
++            {
++                lease = Some(next);
++                continue;
+             }
++            return tag_router_headers(
++                build_response(
++                    StatusCode::BAD_GATEWAY,
++                    reqwest::header::HeaderMap::new(),
++                    Body::from("request build failed"),
++                ),
++                &ctx.request_id,
++                Some(&backend.name),
++                pre_forward_ms,
++            );
+         };
+ 
+         match tokio::time::timeout(
+@@ -740,12 +882,14 @@ pub async fn proxy_forward(
+                 let status = resp.status().as_u16();
+                 if is_retryable_status(status) {
+                     state.backends.note_result(backend_id, false);
+-                    if let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried) {
++                    if upload_replayable
++                        && let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried)
++                    {
+                         drop(l);
+                         lease = Some(next);
+                         continue;
+                     }
+-                    // không còn backend dự phòng: forward phản hồi lỗi này (giữ lease tới khi hết body)
++                    // Không còn backend dự phòng, hoặc upload body đã là stream một lần: forward phản hồi lỗi này.
+                 } else {
+                     state.backends.note_result(backend_id, true);
+                 }
+@@ -773,47 +917,43 @@ pub async fn proxy_forward(
+                 state.backends.note_result(backend_id, false);
+                 drop(l);
+                 request_total_for(&ctx, &backend.name, 502);
+-                match state.backends.acquire_excluding(&ctx.route, &mut tried) {
+-                    Some(next) => {
+-                        lease = Some(next);
+-                        continue;
+-                    }
+-                    None => {
+-                        return tag_router_headers(
+-                            build_response(
+-                                StatusCode::BAD_GATEWAY,
+-                                reqwest::header::HeaderMap::new(),
+-                                Body::from(format!("backend connection failed: {e}")),
+-                            ),
+-                            &ctx.request_id,
+-                            Some(&backend.name),
+-                            pre_forward_ms,
+-                        );
+-                    }
++                if upload_replayable
++                    && let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried)
++                {
++                    lease = Some(next);
++                    continue;
+                 }
++                return tag_router_headers(
++                    build_response(
++                        StatusCode::BAD_GATEWAY,
++                        reqwest::header::HeaderMap::new(),
++                        Body::from(format!("backend connection failed: {e}")),
++                    ),
++                    &ctx.request_id,
++                    Some(&backend.name),
++                    pre_forward_ms,
++                );
+             }
+             Err(_) => {
+                 state.backends.note_result(backend_id, false);
+                 drop(l);
+                 request_total_for(&ctx, &backend.name, 504);
+-                match state.backends.acquire_excluding(&ctx.route, &mut tried) {
+-                    Some(next) => {
+-                        lease = Some(next);
+-                        continue;
+-                    }
+-                    None => {
+-                        return tag_router_headers(
+-                            build_response(
+-                                StatusCode::GATEWAY_TIMEOUT,
+-                                reqwest::header::HeaderMap::new(),
+-                                Body::from("first byte timeout"),
+-                            ),
+-                            &ctx.request_id,
+-                            Some(&backend.name),
+-                            pre_forward_ms,
+-                        );
+-                    }
++                if upload_replayable
++                    && let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried)
++                {
++                    lease = Some(next);
++                    continue;
+                 }
++                return tag_router_headers(
++                    build_response(
++                        StatusCode::GATEWAY_TIMEOUT,
++                        reqwest::header::HeaderMap::new(),
++                        Body::from("first byte timeout"),
++                    ),
++                    &ctx.request_id,
++                    Some(&backend.name),
++                    pre_forward_ms,
++                );
+             }
+         }
+     }
+@@ -859,7 +999,7 @@ mod tests {
+             &Method::POST,
+             "http://127.0.0.1:9000/v1/messages",
+             &headers,
+-            Bytes::from("{}"),
++            reqwest::Body::from(Bytes::from("{}")),
+             &anthropic_backend(),
+             "rid-1",
+         )
+@@ -883,7 +1023,7 @@ mod tests {
+             &Method::POST,
+             "http://127.0.0.1:9000/v1/messages",
+             &headers,
+-            Bytes::from("{}"),
++            reqwest::Body::from(Bytes::from("{}")),
+             &anthropic_backend(),
+             "rid-2",
+         )
+@@ -908,7 +1048,7 @@ mod tests {
+             &Method::POST,
+             "http://127.0.0.1:9000/v1/messages",
+             &headers,
+-            Bytes::from("{}"),
++            reqwest::Body::from(Bytes::from("{}")),
+             &anthropic_backend(),
+             "rid-encoding",
+         )
+diff --git a/tests/streaming_integration.rs b/tests/streaming_integration.rs
+index 2d8c9cf..f0a7274 100644
+--- a/tests/streaming_integration.rs
++++ b/tests/streaming_integration.rs
+@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
+ 
+ use arc_swap::ArcSwap;
+ use axum::body::{Body, Bytes, to_bytes};
+-use axum::http::Request;
++use axum::http::{HeaderMap, Request};
+ use futures::StreamExt;
+ use sqlx::postgres::PgPool;
+ use tower::ServiceExt;
+@@ -53,6 +53,54 @@ async fn spawn_mock_backend(body: &'static str) -> String {
+     format!("http://{addr}")
+ }
+ 
++#[derive(Debug)]
++struct CapturedUpload {
++    content_length: Option<String>,
++    transfer_encoding: Option<String>,
++    body_len: usize,
++}
++
++async fn spawn_capture_backend() -> (String, tokio::sync::oneshot::Receiver<CapturedUpload>) {
++    let (tx, rx) = tokio::sync::oneshot::channel();
++    let tx = Arc::new(tokio::sync::Mutex::new(Some(tx)));
++    let app = axum::Router::new().route(
++        "/v1/chat/completions",
++        axum::routing::post(move |headers: HeaderMap, body: Body| {
++            let tx = tx.clone();
++            async move {
++                let body = to_bytes(body, 10 * 1024 * 1024).await.unwrap();
++                let captured = CapturedUpload {
++                    content_length: headers
++                        .get("content-length")
++                        .and_then(|v| v.to_str().ok())
++                        .map(str::to_string),
++                    transfer_encoding: headers
++                        .get("transfer-encoding")
++                        .and_then(|v| v.to_str().ok())
++                        .map(str::to_string),
++                    body_len: body.len(),
++                };
++                if let Some(tx) = tx.lock().await.take() {
++                    let _ = tx.send(captured);
++                }
++                axum::response::Response::builder()
++                    .status(200)
++                    .header("content-type", "application/json")
++                    .body(Body::from(
++                        r#"{"id":"cmpl-test","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}"#,
++                    ))
++                    .unwrap()
++            }
++        }),
++    );
++    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let addr = listener.local_addr().unwrap();
++    tokio::spawn(async move {
++        let _ = axum::serve(listener, app).await;
++    });
++    (format!("http://{addr}"), rx)
++}
++
+ const SSE_WITH_USAGE: &str = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20}}\n\ndata: [DONE]\n\n";
+ const SSE_NO_USAGE: &str =
+     "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n";
+@@ -255,6 +303,43 @@ async fn spawn_delayed_nonstream_backend() -> String {
+     format!("http://{addr}")
+ }
+ 
++#[sqlx::test(migrations = "./migrations")]
++async fn large_nonstream_upload_preserves_exact_content_length(pool: PgPool) {
++    let (backend_base, capture_rx) = spawn_capture_backend().await;
++    let (state, _ledger_rx) = build_state(pool, backend_base).await;
++    let app = brigto_router::handlers::router(state);
++
++    let payload = format!(
++        r#"{{"model":"test-model","stream":false,"messages":[{{"role":"user","content":"{}"}}]}}"#,
++        "x".repeat(96 * 1024)
++    );
++    let len = payload.len();
++    let req = Request::builder()
++        .method("POST")
++        .uri("/v1/chat/completions")
++        .header("authorization", "Bearer test-key")
++        .header("content-type", "application/json")
++        .header("content-length", len.to_string())
++        .body(Body::from(payload))
++        .unwrap();
++
++    let resp = app.oneshot(req).await.unwrap();
++    assert_eq!(resp.status().as_u16(), 200);
++    let captured = tokio::time::timeout(Duration::from_secs(2), capture_rx)
++        .await
++        .expect("backend capture within 2s")
++        .expect("backend capture sent");
++    assert_eq!(captured.body_len, len);
++    assert_eq!(
++        captured.content_length.as_deref(),
++        Some(len.to_string().as_str())
++    );
++    assert!(
++        captured.transfer_encoding.is_none(),
++        "exact-length fast path must not use chunked transfer: {captured:?}"
++    );
++}
++
+ #[sqlx::test(migrations = "./migrations")]
+ async fn nonstream_response_starts_before_upstream_eof(pool: PgPool) {
+     let backend_base = spawn_delayed_nonstream_backend().await;

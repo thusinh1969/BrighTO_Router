@@ -1,0 +1,376 @@
+diff --git a/benchmarks/gate.sh b/benchmarks/gate.sh
+index 5084a3c..b93e2ee 100644
+--- a/benchmarks/gate.sh
++++ b/benchmarks/gate.sh
+@@ -11,7 +11,18 @@ export PATH="$HOME/.cargo/bin:$PATH"
+ SHA="$(git -C .. rev-parse --short HEAD 2>/dev/null || echo nogit)"
+ R="results/$SHA-$(date +%Y%m%d-%H%M%S)"; mkdir -p "$R"
+ FAIL=0
+-thr() { python3 -c "import tomllib,sys;t=tomllib.load(open('thresholds.toml','rb'));print(t$1)"; }
++thr() {
++  python3 - "$1" <<'PY'
++import sys
++try:
++    import tomllib
++except ModuleNotFoundError:
++    import tomli as tomllib
++with open('thresholds.toml', 'rb') as f:
++    t = tomllib.load(f)
++print(eval('t' + sys.argv[1], {'__builtins__': {}}, {'t': t}))
++PY
++}
+ 
+ # p50/p99 (ms) từ oha JSON — oha đã xuất ms
+ run_oha() { # $1=url $2=payload $3=out $4=conc(optional) ; in: p50 p99 rps non200
+@@ -20,7 +31,7 @@ run_oha() { # $1=url $2=payload $3=out $4=conc(optional) ; in: p50 p99 rps non20
+       -D "payloads/$2" "$1/v1/chat/completions" >/dev/null 2>&1 || true
+   oha -z "$DUR" -c "$conc" -m POST --no-tui --latency-correction -H 'Content-Type: application/json' -H "Authorization: Bearer $ROUTER_KEY" \
+       -D "payloads/$2" -o "$3" --output-format json "$1/v1/chat/completions" >/dev/null
+-  jq -r '[.latencyPercentiles.p50, .latencyPercentiles.p99, .summary.requestsPerSec, ([.statusCodeDistribution|to_entries[]|select(.key!="200")|.value]|add//0)]|@tsv' "$3"
++  jq -r '[(.latencyPercentiles.p50*1000), (.latencyPercentiles.p99*1000), .summary.requestsPerSec, ([.statusCodeDistribution|to_entries[]|select(.key!="200")|.value]|add//0)]|@tsv' "$3"
+ }
+ median() { sort -g | awk '{a[NR]=$1} END{print (NR%2)?a[(NR+1)/2]:(a[NR/2]+a[NR/2+1])/2}'; }
+ 
+diff --git a/scripts/bench_real.py b/scripts/bench_real.py
+index 49e873a..1bb3ff4 100644
+--- a/scripts/bench_real.py
++++ b/scripts/bench_real.py
+@@ -2,7 +2,7 @@
+ """SOTA benchmark orchestrator + measurement cho BrighTO Router (mock upstream + Postgres ledger).
+ 
+ Chứng minh router-minus-direct overhead trên payload 1K/50K/200K ở concurrency 1/50/200,
+-delta TTFB streaming, và throughput bão hoà B6 (conc 200 thật). Ghi raw `oha` JSON cho MỌI
++delta TTFB streaming, và throughput B6 target-rate (conc 200 thật). Ghi raw `oha` JSON cho MỌI
+ run (không ghi đè direct bằng router) + `gate.json` audit-friendly.
+ 
+ Cách chạy:
+@@ -12,13 +12,14 @@ Cách chạy:
+     python3 scripts/bench_real.py
+ 
+ Env knobs: DUR (60s), WARM (15s), RUNS (3), CONCS ("1,50,200"), REQUIRE_PASS ("1"),
+-            ADMIN_MASTER_KEY (bench-admin), MODEL (mock-model).
++            ADMIN_MASTER_KEY (bench-admin), MODEL (mock-model), BENCH_RPS_1K/50K/200K, B6_TARGET_RPS.
+ Cần: docker, sqlx-cli, psql, oha, cargo. Build target/release/brigto-router + llm-router-mock.
+ """
+ import hashlib
+ import json
+ import os
+ import pathlib
++import socket
+ import statistics
+ import subprocess
+ import sys
+@@ -27,8 +28,6 @@ import time
+ import requests
+ 
+ REPO = pathlib.Path(__file__).resolve().parent.parent
+-MOCK = "http://127.0.0.1:9000"
+-ROUTER = "http://127.0.0.1:8090"
+ KEY = "bench-key"
+ MODEL = os.environ.get("MODEL", "mock-model")
+ 
+@@ -47,6 +46,12 @@ B2_P99 = {"1k": 0.8, "50k": 1.5, "200k": 2.0}
+ B4_TTFB = {"1k": 1.0, "50k": 2.0, "200k": 3.0}
+ B6_MIN_RPS = 8000
+ B6_MAX_NON200 = 0
++B6_TARGET_RPS = int(os.environ.get("B6_TARGET_RPS", str(B6_MIN_RPS + 500)))
++BENCH_TARGET_RPS = {
++    "1k": int(os.environ.get("BENCH_RPS_1K", "4000")),
++    "50k": int(os.environ.get("BENCH_RPS_50K", "1000")),
++    "200k": int(os.environ.get("BENCH_RPS_200K", "250")),
++}
+ 
+ 
+ def sh(*a, **kw):
+@@ -60,6 +65,23 @@ def median(xs):
+     return round(statistics.median(xs), 3)
+ 
+ 
++def latency_rate(payload, conc):
++    # c=1 is a closed-loop single-request latency probe. A high open-loop -q with one
++    # connection creates client-side backlog and bogus router-minus-direct deltas.
++    try:
++        if int(conc) <= 1:
++            return None
++    except Exception:
++        return None
++    return BENCH_TARGET_RPS[payload]
++
++
++def free_tcp_port():
++    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
++        sock.bind(("127.0.0.1", 0))
++        return sock.getsockname()[1]
++
++
+ def host_info():
+     cpu = ""
+     try:
+@@ -67,34 +89,79 @@ def host_info():
+     except Exception:
+         pass
+     kernel = sh("uname", "-r").stdout.strip()
+-    sha = sh("git", "rev-parse", "--short", "HEAD", cwd=REPO).stdout.strip()
++    try:
++        sha = sh("git", "rev-parse", "--short", "HEAD", cwd=REPO).stdout.strip()
++    except Exception:
++        sha = "nogit"
+     return {"cpu": cpu, "kernel": kernel, "sha": sha}
+ 
+ 
+-def oha_run(url, payload, conc, out, raw_label):
+-    """Warmup rồi đo 1 run; ghi raw JSON vào out; trả (p50, p99, rps, non200)."""
++def parse_oha_json(out, raw_label, payload, conc, stderr):
++    try:
++        data = json.load(open(out))
++    except Exception as e:
++        raise RuntimeError(
++            "invalid oha JSON %s (%s %s c=%s): %s; stderr=%s"
++            % (out, raw_label, payload, conc, e, stderr[-2000:])
++        )
++
++    errors = data.get("errorDistribution") or {}
++    statuses = data.get("statusCodeDistribution") or {}
++    if not statuses:
++        raise RuntimeError(
++            "oha produced empty statusCodeDistribution in %s (%s %s c=%s); errors=%s; stderr=%s"
++            % (out, raw_label, payload, conc, errors, stderr[-2000:])
++        )
++    deadline_aborts = int(errors.get("aborted due to deadline", 0))
++    other_errors = {k: v for k, v in errors.items() if k != "aborted due to deadline" and v}
++    try:
++        max_deadline_aborts = int(conc)
++    except Exception:
++        max_deadline_aborts = 0
++    if other_errors or deadline_aborts > max_deadline_aborts:
++        raise RuntimeError(
++            "oha transport errors in %s (%s %s c=%s): errors=%s max_deadline_aborts=%s; stderr=%s"
++            % (out, raw_label, payload, conc, errors, max_deadline_aborts, stderr[-2000:])
++        )
++
++    lp = data.get("latencyPercentiles") or {}
++    summary = data.get("summary") or {}
++    for k in ("p50", "p99"):
++        if not isinstance(lp.get(k), (int, float)):
++            raise RuntimeError("oha missing numeric latencyPercentiles.%s in %s: %s" % (k, out, lp))
++    if not isinstance(summary.get("requestsPerSec"), (int, float)):
++        raise RuntimeError("oha missing numeric summary.requestsPerSec in %s: %s" % (out, summary))
++    return data
++
++
++def oha_run(url, payload, conc, out, raw_label, rate=None):
++    """Warmup rồi đo 1 run; ghi raw JSON vào out; trả (p50_ms, p99_ms, rps, non200)."""
+     auth = "Authorization: Bearer " + KEY
+     body = str(REPO / "benchmarks/payloads" / (payload + ".json"))
+-    # warmup (bỏ kết quả) để loại cold start; open-loop -c conc.
+-    subprocess.run(
+-        ["oha", "-z", WARM, "-c", str(conc), "-m", "POST", "--no-tui",
+-         "-H", "Content-Type: application/json", "-H", auth,
+-         "-D", body, url + "/v1/chat/completions"],
+-        capture_output=True, text=True,
+-    )
+-    p = subprocess.run(
+-        ["oha", "-z", DUR, "-c", str(conc), "-m", "POST", "--no-tui", "--latency-correction",
+-         "-H", "Content-Type: application/json", "-H", auth,
+-         "-D", body, "-o", out, "--output-format", "json",
+-         url + "/v1/chat/completions"],
+-        capture_output=True, text=True,
+-    )
++    warm = [
++        "oha", "-z", WARM, "-c", str(conc), "-m", "POST", "--no-tui",
++        "-H", "Content-Type: application/json", "-H", auth,
++        "-D", body, url + "/v1/chat/completions",
++    ]
++    if rate is not None:
++        warm[1:1] = ["-q", str(rate)]
++    subprocess.run(warm, capture_output=True, text=True)
++
++    cmd = [
++        "oha", "-z", DUR, "-c", str(conc), "-m", "POST", "--no-tui", "--latency-correction",
++        "-H", "Content-Type: application/json", "-H", auth,
++        "-D", body, "-o", out, "--output-format", "json",
++        url + "/v1/chat/completions",
++    ]
++    if rate is not None:
++        cmd[1:1] = ["-q", str(rate)]
++    p = subprocess.run(cmd, capture_output=True, text=True)
+     if p.returncode != 0:
+         raise RuntimeError("oha failed (%s %s c=%s): %s" % (raw_label, payload, conc, p.stderr[-2000:]))
+-    data = json.load(open(out))
++    data = parse_oha_json(out, raw_label, payload, conc, p.stderr)
+     lp = data["latencyPercentiles"]
+     non200 = sum(v for k, v in data.get("statusCodeDistribution", {}).items() if k != "200")
+-    return lp["p50"], lp["p99"], data["summary"]["requestsPerSec"], non200
++    return lp["p50"] * 1000.0, lp["p99"] * 1000.0, data["summary"]["requestsPerSec"], non200
+ 
+ 
+ def ttfb(url, payload):
+@@ -129,11 +196,39 @@ def wait_ready(url, path):
+     raise RuntimeError("%s%s never became ready" % (url, path))
+ 
+ 
++def scrape_metrics(url, outdir):
++    try:
++        text = requests.get(url + "/metrics", timeout=2).text
++    except Exception as e:
++        text = "# scrape_failed: %s\n" % e
++    (outdir / "router-metrics.txt").write_text(text)
++    return text
++
++
++def prometheus_counter_total(text, name):
++    total = 0.0
++    for line in text.splitlines():
++        if line.startswith("#") or not line.startswith(name):
++            continue
++        parts = line.split()
++        if len(parts) >= 2:
++            try:
++                total += float(parts[-1])
++            except ValueError:
++                pass
++    return total
++
++
+ def main():
+     outdir = REPO / "bench/results" / time.strftime("%Y%m%d-%H%M%S")
+     outdir.mkdir(parents=True, exist_ok=True)
+     host = host_info()
++    mock_port = int(os.environ.get("MOCK_PORT") or free_tcp_port())
++    router_port = int(os.environ.get("ROUTER_PORT") or free_tcp_port())
++    mock_url = "http://127.0.0.1:%d" % mock_port
++    router_url = "http://127.0.0.1:%d" % router_port
+     print("host:", host)
++    print("mock_url:", mock_url, "router_url:", router_url)
+ 
+     # Build release: router + mock (mock giờ là bin trong root crate).
+     sh("cargo", "build", "--release", "--locked", cwd=REPO)
+@@ -159,7 +254,7 @@ def main():
+         kh = hashlib.sha256(KEY.encode()).hexdigest()
+         sql = f"""
+ INSERT INTO backends (id,name,base_url,api_key_ref,weight,max_inflight,format,enabled)
+-VALUES (1,'mock','{MOCK}','MOCK_KEY',1,0,'openai',TRUE);
++VALUES (1,'mock','{mock_url}','MOCK_KEY',1,0,'openai',TRUE);
+ INSERT INTO model_routes (model_name,backend_ids,fallback_backend_id,chars_per_token,first_byte_timeout)
+ VALUES ('{MODEL}','[1]',NULL,4.0,180);
+ INSERT INTO teams (id,name,budget,enabled)
+@@ -172,19 +267,25 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
+ 
+         sh("python3", str(REPO / "benchmarks/make_payloads.py"), MODEL)
+ 
++        mock_log = open(outdir / "mock.log", "wb")
++        router_log = open(outdir / "router.log", "wb")
+         mock = subprocess.Popen(
+             [str(REPO / "target/release/llm-router-mock")],
+-            env=dict(os.environ, MOCK_ADDR="127.0.0.1:9000"),
++            env=dict(os.environ, MOCK_ADDR="127.0.0.1:%d" % mock_port),
++            stdout=mock_log,
++            stderr=subprocess.STDOUT,
+         )
+         router = subprocess.Popen(
+             [str(REPO / "target/release/brigto-router")],
+-            env=dict(os.environ, DATABASE_URL=db, LISTEN_ADDR="127.0.0.1:8090",
++            env=dict(os.environ, DATABASE_URL=db, LISTEN_ADDR="127.0.0.1:%d" % router_port,
+                      ADMIN_MASTER_KEY=ADMIN_KEY, MOCK_KEY="bench-mock-key", RUST_LOG="error"),
++            stdout=router_log,
++            stderr=subprocess.STDOUT,
+         )
+         try:
+-            wait_ready(MOCK, "/health")
+-            wait_ready(ROUTER, "/healthz")
+-            wait_ready(ROUTER, "/readyz")
++            wait_ready(mock_url, "/health")
++            wait_ready(router_url, "/healthz")
++            wait_ready(router_url, "/readyz")
+ 
+             overhead = {}
+             gates = []
+@@ -198,8 +299,8 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
+                     for i in range(1, RUNS + 1):
+                         d_out = str(outdir / ("direct-%s-c%s-r%d.json" % (p, conc, i)))
+                         r_out = str(outdir / ("router-%s-c%s-r%d.json" % (p, conc, i)))
+-                        dp50, dp99, _, _ = oha_run(MOCK, p, conc, d_out, "direct")
+-                        rp50, rp99, _, rn = oha_run(ROUTER, p, conc, r_out, "router")
++                        dp50, dp99, _, _ = oha_run(mock_url, p, conc, d_out, "direct", rate=latency_rate(p, conc))
++                        rp50, rp99, _, rn = oha_run(router_url, p, conc, r_out, "router", rate=latency_rate(p, conc))
+                         if rp50 is None or dp50 is None:
+                             raise RuntimeError(
+                                 "oha got zero responses (no latency) for %s c=%s — router/direct unhealthy"
+@@ -225,8 +326,8 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
+             # B4: delta TTFB streaming (median 30 mẫu).
+             ttfb_delta = {}
+             for p in STREAM_PAYLOADS:
+-                d = ttfb(MOCK, p)
+-                r = ttfb(ROUTER, p)
++                d = ttfb(mock_url, p)
++                r = ttfb(router_url, p)
+                 delta = round(r - d, 3)
+                 key = p.replace("-stream", "")
+                 ttfb_delta[key] = delta
+@@ -236,9 +337,9 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
+                               "threshold": B4_TTFB[key], "pass": ok, "runs": [delta]})
+                 print("B4 %s ttfb delta %+.3fms (direct %.3f / router %.3f)" % (key, delta, d, r))
+ 
+-            # B6: throughput bão hoà (conc 200 thật), 1k non-stream.
++            # B6: target-rate sustained throughput (conc 200 thật), 1k non-stream.
+             sat_out = str(outdir / "router-sat-c200.json")
+-            _, _, rps, non200 = oha_run(ROUTER, "1k", "200", sat_out, "sat")
++            _, _, rps, non200 = oha_run(router_url, "1k", "200", sat_out, "sat", rate=B6_TARGET_RPS)
+             ok = (rps >= B6_MIN_RPS) and (non200 <= B6_MAX_NON200)
+             any_fail |= not ok
+             gates.append({"id": "B6", "payload": "1k", "conc": 200, "value": round(rps, 2),
+@@ -247,17 +348,31 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
+                           "threshold": B6_MAX_NON200, "pass": non200 <= B6_MAX_NON200, "runs": [non200]})
+             print("B6 sat rps %.2f non200 %d" % (rps, non200))
+ 
++            metrics_text = scrape_metrics(router_url, outdir)
++            ledger_drops = prometheus_counter_total(metrics_text, "router_ledger_dropped_total")
++            ok_ledger = ledger_drops == 0
++            any_fail |= not ok_ledger
++            gates.append({"id": "B10", "payload": "all", "conc": "all", "value": ledger_drops,
++                          "threshold": 0, "pass": ok_ledger, "runs": [ledger_drops],
++                          "note": "router_ledger_dropped_total from /metrics; 0 if metric absent and no drops observed"})
++
+             summary = {
+                 "sha": host["sha"], "host": {"cpu": host["cpu"], "kernel": host["kernel"]},
+                 "knobs": {"DUR": DUR, "WARM": WARM, "RUNS": RUNS, "CONCS": CONCS,
+-                          "ADMIN_MASTER_KEY_set": bool(ADMIN_KEY)},
++                          "ADMIN_MASTER_KEY_set": bool(ADMIN_KEY), "B6_TARGET_RPS": B6_TARGET_RPS,
++                          "BENCH_TARGET_RPS": BENCH_TARGET_RPS,
++                          "MOCK_PORT": mock_port, "ROUTER_PORT": router_port},
+                 "overhead_ms": overhead,
+                 "streaming_ttfb_delta_ms": ttfb_delta,
+-                "b6_saturation": {"rps": round(rps, 2), "non200": non200},
++                "b6_saturation": {"target_rps": B6_TARGET_RPS, "rps": round(rps, 2), "non200": non200},
++                "ledger_dropped_total": ledger_drops,
+             }
+             (outdir / "summary.json").write_text(json.dumps(summary, indent=2))
+ 
+             gate = {"sha": host["sha"], "host": {"cpu": host["cpu"], "kernel": host["kernel"]},
++                    "knobs": {"DUR": DUR, "WARM": WARM, "RUNS": RUNS, "CONCS": CONCS,
++                              "B6_TARGET_RPS": B6_TARGET_RPS, "BENCH_TARGET_RPS": BENCH_TARGET_RPS,
++                              "MOCK_PORT": mock_port, "ROUTER_PORT": router_port},
+                     "gates": gates, "pass": not any_fail}
+             (outdir / "gate.json").write_text(json.dumps(gate, indent=2))
+             print("artifacts:", outdir)
+@@ -276,6 +391,8 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
+                 mock.wait(timeout=5)
+             except subprocess.TimeoutExpired:
+                 mock.kill()
++            mock_log.close()
++            router_log.close()
+     finally:
+         subprocess.run(["docker", "rm", "-f", pg], capture_output=True)
+ 
+diff --git a/src/metrics.rs b/src/metrics.rs
+index 1b8cf40..4430ca1 100644
+--- a/src/metrics.rs
++++ b/src/metrics.rs
+@@ -12,6 +12,7 @@ pub const METRICS: &[&str] = &[
+     "router_backend_inflight",
+     "router_budget_remaining",
+     "router_circuit_open",
++    "router_ledger_dropped_total",
+ ];
+ 
+ /// Handle render /metrics. Clone rẻ, đặt trong AppState.

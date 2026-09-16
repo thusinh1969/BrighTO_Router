@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: brighto-router
+  labels:
+    app.kubernetes.io/name: brighto-router
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: brighto-router
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

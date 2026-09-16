@@ -1,0 +1,95 @@
+--- a/benchmarks/gate.sh
++++ b/benchmarks/gate.sh
+@@ -1,80 +1,16 @@
+ #!/usr/bin/env bash
+-# Tầng B (hiệu năng) của BENCHMARK.md trên mock upstream. Tầng A/E nằm trong `cargo test`.
+-# Cần: router đang chạy ở ROUTER_URL với route "mock-model" → mock; mock ở MOCK_URL; ROUTER_KEY hợp lệ.
+-# Chạy trong container dev (có oha, jq, python3, curl). exit 1 nếu bất kỳ gate nào fail.
++# Compatibility entrypoint for BENCHMARK.md tier-B release gates.
++# Canonical implementation lives in scripts/bench_real.py. Keep one benchmark truth only.
+ set -euo pipefail
+-cd "$(dirname "$0")"
+-: "${ROUTER_URL:=http://127.0.0.1:8080}" "${MOCK_URL:=http://127.0.0.1:9000}" "${ROUTER_KEY:?}"
+-CONC="${CONC:-50}"; DUR="${DUR:-60s}"; WARM="${WARM:-15s}"; RUNS="${RUNS:-3}"
+-export PATH="$HOME/.cargo/bin:$PATH"
+-[[ -d payloads ]] || ./make_payloads.py mock-model
+-SHA="$(git -C .. rev-parse --short HEAD 2>/dev/null || echo nogit)"
+-R="results/$SHA-$(date +%Y%m%d-%H%M%S)"; mkdir -p "$R"
+-FAIL=0
+-thr() {
+-  python3 - "$1" <<'PY'
+-import sys
+-try:
+-    import tomllib
+-except ModuleNotFoundError:
+-    import tomli as tomllib
+-with open('thresholds.toml', 'rb') as f:
+-    t = tomllib.load(f)
+-print(eval('t' + sys.argv[1], {'__builtins__': {}}, {'t': t}))
+-PY
+-}
+ 
+-# p50/p99 (ms) từ oha JSON — oha đã xuất ms
+-run_oha() { # $1=url $2=payload $3=out $4=conc(optional) ; in: p50 p99 rps non200
+-  local conc="${4:-$CONC}"
+-  oha -z "$WARM" -c "$conc" -m POST --no-tui -H 'Content-Type: application/json' -H "Authorization: Bearer $ROUTER_KEY" \
+-      -D "payloads/$2" "$1/v1/chat/completions" >/dev/null 2>&1 || true
+-  oha -z "$DUR" -c "$conc" -m POST --no-tui --latency-correction -H 'Content-Type: application/json' -H "Authorization: Bearer $ROUTER_KEY" \
+-      -D "payloads/$2" -o "$3" --output-format json "$1/v1/chat/completions" >/dev/null
+-  jq -r '[(.latencyPercentiles.p50*1000), (.latencyPercentiles.p99*1000), .summary.requestsPerSec, ([.statusCodeDistribution|to_entries[]|select(.key!="200")|.value]|add//0)]|@tsv' "$3"
+-}
+-median() { sort -g | awk '{a[NR]=$1} END{print (NR%2)?a[(NR+1)/2]:(a[NR/2]+a[NR/2+1])/2}'; }
++REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++cd "$REPO"
+ 
+-gate() { # $1=id $2=label $3=value $4=threshold $5=cmp(le)
+-  local ok; ok=$(python3 -c "print('true' if float('$3') <= float('$4') else 'false')")
+-  [[ $ok == true ]] || FAIL=1
+-  printf '%-4s %-28s %10.3f  ≤ %-8s %s\n' "$1" "$2" "$3" "$4" "$([[ $ok == true ]] && echo PASS || echo FAIL)"
+-  echo "{\"id\":\"$1\",\"label\":\"$2\",\"value\":$3,\"threshold\":$4,\"pass\":$ok}" >> "$R/gates.jsonl"
+-}
+-
+-echo "== B1/B2/B3: overhead non-stream, conc=$CONC, $RUNS runs"
+-declare -A P50 P99
+-for p in 1k 50k 200k; do
+-  d50=(); d99=()
+-  for i in $(seq "$RUNS"); do
+-    read -r dp50 dp99 _ _ < <(run_oha "$MOCK_URL"   "$p.json" "$R/direct-$p-$i.json")
+-    read -r rp50 rp99 _ rn  < <(run_oha "$ROUTER_URL" "$p.json" "$R/router-$p-$i.json")
+-    [[ "$rn" == 0 ]] || { echo "non-200 qua router: $rn"; FAIL=1; }
+-    d50+=("$(python3 -c "print($rp50-$dp50)")"); d99+=("$(python3 -c "print($rp99-$dp99)")")
+-  done
+-  P50[$p]=$(printf '%s\n' "${d50[@]}" | median); P99[$p]=$(printf '%s\n' "${d99[@]}" | median)
+-  gate B1 "overhead_p50 $p" "${P50[$p]}" "$(thr "['B1']['overhead_p50']['$p']")"
+-  gate B2 "overhead_p99 $p" "${P99[$p]}" "$(thr "['B2']['overhead_p99']['$p']")"
+-done
+-gate B3 "overhead_flat 200k-1k" "$(python3 -c "print(${P50[200k]}-${P50[1k]})")" "$(thr "['B3']['max_delta_200k_vs_1k']")"
+-
+-echo "== B4: TTFB delta streaming (curl tuần tự, 30 mẫu)"
+-ttfb() { local url=$1 p=$2; for _ in $(seq 30); do
+-  curl -s -o /dev/null -N -w '%{time_starttransfer}\n' -H 'Content-Type: application/json' -H "Authorization: Bearer $ROUTER_KEY" --data-binary "@payloads/$p" "$url/v1/chat/completions"; done | median; }
+-for p in 1k 50k 200k; do
+-  d=$(python3 -c "print(($(ttfb "$ROUTER_URL" "$p-stream.json") - $(ttfb "$MOCK_URL" "$p-stream.json"))*1000)")
+-  gate B4 "ttfb_delta $p" "$d" "$(thr "['B4']['ttfb_delta']['$p']")"
+-done
+-
+-echo "== B6: throughput bão hoà 1k (conc 200)"
+-read -r _ _ rps rn < <(run_oha "$ROUTER_URL" "1k.json" "$R/router-sat.json" 200)
+-gate B6 "throughput rps (min)" "$(python3 -c "print(-1*$rps)")" "$(python3 -c "print(-1*$(thr "['B6']['min_rps_4core']"))")"
+-gate B6 "non200" "$rn" "$(thr "['B6']['max_non200']")"
+-
+-echo "== self-report: x-router-overhead-ms vs đo ngoài (50k)"
+-sr=$(for _ in $(seq 20); do curl -s -o /dev/null -D - -H 'Content-Type: application/json' -H "Authorization: Bearer $ROUTER_KEY" --data-binary @payloads/50k.json "$ROUTER_URL/v1/chat/completions" | tr -d '\r' | awk -F': ' 'tolower($1)=="x-router-overhead-ms"{print $2}'; done | median)
+-mm=$(python3 -c "a=float('$sr');b=float('${P50[50k]}');print(abs(a-b)/max(b,1e-6)*100)")
+-gate SR "self_report_mismatch_%" "$mm" "$(thr "['self_report']['max_mismatch_pct']")"
+-
+-jq -s "{sha:\"$SHA\",host:{cpu:\"$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)\",kernel:\"$(uname -r)\"},gates:.,pass:$([[ $FAIL == 0 ]] && echo true || echo false)}" "$R/gates.jsonl" > "$R/gate.json"
+-echo; echo "gate.json: $R/gate.json"; [[ $FAIL == 0 ]] && echo "ALL GATES PASS" || { echo "GATE FAILED"; exit 1; }
++# Backward compatibility with the old shell gate env name.
++if [[ -n "${CONC:-}" && -z "${CONCS:-}" ]]; then
++  export CONCS="$CONC"
++fi
++
++# gate.sh is a release gate by default; focused smoke runs may override REQUIRE_PASS=0.
++export REQUIRE_PASS="${REQUIRE_PASS:-1}"
++exec python3 scripts/bench_real.py "$@"

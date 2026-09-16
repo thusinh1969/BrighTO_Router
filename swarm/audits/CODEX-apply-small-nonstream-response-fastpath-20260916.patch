@@ -1,0 +1,55 @@
+diff --git a/src/proxy/mod.rs b/src/proxy/mod.rs
+index 7136e43..0aef585 100644
+--- a/src/proxy/mod.rs
++++ b/src/proxy/mod.rs
+@@ -640,7 +640,40 @@ async fn forward_backend_response(
+             Body::from_stream(rx),
+         )
+     } else {
+-        const NONSTREAM_USAGE_BUFFER_LIMIT: usize = 1024 * 1024;
++        const NONSTREAM_USAGE_BUFFER_LIMIT: u64 = 1024 * 1024;
++
++        if response
++            .content_length()
++            .is_some_and(|len| len <= NONSTREAM_USAGE_BUFFER_LIMIT)
++        {
++            return match response.bytes().await {
++                Ok(body_bytes) => {
++                    let acc = parse_usage_from_body(&body_bytes, format);
++                    let estimated = !acc.seen_usage;
++                    reporter.finish(
++                        status.as_u16(),
++                        acc.input_tokens,
++                        acc.output_tokens,
++                        estimated,
++                        false,
++                        None,
++                    );
++                    build_response(
++                        StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
++                        headers,
++                        Body::from(body_bytes),
++                    )
++                }
++                Err(e) => {
++                    reporter.finish(status.as_u16(), 0, 0, true, false, Some(e.to_string()));
++                    build_response(
++                        StatusCode::BAD_GATEWAY,
++                        reqwest::header::HeaderMap::new(),
++                        Body::from("backend read failed"),
++                    )
++                }
++            };
++        }
+ 
+         let (mut tx, rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(1);
+         let mut stream = response.bytes_stream();
+@@ -656,7 +689,7 @@ async fn forward_backend_response(
+                 match next {
+                     Ok(Some(Ok(bytes))) => {
+                         if can_parse_usage {
+-                            if body_buf.len().saturating_add(bytes.len())
++                            if (body_buf.len() as u64).saturating_add(bytes.len() as u64)
+                                 <= NONSTREAM_USAGE_BUFFER_LIMIT
+                             {
+                                 body_buf.extend_from_slice(&bytes);

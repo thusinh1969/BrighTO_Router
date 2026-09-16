@@ -1,0 +1,39 @@
+name: brighto-airouter
+
+# Single-node runtime: router + PostgreSQL 16.
+# Fastest default profile uses PostgreSQL only. Add Redis only after proving a strict multi-instance quota requirement.
+services:
+  router:
+    image: ${BRIGHTO_ROUTER_IMAGE:-thusinh1969/brighto_airouter:v1}
+    pull_policy: missing
+    network_mode: host                 # lowest local overhead; see README production notes
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router}
+    volumes:
+      - router-data:/var/lib/brighto-router
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    stop_grace_period: 5m
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-brighto_router}
+      POSTGRES_USER: ${DB_USER:-brighto_router}
+      POSTGRES_PASSWORD: ${DB_PASS:-brighto_router_dev}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  router-data:
+  pg-data:

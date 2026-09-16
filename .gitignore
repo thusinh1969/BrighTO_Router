@@ -1,0 +1,24 @@
+target/
+.env
+.env.*
+!.env.example
+
+# local secrets
+.deepseek_key
+*.key
+*.pem
+*.p12
+
+# runtime/generated artifacts
+ledger_fallback.jsonl
+bench/results/
+bench/payloads/
+benchmarks/results/
+benchmarks/payloads/
+
+# local notebooks/probes/cache
+.ipynb_checkpoints/
+.probe/
+.wtest
+__pycache__/
+*.pyc

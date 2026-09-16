@@ -1,0 +1,213 @@
+```html
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BrighTO-Router Admin</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+    section { border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 2rem; }
+    label { display: block; margin: 0.75rem 0 0.25rem; }
+    input, textarea { width: 100%; padding: 0.4rem; border: 1px solid #ccc; border-radius: 4px; }
+    button { margin-top: 1rem; padding: 0.5rem 1.2rem; cursor: pointer; }
+    pre { background: #f5f5f5; padding: 0.75rem; border-radius: 6px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left; }
+    th { background: #fafafa; }
+    .note { color: #a33; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>BrighTO-Router Admin</h1>
+
+  <section>
+    <h2>Admin key</h2>
+    <label>Master key (x-admin-key)</label>
+    <input id="admin-key" type="password" placeholder="ADMIN_MASTER_KEY">
+  </section>
+
+  <section>
+    <h2>Tạo team</h2>
+    <label>Tên team</label>
+    <input id="team-name" placeholder="team-a">
+    <label>Budget JSON (tuỳ chọn)</label>
+    <textarea id="team-budget" rows="3">{"period":"month","max_tokens":1000000}</textarea>
+    <label><input id="team-enabled" type="checkbox" checked> Enabled</label>
+    <button onclick="createTeam()">Tạo team</button>
+    <pre id="team-result"></pre>
+  </section>
+
+  <section>
+    <h2>Tạo API key</h2>
+    <label>Team ID</label>
+    <input id="key-team-id" type="number" value="1">
+    <label>Owner</label>
+    <input id="key-owner" placeholder="user@example.com">
+    <label>Allowed models (CSV, rỗng = tất cả)</label>
+    <input id="key-models" placeholder="gpt-4o,deepseek-v3">
+    <label>Budget JSON (tuỳ chọn)</label>
+    <textarea id="key-budget" rows="3"></textarea>
+    <label>RPM limit (tuỳ chọn)</label>
+    <input id="key-rpm" type="number">
+    <label>Concurrency limit (tuỳ chọn)</label>
+    <input id="key-concurrency" type="number">
+    <label>Expires at (unix giây, tuỳ chọn)</label>
+    <input id="key-expires" type="number">
+    <button onclick="createKey()">Tạo key</button>
+    <pre id="key-result"></pre>
+    <div class="note" id="key-note"></div>
+  </section>
+
+  <section>
+    <h2>Set budget team</h2>
+    <label>Team ID</label>
+    <input id="patch-team-id" type="number" value="1">
+    <label>Budget JSON</label>
+    <textarea id="patch-budget" rows="3">{"period":"day","max_tokens":500000}</textarea>
+    <button onclick="patchTeam()">Cập nhật budget</button>
+    <pre id="patch-result"></pre>
+  </section>
+
+  <section>
+    <h2>Usage 30 ngày</h2>
+    <label>Team ID (tuỳ chọn)</label>
+    <input id="usage-team" type="number">
+    <label>From unix (tuỳ chọn)</label>
+    <input id="usage-from" type="number">
+    <label>To unix (tuỳ chọn)</label>
+    <input id="usage-to" type="number">
+    <button onclick="loadUsage()">Tải usage</button>
+    <table id="usage-table">
+      <thead>
+        <tr>
+          <th>ts</th><th>request_id</th><th>team</th><th>model</th>
+          <th>status</th><th>input</th><th>output</th><th>ttfb_ms</th><th>total_ms</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <pre id="usage-error"></pre>
+  </section>
+
+  <script>
+    function adminKey() {
+      return document.getElementById('admin-key').value;
+    }
+
+    function headers() {
+      return {
+        'Content-Type': 'application/json',
+        'x-admin-key': adminKey(),
+      };
+    }
+
+    async function api(path, method, body) {
+      const res = await fetch(path, {
+        method,
+        headers: headers(),
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      if (res.status === 204) return null;
+      return res.json();
+    }
+
+    function show(id, data) {
+      document.getElementById(id).textContent =
+        typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    }
+
+    async function createTeam() {
+      try {
+        const budgetText = document.getElementById('team-budget').value.trim();
+        const payload = {
+          name: document.getElementById('team-name').value,
+          enabled: document.getElementById('team-enabled').checked,
+        };
+        if (budgetText) payload.budget = JSON.parse(budgetText);
+        const data = await api('/admin/teams', 'POST', payload);
+        show('team-result', data);
+      } catch (e) {
+        show('team-result', String(e));
+      }
+    }
+
+    async function createKey() {
+      const note = document.getElementById('key-note');
+      note.textContent = '';
+      try {
+        const payload = {
+          team_id: Number(document.getElementById('key-team-id').value),
+          owner: document.getElementById('key-owner').value,
+          allowed_models: document.getElementById('key-models').value
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean),
+        };
+        const budgetText = document.getElementById('key-budget').value.trim();
+        const rpm = document.getElementById('key-rpm').value;
+        const conc = document.getElementById('key-concurrency').value;
+        const exp = document.getElementById('key-expires').value;
+        if (budgetText) payload.budget = JSON.parse(budgetText);
+        if (rpm) payload.rpm_limit = Number(rpm);
+        if (conc) payload.concurrency_limit = Number(conc);
+        if (exp) payload.expires_at = Number(exp);
+
+        const data = await api('/admin/keys', 'POST', payload);
+        show('key-result', data);
+        note.textContent = 'Key plaintext chỉ hiển thị lần này. Hãy lưu ngay.';
+      } catch (e) {
+        show('key-result', String(e));
+      }
+    }
+
+    async function patchTeam() {
+      try {
+        const id = Number(document.getElementById('patch-team-id').value);
+        const budgetText = document.getElementById('patch-budget').value.trim();
+        const payload = {};
+        if (budgetText) payload.budget = JSON.parse(budgetText);
+        const data = await api(`/admin/teams/${id}`, 'PATCH', payload);
+        show('patch-result', data);
+      } catch (e) {
+        show('patch-result', String(e));
+      }
+    }
+
+    async function loadUsage() {
+      const team = document.getElementById('usage-team').value;
+      const from = document.getElementById('usage-from').value;
+      const to = document.getElementById('usage-to').value;
+      const qs = new URLSearchParams();
+      if (team) qs.set('team', team);
+      if (from) qs.set('from', from);
+      if (to) qs.set('to', to);
+
+      const tbody = document.querySelector('#usage-table tbody');
+      const err = document.getElementById('usage-error');
+      tbody.innerHTML = '';
+      err.textContent = '';
+
+      try {
+        const data = await api(`/admin/usage?${qs.toString()}`, 'GET');
+        for (const row of data) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${row.ts}</td><td>${row.request_id}</td>`
+            + `<td>${row.team_id}</td><td>${row.model}</td>`
+            + `<td>${row.status}</td><td>${row.input_tokens}</td>`
+            + `<td>${row.output_tokens}</td><td>${row.ttfb_ms}</td>`
+            + `<td>${row.total_ms}</td>`;
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        err.textContent = String(e);
+      }
+    }
+  </script>
+</body>
+</html>
+```

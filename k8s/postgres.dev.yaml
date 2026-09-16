@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: brighto-router-postgres
+  labels:
+    app.kubernetes.io/name: brighto-router-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: brighto-router-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: brighto-router-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: brighto_router
+            - name: POSTGRES_USER
+              value: brighto_router
+            - name: POSTGRES_PASSWORD
+              value: brighto_router_dev
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "brighto_router", "-d", "brighto_router"]
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          volumeMounts:
+            - name: pg-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pg-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: brighto-router-postgres
+spec:
+  selector:
+    app.kubernetes.io/name: brighto-router-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
