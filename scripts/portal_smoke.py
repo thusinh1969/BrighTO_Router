@@ -125,6 +125,18 @@ def main():
                                 "api_key_ref": "env:SMOKE_KEY", "format": "openai", "enabled": False})
         check("POST /admin/backends creates provider", r.status_code == 200 and r.json().get("id"))
         bid = r.json()["id"]
+
+        # Provider DELETE 409 path: route còn tham chiếu -> chặn xoá, message chứa tên route.
+        r = requests.post(base + "/admin/routes", headers=admin,
+                          json={"model_name": "smoke-route", "backend_ids": [bid],
+                                "auth_mode": "none"}, timeout=60)
+        check("create route referencing provider", r.status_code == 200)
+        r2 = requests.delete(base + "/admin/backends/%d" % bid, headers=admin)
+        ok = r2.status_code == 409 and "smoke-route" in (r2.text or "")
+        check("DELETE backend in use -> 409 with route name", ok)
+
+        # Cleanup route -> backend xoá được.
+        requests.delete(base + "/admin/routes/smoke-route", headers=admin)
         r2 = requests.delete(base + "/admin/backends/%d" % bid, headers=admin)
         check("DELETE /admin/backends removes unused provider", r2.status_code == 204)
 
