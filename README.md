@@ -105,7 +105,12 @@ Daily commands:
 ./start.sh smoke
 ```
 
-More detail: [INSTALL.md](INSTALL.md), [PROVIDERS.md](PROVIDERS.md), [k8s/README.md](k8s/README.md).
+More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROVIDERS.md), [k8s/README.md](k8s/README.md).
+
+
+## Optional HTTPS with custom PEM files
+
+For a private Ubuntu server, you can place your certificate and key under `ssl/`, mount that directory into Docker, and set `TLS_CERT_PATH` plus `TLS_KEY_PATH` in `.env`. See [HTTPS.md](HTTPS.md) for the full command-by-command example.
 
 ## What it offers a team
 

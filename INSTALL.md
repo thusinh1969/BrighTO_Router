@@ -87,6 +87,20 @@ openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-opena
 
 For providers that do not expose an OpenAI-style `/models` endpoint, type the model name manually in the portal.
 
+
+## HTTPS with custom PEM files
+
+For direct HTTPS from the router binary, place PEM files in `ssl/`, mount `./ssl:/certs:ro` into the router container, and set:
+
+```bash
+LISTEN_ADDR=0.0.0.0:18443
+BASE_URL=https://<SERVER_IP>:18443
+TLS_CERT_PATH=/certs/fullchain.pem
+TLS_KEY_PATH=/certs/privkey.pem
+```
+
+Full Ubuntu example: [HTTPS.md](HTTPS.md).
+
 ## Existing PostgreSQL
 
 Use this when your team already has a managed or shared PostgreSQL database:
