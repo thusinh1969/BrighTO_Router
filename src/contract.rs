@@ -72,6 +72,12 @@ pub struct ModelRoute {
     pub price_input_per_mtok_usd: Option<f64>,
     pub price_output_per_mtok_usd: Option<f64>,
     pub enabled: bool,
+    /// Route-level credential: ref (file:/... | env:...) — NULL/empty chỉ khi auth_mode = none.
+    pub provider_key_ref: Option<String>,
+    /// bearer | anthropic | none.
+    pub auth_mode: String,
+    /// Key đã resolve lúc load (runtime-only). None khi auth_mode = none.
+    pub provider_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]

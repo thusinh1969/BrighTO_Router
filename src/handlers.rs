@@ -723,7 +723,8 @@ mod tests {
 
     #[test]
     fn rewrite_model_field_swaps_top_level_model() {
-        let body = br#"{"model":"public","stream":false,"messages":[{"role":"user","content":"hi"}]}"#;
+        let body =
+            br#"{"model":"public","stream":false,"messages":[{"role":"user","content":"hi"}]}"#;
         let out = rewrite_model_field(body, "provider-real-model").expect("rewrite");
         let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
         assert_eq!(v["model"], "provider-real-model");
@@ -746,6 +747,9 @@ mod tests {
             price_input_per_mtok_usd: None,
             price_output_per_mtok_usd: None,
             enabled: true,
+            provider_key_ref: None,
+            auth_mode: "bearer".to_string(),
+            provider_key: None,
         };
         let body = Bytes::from_static(b"hello world");
         let est = estimate_tokens_len(body.len(), &route);

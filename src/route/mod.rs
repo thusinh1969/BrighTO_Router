@@ -522,6 +522,9 @@ mod tests {
             price_input_per_mtok_usd: None,
             price_output_per_mtok_usd: None,
             enabled: true,
+            provider_key_ref: None,
+            auth_mode: "bearer".into(),
+            provider_key: None,
         }
     }
 
@@ -600,6 +603,9 @@ mod tests {
             price_input_per_mtok_usd: None,
             price_output_per_mtok_usd: None,
             enabled: true,
+            provider_key_ref: None,
+            auth_mode: "bearer".into(),
+            provider_key: None,
         }
     }
 
