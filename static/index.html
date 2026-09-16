@@ -420,7 +420,7 @@ function renderProviders(c){
   if(!backends.length){ p.appendChild(emptyBox("No providers yet.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table");
-    t.appendChild(thead(["","Provider","Status","Models","Base URL",""]));
+    t.appendChild(thead(["","Provider","Status","Protocols","Base URL",""]));
     var tb=el("tbody");
     backends.forEach(function(b){
       var tr=el("tr");
@@ -429,7 +429,7 @@ function renderProviders(c){
       var st=el("td");
       st.appendChild(pill(b.enabled?(b.key_resolved?"Enabled · key ready":"Enabled · no key"):"Disabled", b.enabled?(b.key_resolved?"on":"warn"):"off"));
       tr.appendChild(st);
-      tr.appendChild(el("td",null,"—"));
+      tr.appendChild(el("td",null,protocolsForBackend(b).map(function(x){return protoLabel(x[0]);}).join(", ")));
       tr.appendChild(el("td","mono",b.base_url.replace("https://","").replace("http://","")));
       var td=el("td"); var row=el("div","row"); row.style.gap="6px";
       var f=el("button","btn sm ghost","Load models"); f.onclick=function(){fetchModels(b);};
