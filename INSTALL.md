@@ -90,7 +90,23 @@ For providers that do not expose an OpenAI-style `/models` endpoint, type the mo
 
 ## HTTPS with custom PEM files
 
-For direct HTTPS from the router binary, place PEM files in `ssl/`, mount `./ssl:/certs:ro` into the router container, and set:
+For direct HTTPS from the router binary, place PEM files in `ssl/`, mount `./ssl:/certs:ro` into the router container, and set.
+
+If you do not have a real certificate yet, create a local self-signed certificate first:
+
+```bash
+SERVER_IP=$(hostname -I | awk '{print $1}')
+mkdir -p ssl
+openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+  -keyout ssl/privkey.pem \
+  -out ssl/fullchain.pem \
+  -subj "/CN=${SERVER_IP}" \
+  -addext "subjectAltName=IP:${SERVER_IP},IP:127.0.0.1,DNS:localhost,DNS:brighto-router"
+chmod 600 ssl/privkey.pem
+chmod 644 ssl/fullchain.pem
+```
+
+Then set:
 
 ```bash
 LISTEN_ADDR=0.0.0.0:18443

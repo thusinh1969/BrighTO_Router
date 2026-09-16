@@ -110,7 +110,23 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 
 ## Optional HTTPS with custom PEM files
 
-For a private Ubuntu server, you can place your certificate and key under `ssl/`, mount that directory into Docker, and set `TLS_CERT_PATH` plus `TLS_KEY_PATH` in `.env`. See [HTTPS.md](HTTPS.md) for the full command-by-command example.
+For a private Ubuntu server, you can place your certificate and key under `ssl/`, mount that directory into Docker, and set `TLS_CERT_PATH` plus `TLS_KEY_PATH` in `.env`.
+
+If you do not have a real certificate yet, create a local self-signed certificate:
+
+```bash
+SERVER_IP=$(hostname -I | awk '{print $1}')
+mkdir -p ssl
+openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+  -keyout ssl/privkey.pem \
+  -out ssl/fullchain.pem \
+  -subj "/CN=${SERVER_IP}" \
+  -addext "subjectAltName=IP:${SERVER_IP},IP:127.0.0.1,DNS:localhost,DNS:brighto-router"
+chmod 600 ssl/privkey.pem
+chmod 644 ssl/fullchain.pem
+```
+
+Then follow [HTTPS.md](HTTPS.md) for the full setup.
 
 ## What it offers a team
 
