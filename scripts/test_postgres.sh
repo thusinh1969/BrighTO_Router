@@ -4,13 +4,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-DEFAULT_DATABASE_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router"
+DEFAULT_DATABASE_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router"
+OLD_DEFAULT_DATABASE_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router"
 DATABASE_URL_WAS_SET=0
 TEST_DATABASE_URL_WAS_SET=0
 [[ -n "${DATABASE_URL+x}" ]] && DATABASE_URL_WAS_SET=1
 [[ -n "${TEST_DATABASE_URL+x}" ]] && TEST_DATABASE_URL_WAS_SET=1
 DATABASE_URL="${DATABASE_URL:-$DEFAULT_DATABASE_URL}"
 TEST_DATABASE_URL="${TEST_DATABASE_URL:-$DATABASE_URL}"
+EXPLICIT_TEST_DB=0
+if [[ "$TEST_DATABASE_URL_WAS_SET" == "1" ]]; then
+  EXPLICIT_TEST_DB=1
+elif [[ "$DATABASE_URL_WAS_SET" == "1" && "$DATABASE_URL" != "$DEFAULT_DATABASE_URL" && "$DATABASE_URL" != "$OLD_DEFAULT_DATABASE_URL" ]]; then
+  EXPLICIT_TEST_DB=1
+fi
 STARTED_TEST_PG=""
 
 say() { printf '==> %s\n' "$*" >&2; }
@@ -49,11 +56,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! can_connect "$TEST_DATABASE_URL"; then
-  if [[ "$TEST_DATABASE_URL_WAS_SET" == "1" || ( "$DATABASE_URL_WAS_SET" == "1" && "$TEST_DATABASE_URL" != "$DEFAULT_DATABASE_URL" ) ]]; then
-    fail "Postgres is not reachable at DATABASE_URL=$TEST_DATABASE_URL"
-  fi
+if [[ "$EXPLICIT_TEST_DB" == "0" ]]; then
   start_temp_postgres
+elif ! can_connect "$TEST_DATABASE_URL"; then
+  fail "Postgres is not reachable at DATABASE_URL=$TEST_DATABASE_URL"
 fi
 
 export DATABASE_URL="$TEST_DATABASE_URL"
