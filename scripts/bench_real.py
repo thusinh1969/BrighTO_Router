@@ -13,7 +13,9 @@ Cách chạy:
 
 Env knobs: DUR (60s), WARM (15s), RUNS (3), CONCS ("1,50,200"), REQUIRE_PASS ("1"),
             ADMIN_MASTER_KEY (bench-admin), MODEL (mock-model), BENCH_RPS_1K/50K/200K, B6_TARGET_RPS,
-            BENCH_PAYLOADS ("1k,50k,200k"), BENCH_STREAM_PAYLOADS ("1k-stream,50k-stream,200k-stream"), BENCH_B6 ("1").
+            BENCH_PAYLOADS ("1k,50k,200k"), BENCH_STREAM_PAYLOADS ("1k-stream,50k-stream,200k-stream"),
+            BENCH_B6 ("1"), BENCH_B10 ("1"), B10_TARGET_RPS, BENCH_BASELINE (bench/baseline.json),
+            BASELINE_BOOTSTRAP ("0").
 Cần: docker, sqlx-cli, psql, oha, cargo. Build target/release/brighto-router + brighto-router-mock.
 """
 import hashlib
@@ -31,6 +33,7 @@ import requests
 REPO = pathlib.Path(__file__).resolve().parent.parent
 KEY = "bench-key"
 MODEL = os.environ.get("MODEL", "mock-model")
+B10_MODEL = os.environ.get("B10_MODEL", MODEL + "-b10")
 
 CONCS = [c.strip() for c in os.environ.get("CONCS", "1,50,200").split(",") if c.strip()]
 DUR = os.environ.get("DUR", "60s")
@@ -41,13 +44,22 @@ ADMIN_KEY = os.environ.get("ADMIN_MASTER_KEY", "bench-admin")
 # Ngưỡng tầng B — mirror benchmarks/thresholds.toml (đơn vị ms trừ B6).
 B1_P50 = {"1k": 0.3, "50k": 0.6, "200k": 1.0}
 B2_P99 = {"1k": 0.8, "50k": 1.5, "200k": 2.0}
+ALL_NONSTREAM_PAYLOADS = {"1k", "50k", "200k", "500k", "1m"}
+ALL_STREAM_PAYLOADS = {payload + "-stream" for payload in ALL_NONSTREAM_PAYLOADS}
 B3_FLAT_P50_DELTA_MS = 0.8
 B4_TTFB = {"1k": 1.0, "50k": 2.0, "200k": 3.0}
 B6_MIN_RPS = 8000
 WORST_RUN_TOLERANCE = 1.25
 B6_MAX_NON200 = 0
 B6_TARGET_RPS = int(os.environ.get("B6_TARGET_RPS", str(B6_MIN_RPS + 500)))
+B10_MAX_LAG_SECONDS = 2.0
+B10_TARGET_RPS = int(os.environ.get("B10_TARGET_RPS", "2000"))
 RUN_B6 = os.environ.get("BENCH_B6", "1") != "0"
+RUN_B10 = os.environ.get("BENCH_B10", "1") != "0"
+BASELINE_PATH = pathlib.Path(os.environ.get("BENCH_BASELINE", str(REPO / "bench/baseline.json")))
+BASELINE_BOOTSTRAP = os.environ.get("BASELINE_BOOTSTRAP", "0") == "1"
+BASELINE_MAX_REGRESSION = 1.10
+BASELINE_MIN_ABS_SLACK_MS = 0.05
 
 
 def env_list(name, default, allowed):
@@ -64,16 +76,18 @@ def env_list(name, default, allowed):
     return vals
 
 
-PAYLOADS = env_list("BENCH_PAYLOADS", ["1k", "50k", "200k"], B1_P50.keys())
+PAYLOADS = env_list("BENCH_PAYLOADS", ["1k", "50k", "200k"], ALL_NONSTREAM_PAYLOADS)
 STREAM_PAYLOADS = env_list(
     "BENCH_STREAM_PAYLOADS",
     ["1k-stream", "50k-stream", "200k-stream"],
-    ["1k-stream", "50k-stream", "200k-stream"],
+    ALL_STREAM_PAYLOADS,
 )
 BENCH_TARGET_RPS = {
     "1k": int(os.environ.get("BENCH_RPS_1K", "4000")),
     "50k": int(os.environ.get("BENCH_RPS_50K", "1000")),
     "200k": int(os.environ.get("BENCH_RPS_200K", "250")),
+    "500k": int(os.environ.get("BENCH_RPS_500K", "100")),
+    "1m": int(os.environ.get("BENCH_RPS_1M", "50")),
 }
 
 
@@ -113,7 +127,17 @@ def latency_rate(payload, conc):
             return None
     except Exception:
         return None
-    return BENCH_TARGET_RPS[payload]
+    return BENCH_TARGET_RPS.get(payload)
+
+
+def rss_mb(pid):
+    try:
+        for line in pathlib.Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return round(int(line.split()[1]) / 1024.0, 2)
+    except Exception:
+        return None
+    return None
 
 
 def free_tcp_port():
@@ -174,18 +198,30 @@ def parse_oha_json(out, raw_label, payload, conc, stderr):
     return data
 
 
-def oha_run(url, payload, conc, out, raw_label, rate=None):
-    """Warmup rồi đo 1 run; ghi raw JSON vào out; trả (p50_ms, p99_ms, rps, non200)."""
+def write_b10_payload():
+    src = REPO / "benchmarks/payloads/1k.json"
+    dst = REPO / "benchmarks/payloads/1k-b10.json"
+    body = json.loads(src.read_text())
+    body["model"] = B10_MODEL
+    body["stream"] = False
+    body.pop("stream_options", None)
+    dst.write_text(json.dumps(body, ensure_ascii=True))
+    return dst
+
+
+def oha_run(url, payload, conc, out, raw_label, rate=None, warmup=True):
+    """Warm up, then measure one run; write raw JSON and return (p50_ms, p99_ms, rps, non200)."""
     auth = "Authorization: Bearer " + KEY
     body = str(REPO / "benchmarks/payloads" / (payload + ".json"))
-    warm = [
-        "oha", "-z", WARM, "-c", str(conc), "-m", "POST", "--no-tui",
-        "-H", "Content-Type: application/json", "-H", auth,
-        "-D", body, url + "/v1/chat/completions",
-    ]
-    if rate is not None:
-        warm[1:1] = ["-q", str(rate)]
-    subprocess.run(warm, capture_output=True, text=True)
+    if warmup:
+        warm = [
+            "oha", "-z", WARM, "-c", str(conc), "-m", "POST", "--no-tui",
+            "-H", "Content-Type: application/json", "-H", auth,
+            "-D", body, url + "/v1/chat/completions",
+        ]
+        if rate is not None:
+            warm[1:1] = ["-q", str(rate)]
+        subprocess.run(warm, capture_output=True, text=True)
 
     cmd = [
         "oha", "-z", DUR, "-c", str(conc), "-m", "POST", "--no-tui", "--latency-correction",
@@ -259,6 +295,199 @@ def prometheus_counter_total(text, name):
     return total
 
 
+def sql_quote(value):
+    return "'" + value.replace("'", "''") + "'"
+
+
+def psql_row(port, sql):
+    out = sh(
+        "psql", "-h", "127.0.0.1", "-p", str(port), "-U", "brighto_router", "-d", "brighto_router",
+        "-At", "-F", "\t", "-c", sql,
+        env=dict(os.environ, PGPASSWORD="brighto_router_dev"),
+    ).stdout.strip()
+    return out.split("\t") if out else []
+
+
+def oha_status_count(raw_json_path):
+    data = json.load(open(raw_json_path))
+    return sum(int(v) for v in (data.get("statusCodeDistribution") or {}).values())
+
+
+def query_b10_ledger_lag(port, phase_start_ms, phase_end_ms, model):
+    sql = """
+WITH rows AS (
+    SELECT GREATEST(0, inserted_at_ms - completed_at_ms)::DOUBLE PRECISION AS lag_ms
+    FROM usage_ledger
+    WHERE completed_at_ms >= {start}
+      AND completed_at_ms <= {end}
+      AND model = {model}
+)
+SELECT COUNT(*)::BIGINT,
+       COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY lag_ms), 0)::DOUBLE PRECISION
+FROM rows
+""".format(start=int(phase_start_ms), end=int(phase_end_ms), model=sql_quote(model))
+    row = psql_row(port, sql)
+    if len(row) < 2:
+        raise RuntimeError("B10 ledger lag query returned no row")
+    return int(row[0]), float(row[1])
+
+
+def wait_b10_ledger_lag(port, phase_start_ms, phase_end_ms, model, expected_rows):
+    min_rows = max(1, int(expected_rows * 0.99))
+    deadline = time.time() + 30
+    count, p99_ms = 0, 0.0
+    while True:
+        count, p99_ms = query_b10_ledger_lag(port, phase_start_ms, phase_end_ms, model)
+        if count >= min_rows or time.time() >= deadline:
+            return count, p99_ms, min_rows
+        time.sleep(0.5)
+
+
+def gate_metric(gate):
+    explicit = gate.get("metric")
+    if explicit:
+        return explicit
+    gid = gate.get("id")
+    if gid == "B1":
+        return "overhead_p50_ms"
+    if gid == "B2":
+        return "overhead_p99_ms"
+    if gid == "B3":
+        return "overhead_flat_p50_delta_ms"
+    if gid == "B4":
+        return "ttfb_delta_ms"
+    if gid == "B6":
+        return "non200" if gate.get("threshold") == B6_MAX_NON200 else "rps"
+    if gid == "B10":
+        return "ledger_lag_p99_s"
+    if gid == "INTERNAL_LEDGER_DROPS":
+        return "ledger_drops"
+    return "value"
+
+
+def gate_key(gate):
+    return "%s:%s:%s:%s" % (
+        gate.get("id"),
+        gate.get("payload"),
+        gate.get("conc"),
+        gate_metric(gate),
+    )
+
+
+def gate_direction(gate):
+    return "higher" if gate.get("id") == "B6" and gate_metric(gate) == "rps" else "lower"
+
+
+def compact_baseline_gate(gate):
+    return {
+        "id": gate.get("id"),
+        "payload": gate.get("payload"),
+        "conc": gate.get("conc"),
+        "metric": gate_metric(gate),
+        "value": gate.get("value"),
+        "threshold": gate.get("threshold"),
+        "direction": gate_direction(gate),
+    }
+
+
+def load_baseline(path):
+    data = json.loads(path.read_text())
+    raw_gates = data.get("gates", data)
+    if isinstance(raw_gates, dict):
+        iterable = raw_gates.values()
+    elif isinstance(raw_gates, list):
+        iterable = raw_gates
+    else:
+        raise RuntimeError("invalid baseline schema in %s: gates must be list or object" % path)
+    baseline = {}
+    for gate in iterable:
+        if not isinstance(gate, dict) or "value" not in gate:
+            continue
+        baseline[gate_key(gate)] = gate
+    if not baseline:
+        raise RuntimeError("baseline has no usable gate values: %s" % path)
+    return baseline
+
+
+def write_baseline_candidate(gates, outdir, host):
+    candidate = {
+        "schema": 1,
+        "source": "scripts/bench_real.py BASELINE_BOOTSTRAP=1",
+        "artifact": str(outdir),
+        "sha": host["sha"],
+        "gates": {gate_key(g): compact_baseline_gate(g) for g in gates},
+    }
+    path = outdir / "baseline_candidate.json"
+    path.write_text(json.dumps(candidate, indent=2))
+    return path
+
+
+def baseline_allowed(current, baseline_gate):
+    current_value = float(current["value"])
+    baseline_value = float(baseline_gate["value"])
+    if gate_direction(current) == "higher":
+        allowed = round(baseline_value * (2.0 - BASELINE_MAX_REGRESSION), 3)
+        return current_value >= allowed, allowed
+    if baseline_value > 0:
+        allowed = round(baseline_value * BASELINE_MAX_REGRESSION, 3)
+    else:
+        allowed = round(baseline_value + BASELINE_MIN_ABS_SLACK_MS, 3)
+    return current_value <= allowed, allowed
+
+
+def check_baseline(gates, outdir, host):
+    if BASELINE_BOOTSTRAP:
+        candidate = write_baseline_candidate(gates, outdir, host)
+        return {
+            "path": str(BASELINE_PATH),
+            "mode": "bootstrap",
+            "pass": True,
+            "candidate": str(candidate),
+            "checked": [],
+            "missing": [],
+        }
+
+    if not BASELINE_PATH.exists():
+        return {
+            "path": str(BASELINE_PATH),
+            "mode": "missing",
+            "pass": not REQUIRE_PASS,
+            "skipped": not REQUIRE_PASS,
+            "error": "missing baseline; run BASELINE_BOOTSTRAP=1 make gate and review baseline_candidate.json",
+            "checked": [],
+            "missing": [],
+        }
+
+    baseline = load_baseline(BASELINE_PATH)
+    checked = []
+    missing = []
+    ok_all = True
+    for gate in gates:
+        key = gate_key(gate)
+        base = baseline.get(key)
+        if base is None:
+            missing.append(key)
+            ok_all = False
+            continue
+        ok, allowed = baseline_allowed(gate, base)
+        ok_all &= ok
+        checked.append({
+            "key": key,
+            "direction": gate_direction(gate),
+            "baseline": base.get("value"),
+            "current": gate.get("value"),
+            "allowed": allowed,
+            "pass": ok,
+        })
+    return {
+        "path": str(BASELINE_PATH),
+        "mode": "checked",
+        "pass": ok_all,
+        "checked": checked,
+        "missing": missing,
+    }
+
+
 def main():
     outdir = REPO / "bench/results" / time.strftime("%Y%m%d-%H%M%S")
     outdir.mkdir(parents=True, exist_ok=True)
@@ -296,7 +525,7 @@ def main():
 INSERT INTO backends (id,name,base_url,api_key_ref,weight,max_inflight,format,enabled)
 VALUES (1,'mock','{mock_url}','MOCK_KEY',1,0,'openai',TRUE);
 INSERT INTO model_routes (model_name,backend_ids,fallback_backend_id,chars_per_token,first_byte_timeout)
-VALUES ('{MODEL}','[1]',NULL,4.0,180);
+VALUES ('{MODEL}','[1]',NULL,4.0,180), ('{B10_MODEL}','[1]',NULL,4.0,180);
 INSERT INTO teams (id,name,budget,enabled)
 VALUES (1,'team','{{"period":"month","max_tokens":100000000000000,"per_model":{{}}}}',TRUE);
 INSERT INTO api_keys (id,key_hash,key_prefix,team_id,owner,allowed_models,budget,rpm_limit,concurrency_limit,expires_at,enabled)
@@ -306,6 +535,7 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
            env=dict(os.environ, PGPASSWORD="brighto_router_dev"))
 
         sh("python3", str(REPO / "benchmarks/make_payloads.py"), MODEL)
+        write_b10_payload()
 
         mock_log = open(outdir / "mock.log", "wb")
         router_log = open(outdir / "router.log", "wb")
@@ -330,6 +560,14 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
             overhead = {}
             gates = []
             any_fail = False
+            router_rss_samples = []
+
+            def record_router_rss(label):
+                value = rss_mb(router.pid)
+                if value is not None:
+                    router_rss_samples.append({"label": label, "rss_mb": value, "ts_ms": int(time.time() * 1000)})
+
+            record_router_rss("ready")
 
             # B1/B2: overhead non-stream ở mọi conc; ngưỡng chính thức áp cho conc=50.
             for p in PAYLOADS:
@@ -341,6 +579,7 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                         r_out = str(outdir / ("router-%s-c%s-r%d.json" % (p, conc, i)))
                         dp50, dp99, _, _ = oha_run(mock_url, p, conc, d_out, "direct", rate=latency_rate(p, conc))
                         rp50, rp99, _, rn = oha_run(router_url, p, conc, r_out, "router", rate=latency_rate(p, conc))
+                        record_router_rss("router-%s-c%s-r%d" % (p, conc, i))
                         if rp50 is None or dp50 is None:
                             raise RuntimeError(
                                 "oha got zero responses (no latency) for %s c=%s — router/direct unhealthy"
@@ -355,12 +594,13 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                                          "runs_p50": [round(x, 3) for x in d50s],
                                          "runs_p99": [round(x, 3) for x in d99s]}
                     print("%s c=%s overhead p50 %+.3fms p99 %+.3fms" % (p, conc, ov50, ov99))
-                    if conc == "50":
+                    if conc == "50" and p in B1_P50 and p in B2_P99:
                         for gid, val, thr, runs in (
                             ("B1", ov50, B1_P50[p], d50s),
                             ("B2", ov99, B2_P99[p], d99s),
                         ):
                             gate = percentile_gate(gid, p, 50, val, thr, runs)
+                            gate["metric"] = gate_metric(gate)
                             any_fail |= not gate["pass"]
                             gates.append(gate)
 
@@ -381,6 +621,7 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                     "id": "B3",
                     "payload": "200k_vs_1k",
                     "conc": 50,
+                    "metric": "overhead_flat_p50_delta_ms",
                     "value": flat_delta,
                     "threshold": B3_FLAT_P50_DELTA_MS,
                     "pass": ok,
@@ -397,10 +638,14 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                 delta = round(r - d, 3)
                 key = p.replace("-stream", "")
                 ttfb_delta[key] = delta
-                ok = delta <= B4_TTFB[key]
-                any_fail |= not ok
-                gates.append({"id": "B4", "payload": key, "conc": "curl30", "value": delta,
-                              "threshold": B4_TTFB[key], "pass": ok, "runs": [delta]})
+                if key in B4_TTFB:
+                    ok = delta <= B4_TTFB[key]
+                    any_fail |= not ok
+                    gates.append({"id": "B4", "payload": key, "conc": "curl30", "metric": "ttfb_delta_ms", "value": delta,
+                                  "threshold": B4_TTFB[key], "pass": ok, "runs": [delta]})
+                else:
+                    ok = True
+                record_router_rss("stream-%s" % key)
                 print("B4 %s ttfb delta %+.3fms (direct %.3f / router %.3f)" % (key, delta, d, r))
 
             # B6: target-rate sustained throughput (conc 200 thật), 1k non-stream.
@@ -408,45 +653,91 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
             if RUN_B6:
                 sat_out = str(outdir / "router-sat-c200.json")
                 _, _, rps, non200 = oha_run(router_url, "1k", "200", sat_out, "sat", rate=B6_TARGET_RPS)
+                record_router_rss("b6")
                 ok = (rps >= B6_MIN_RPS) and (non200 <= B6_MAX_NON200)
                 any_fail |= not ok
-                gates.append({"id": "B6", "payload": "1k", "conc": 200, "value": round(rps, 2),
+                gates.append({"id": "B6", "payload": "1k", "conc": 200, "metric": "rps", "value": round(rps, 2),
                               "threshold": B6_MIN_RPS, "pass": ok, "runs": [round(rps, 2)]})
-                gates.append({"id": "B6", "payload": "1k", "conc": 200, "value": non200,
+                gates.append({"id": "B6", "payload": "1k", "conc": 200, "metric": "non200", "value": non200,
                               "threshold": B6_MAX_NON200, "pass": non200 <= B6_MAX_NON200, "runs": [non200]})
                 b6_saturation = {"target_rps": B6_TARGET_RPS, "rps": round(rps, 2), "non200": non200}
                 print("B6 sat rps %.2f non200 %d" % (rps, non200))
             else:
                 print("B6 skipped (BENCH_B6=0)")
 
+            b10_run = None
+            if RUN_B10:
+                b10_out = str(outdir / "router-b10-ledger-lag.json")
+                phase_start_ms = int(time.time() * 1000)
+                _, _, b10_rps, b10_non200 = oha_run(router_url, "1k-b10", "200", b10_out, "b10-ledger", rate=B10_TARGET_RPS, warmup=False)
+                phase_end_ms = int(time.time() * 1000)
+                record_router_rss("b10")
+                expected_rows = oha_status_count(b10_out)
+                count, lag_p99_ms, min_rows = wait_b10_ledger_lag(
+                    port, phase_start_ms, phase_end_ms + 10_000, B10_MODEL, expected_rows
+                )
+                lag_p99_s = round(lag_p99_ms / 1000.0, 6)
+                ok_b10 = b10_non200 == 0 and count >= min_rows and lag_p99_s <= B10_MAX_LAG_SECONDS
+                any_fail |= not ok_b10
+                b10_run = {
+                    "target_rps": B10_TARGET_RPS,
+                    "rps": round(b10_rps, 2),
+                    "non200": b10_non200,
+                    "expected_rows": expected_rows,
+                    "observed_rows": count,
+                    "min_rows": min_rows,
+                    "raw": b10_out,
+                }
+                gates.append({"id": "B10", "payload": "1k", "conc": "2000rps", "metric": "ledger_lag_p99_s",
+                              "value": lag_p99_s, "threshold": B10_MAX_LAG_SECONDS, "pass": ok_b10,
+                              "runs": [lag_p99_s], "load": b10_run})
+                print("B10 ledger lag p99 %.6fs rows %d/%d rps %.2f non200 %d" % (lag_p99_s, count, expected_rows, b10_rps, b10_non200))
+            else:
+                print("B10 skipped (BENCH_B10=0)")
+
             metrics_text = scrape_metrics(router_url, outdir)
             ledger_drops = prometheus_counter_total(metrics_text, "router_ledger_dropped_total")
             ok_ledger = ledger_drops == 0
             any_fail |= not ok_ledger
-            gates.append({"id": "INTERNAL_LEDGER_DROPS", "payload": "all", "conc": "all", "value": ledger_drops,
+            gates.append({"id": "INTERNAL_LEDGER_DROPS", "payload": "all", "conc": "all", "metric": "ledger_drops", "value": ledger_drops,
                           "threshold": 0, "pass": ok_ledger, "runs": [ledger_drops],
-                          "note": "internal safety check only; true B10 ledger-lag gate is tracked in swarm/audits"})
+                          "note": "internal guard: router_ledger_dropped_total from /metrics; not BENCHMARK.md B10"})
+
+            baseline = check_baseline(gates, outdir, host)
+            any_fail |= not baseline["pass"]
+            if baseline.get("mode") == "bootstrap":
+                print("baseline candidate:", baseline.get("candidate"))
+            elif not baseline["pass"]:
+                print("baseline failed:", baseline)
 
             summary = {
                 "sha": host["sha"], "host": {"cpu": host["cpu"], "kernel": host["kernel"]},
                 "knobs": {"DUR": DUR, "WARM": WARM, "RUNS": RUNS, "CONCS": CONCS,
-                          "PAYLOADS": PAYLOADS, "STREAM_PAYLOADS": STREAM_PAYLOADS, "RUN_B6": RUN_B6,
+                          "PAYLOADS": PAYLOADS, "STREAM_PAYLOADS": STREAM_PAYLOADS, "RUN_B6": RUN_B6, "RUN_B10": RUN_B10,
                           "ADMIN_MASTER_KEY_set": bool(ADMIN_KEY), "B6_TARGET_RPS": B6_TARGET_RPS,
+                          "B10_TARGET_RPS": B10_TARGET_RPS, "MODEL": MODEL, "B10_MODEL": B10_MODEL,
                           "BENCH_TARGET_RPS": BENCH_TARGET_RPS,
                           "MOCK_PORT": mock_port, "ROUTER_PORT": router_port},
                 "overhead_ms": overhead,
                 "streaming_ttfb_delta_ms": ttfb_delta,
                 "b6_saturation": b6_saturation,
+                "b10_ledger_lag": b10_run,
+                "router_rss_mb": {
+                    "max": max((s["rss_mb"] for s in router_rss_samples), default=None),
+                    "samples": router_rss_samples,
+                },
                 "ledger_dropped_total": ledger_drops,
+                "baseline": baseline,
             }
             (outdir / "summary.json").write_text(json.dumps(summary, indent=2))
 
             gate = {"sha": host["sha"], "host": {"cpu": host["cpu"], "kernel": host["kernel"]},
                     "knobs": {"DUR": DUR, "WARM": WARM, "RUNS": RUNS, "CONCS": CONCS,
-                              "PAYLOADS": PAYLOADS, "STREAM_PAYLOADS": STREAM_PAYLOADS, "RUN_B6": RUN_B6,
-                              "B6_TARGET_RPS": B6_TARGET_RPS, "BENCH_TARGET_RPS": BENCH_TARGET_RPS,
+                              "PAYLOADS": PAYLOADS, "STREAM_PAYLOADS": STREAM_PAYLOADS, "RUN_B6": RUN_B6, "RUN_B10": RUN_B10,
+                              "B6_TARGET_RPS": B6_TARGET_RPS, "B10_TARGET_RPS": B10_TARGET_RPS, "MODEL": MODEL, "B10_MODEL": B10_MODEL,
+                              "BENCH_TARGET_RPS": BENCH_TARGET_RPS,
                               "MOCK_PORT": mock_port, "ROUTER_PORT": router_port},
-                    "gates": gates, "pass": not any_fail}
+                    "gates": gates, "baseline": baseline, "pass": not any_fail}
             (outdir / "gate.json").write_text(json.dumps(gate, indent=2))
             print("artifacts:", outdir)
             print("gate pass:", not any_fail)

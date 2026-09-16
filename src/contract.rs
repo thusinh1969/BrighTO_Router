@@ -3,7 +3,7 @@
 //! không tạo HTTP client mỗi request. ConfigSnapshot đọc qua load_full() (lock-free).
 //!
 //! DB: sqlx runtime-tokio + aws-lc-rs (một crypto provider duy nhất — xem Cargo.toml).
-//! Dùng sqlx::query runtime (KHÔNG macro query!) — dev SQLite, prod Postgres.
+//! Dùng sqlx::query runtime (KHÔNG macro query!) để build không cần DB; production state là PostgreSQL.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -151,6 +151,8 @@ pub struct UsageEvent {
     pub ttfb_ms: u64,
     pub total_ms: u64,
     pub router_overhead_ms: u64,
+    /// Epoch millis when the request finished in the router. Used by BENCHMARK.md B10.
+    pub completed_at_ms: u64,
     pub stream: bool,
     pub client_aborted: bool,
     pub error_class: Option<String>,
