@@ -261,7 +261,10 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/teams", post(create_team))
         .route("/keys", post(create_key))
         .route("/backends", get(list_backends).post(create_backend))
-        .route("/backends/{id}", patch(update_backend))
+        .route(
+            "/backends/{id}",
+            patch(update_backend).delete(delete_backend),
+        )
         .route("/backends/{id}/key", put(put_backend_key))
         .route("/backends/{id}/models", get(fetch_backend_models))
         .route("/routes", get(list_routes).post(upsert_route))
@@ -860,6 +863,46 @@ async fn update_backend(
 
     state.reload_now().await?;
     Ok(Json(json!({ "id": id })))
+}
+
+/// Xoá provider/backend. Chặn nếu còn route tham chiếu (tránh route trỏ backend chết).
+async fn delete_backend(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+
+    let refs = sqlx::query::<sqlx::Postgres>("SELECT model_name, backend_ids FROM model_routes")
+        .fetch_all(pool)
+        .await?;
+    let mut in_use = Vec::new();
+    for row in &refs {
+        let ids_json: String = row.try_get("backend_ids")?;
+        let ids = parse_backend_ids(&ids_json).unwrap_or_default();
+        if ids.contains(&id) {
+            in_use.push(row.try_get::<String, _>("model_name")?);
+        }
+    }
+    if !in_use.is_empty() {
+        in_use.sort();
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            format!("backend in use by routes: {}", in_use.join(", ")),
+        ));
+    }
+
+    let result = sqlx::query::<sqlx::Postgres>("DELETE FROM backends WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("backend not found"));
+    }
+    state.reload_now().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn fetch_backend_models(
