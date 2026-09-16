@@ -381,6 +381,10 @@ async function renderDashboard(c){
     c.appendChild(groupPanel("Top teams", ["Team","Requests","Tokens","Errors"],
       sum.by_team.map(function(r){return [r.team_name, fmt(r.requests), fmt(r.input_tokens+r.output_tokens), fmt(r.errors)];})));
   }
+  if(mode==="admin" && sum && sum.by_backend.length){
+    c.appendChild(groupPanel("Provider health", ["Provider","Requests","Errors","429","5xx","Timeout"],
+      sum.by_backend.map(function(r){return [r.backend_name, fmt(r.requests), fmt(r.errors), fmt(r.rate_limited), fmt(r.server_errors), fmt(r.timeouts)];})));
+  }
 
   if(mode==="admin" && sum && sum.totals){
     var per=el("div","panel");

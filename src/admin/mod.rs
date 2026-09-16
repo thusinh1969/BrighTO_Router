@@ -2020,12 +2020,24 @@ struct BucketRow {
 }
 
 #[derive(Serialize)]
+struct ProviderHealthRow {
+    backend_id: i64,
+    backend_name: String,
+    requests: i64,
+    errors: i64,
+    rate_limited: i64,
+    server_errors: i64,
+    timeouts: i64,
+}
+
+#[derive(Serialize)]
 struct SummaryResponse {
     totals: TotalsRow,
     by_model: Vec<GroupRow>,
     by_team: Vec<TeamGroupRow>,
     by_key: Vec<KeyGroupRow>,
     by_bucket: Vec<BucketRow>,
+    by_backend: Vec<ProviderHealthRow>,
 }
 
 /// Gắn bộ filter usage chung vào WHERE. `alias` = "" cho query usage_ledger trực tiếp, "u." cho JOIN.
@@ -2321,6 +2333,41 @@ async fn get_summary(
         })
         .collect();
 
+    // Provider health: lỗi/429/5xx/timeout theo backend (CODEX "what is failing").
+    let mut bhb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT u.backend_id, COALESCE(b.name,'') AS backend_name, COUNT(*) AS requests, \
+         COUNT(*) FILTER (WHERE u.status >= 400) AS errors, \
+         COUNT(*) FILTER (WHERE u.status = 429) AS rate_limited, \
+         COUNT(*) FILTER (WHERE u.status >= 500) AS server_errors, \
+         COUNT(*) FILTER (WHERE u.error_class ILIKE '%timeout%' OR u.error_class ILIKE '%timed out%') AS timeouts \
+         FROM usage_ledger u LEFT JOIN backends b ON b.id = u.backend_id",
+    );
+    push_usage_filters(
+        &mut bhb,
+        "u.",
+        team,
+        key,
+        backend,
+        model,
+        &status,
+        Some(from),
+        to,
+    );
+    bhb.push(" GROUP BY u.backend_id, b.name ORDER BY errors DESC, requests DESC LIMIT 20");
+    let bhrows = bhb.build().fetch_all(pool).await?;
+    let by_backend: Vec<ProviderHealthRow> = bhrows
+        .iter()
+        .map(|r| ProviderHealthRow {
+            backend_id: r.try_get("backend_id").unwrap_or(0),
+            backend_name: r.try_get("backend_name").unwrap_or_default(),
+            requests: r.try_get("requests").unwrap_or(0),
+            errors: r.try_get("errors").unwrap_or(0),
+            rate_limited: r.try_get("rate_limited").unwrap_or(0),
+            server_errors: r.try_get("server_errors").unwrap_or(0),
+            timeouts: r.try_get("timeouts").unwrap_or(0),
+        })
+        .collect();
+
     let estimated_cost_usd: f64 = by_model.iter().filter_map(|g| g.estimated_cost_usd).sum();
     let cost_known_requests: i64 = by_model
         .iter()
@@ -2345,6 +2392,7 @@ async fn get_summary(
         by_team,
         by_key,
         by_bucket,
+        by_backend,
     }))
 }
 
