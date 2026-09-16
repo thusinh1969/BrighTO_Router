@@ -60,11 +60,18 @@ impl std::fmt::Debug for Backend {
 
 #[derive(Debug, Clone)]
 pub struct ModelRoute {
-    pub model_name: String,               // tên client gọi
+    pub model_name: String,               // tên client gọi (public)
     pub backend_ids: Vec<i64>,            // theo thứ tự ưu tiên
     pub fallback_backend_id: Option<i64>, // khai báo tường minh, mặc định tắt
     pub chars_per_token: f64,             // chỉ để ước lượng chặn sớm, không dùng để tính tiền
     pub first_byte_timeout: Duration,     // mặc định 180s, config per model
+    /// Tên model thật ở provider (vd "qwen3.8-flash-next"); "" = dùng public model_name.
+    pub provider_model_name: String,
+    pub context_tokens: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+    pub price_input_per_mtok_usd: Option<f64>,
+    pub price_output_per_mtok_usd: Option<f64>,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone)]

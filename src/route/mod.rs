@@ -516,6 +516,12 @@ mod tests {
             fallback_backend_id: None,
             chars_per_token: 4.0,
             first_byte_timeout: Duration::from_secs(180),
+            provider_model_name: "test-model".into(),
+            context_tokens: None,
+            max_output_tokens: None,
+            price_input_per_mtok_usd: None,
+            price_output_per_mtok_usd: None,
+            enabled: true,
         }
     }
 
@@ -588,6 +594,12 @@ mod tests {
             fallback_backend_id: Some(fallback),
             chars_per_token: 4.0,
             first_byte_timeout: Duration::from_secs(180),
+            provider_model_name: "test-model".into(),
+            context_tokens: None,
+            max_output_tokens: None,
+            price_input_per_mtok_usd: None,
+            price_output_per_mtok_usd: None,
+            enabled: true,
         }
     }
 
