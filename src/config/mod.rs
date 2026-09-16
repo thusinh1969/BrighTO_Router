@@ -101,7 +101,9 @@ impl DbConfigLoader {
     async fn load_routes(&self) -> Result<Vec<ModelRoute>> {
         let rows = fetch_rows(
             &self.pool,
-            "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout FROM model_routes",
+            "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
+             provider_model_name, context_tokens, max_output_tokens, \
+             price_input_per_mtok_usd, price_output_per_mtok_usd, enabled FROM model_routes",
         )
         .await
         .context("load model_routes")?;
@@ -116,12 +118,24 @@ impl DbConfigLoader {
             let backend_ids: Vec<i64> =
                 serde_json::from_str(&backend_ids_json).context("parse backend_ids JSON array")?;
             let first_byte_timeout = Duration::from_secs(u64::try_from(fb_timeout).unwrap_or(180));
+            let provider_model_name = g_str(&row, 5)?;
+            let provider_model_name = if provider_model_name.is_empty() {
+                model_name.clone()
+            } else {
+                provider_model_name
+            };
             out.push(ModelRoute {
                 model_name,
                 backend_ids,
                 fallback_backend_id,
                 chars_per_token,
                 first_byte_timeout,
+                provider_model_name,
+                context_tokens: g_opt_i64(&row, 6)?,
+                max_output_tokens: g_opt_i64(&row, 7)?,
+                price_input_per_mtok_usd: row.try_get::<Option<f64>, _>(8).unwrap_or(None),
+                price_output_per_mtok_usd: row.try_get::<Option<f64>, _>(9).unwrap_or(None),
+                enabled: g_bool(&row, 10)?,
             });
         }
         Ok(out)

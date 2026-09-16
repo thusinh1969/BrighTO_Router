@@ -264,7 +264,10 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/backends/{id}/key", put(put_backend_key))
         .route("/backends/{id}/models", get(fetch_backend_models))
         .route("/routes", get(list_routes).post(upsert_route))
-        .route("/routes/{model_name}", delete(delete_route))
+        .route(
+            "/routes/{model_name}",
+            patch(patch_route).delete(delete_route),
+        )
         .route("/teams/{id}", patch(update_team))
         .route("/keys/{id}", delete(disable_key))
         .route("/keys/{id}/reveal", get(reveal_key))
@@ -917,13 +920,22 @@ async fn list_routes(
     Ok(Json(list_routes_from_pool(pool).await?))
 }
 
-async fn upsert_route(
-    Extension(state): Extension<Arc<AdminState>>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(payload): Json<UpsertRoute>,
-) -> Result<Json<RouteResponse>, ApiError> {
-    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+struct ValidatedRoute {
+    model_name: String,
+    backend_ids: Vec<i64>,
+    backend_ids_json: String,
+    fallback_backend_id: Option<i64>,
+    chars_per_token: f64,
+    first_byte_timeout: u64,
+    provider_model_name: String,
+    context_tokens: Option<i64>,
+    max_output_tokens: Option<i64>,
+    price_input_per_mtok_usd: Option<f64>,
+    price_output_per_mtok_usd: Option<f64>,
+    enabled: bool,
+}
+
+fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
     let model_name = non_empty_trimmed(payload.model_name, "model_name")?;
     if payload.backend_ids.is_empty() {
         return Err(ApiError::new(
@@ -973,8 +985,47 @@ async fn upsert_route(
         .unwrap_or_else(|| model_name.clone());
     let enabled = payload.enabled.unwrap_or(true);
     let backend_ids_json = serde_json::to_string(&payload.backend_ids)?;
-    let pool = state.pool().await?;
+    Ok(ValidatedRoute {
+        model_name,
+        backend_ids: payload.backend_ids,
+        backend_ids_json,
+        fallback_backend_id: payload.fallback_backend_id,
+        chars_per_token,
+        first_byte_timeout,
+        provider_model_name,
+        context_tokens: payload.context_tokens,
+        max_output_tokens: payload.max_output_tokens,
+        price_input_per_mtok_usd: payload.price_input_per_mtok_usd,
+        price_output_per_mtok_usd: payload.price_output_per_mtok_usd,
+        enabled,
+    })
+}
 
+fn route_response(v: ValidatedRoute) -> RouteResponse {
+    RouteResponse {
+        model_name: v.model_name,
+        backend_ids: v.backend_ids,
+        fallback_backend_id: v.fallback_backend_id,
+        chars_per_token: v.chars_per_token,
+        first_byte_timeout: v.first_byte_timeout,
+        provider_model_name: v.provider_model_name,
+        context_tokens: v.context_tokens,
+        max_output_tokens: v.max_output_tokens,
+        price_input_per_mtok_usd: v.price_input_per_mtok_usd,
+        price_output_per_mtok_usd: v.price_output_per_mtok_usd,
+        enabled: v.enabled,
+    }
+}
+
+async fn upsert_route(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(payload): Json<UpsertRoute>,
+) -> Result<Json<RouteResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let v = validate_route(payload)?;
+    let pool = state.pool().await?;
     sqlx::query::<sqlx::Postgres>(
         "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
@@ -988,34 +1039,74 @@ async fn upsert_route(
          price_input_per_mtok_usd = EXCLUDED.price_input_per_mtok_usd, \
          price_output_per_mtok_usd = EXCLUDED.price_output_per_mtok_usd, enabled = EXCLUDED.enabled",
     )
-    .bind(&model_name)
-    .bind(&backend_ids_json)
-    .bind(payload.fallback_backend_id)
-    .bind(chars_per_token)
-    .bind(first_byte_timeout as i64)
-    .bind(&provider_model_name)
-    .bind(payload.context_tokens)
-    .bind(payload.max_output_tokens)
-    .bind(payload.price_input_per_mtok_usd)
-    .bind(payload.price_output_per_mtok_usd)
-    .bind(enabled)
+    .bind(&v.model_name)
+    .bind(&v.backend_ids_json)
+    .bind(v.fallback_backend_id)
+    .bind(v.chars_per_token)
+    .bind(v.first_byte_timeout as i64)
+    .bind(&v.provider_model_name)
+    .bind(v.context_tokens)
+    .bind(v.max_output_tokens)
+    .bind(v.price_input_per_mtok_usd)
+    .bind(v.price_output_per_mtok_usd)
+    .bind(v.enabled)
     .execute(pool)
     .await?;
-
     state.reload_now().await?;
-    Ok(Json(RouteResponse {
-        model_name,
-        backend_ids: payload.backend_ids,
-        fallback_backend_id: payload.fallback_backend_id,
-        chars_per_token,
-        first_byte_timeout,
-        provider_model_name,
-        context_tokens: payload.context_tokens,
-        max_output_tokens: payload.max_output_tokens,
-        price_input_per_mtok_usd: payload.price_input_per_mtok_usd,
-        price_output_per_mtok_usd: payload.price_output_per_mtok_usd,
-        enabled,
-    }))
+    Ok(Json(route_response(v)))
+}
+
+/// Cập nhật route theo model_name CŨ (path param), cho phép đổi tên public model.
+/// 404 nếu route cũ không tồn tại; 409 nếu tên mới đã thuộc route khác.
+async fn patch_route(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(old_name): Path<String>,
+    Json(payload): Json<UpsertRoute>,
+) -> Result<Json<RouteResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let v = validate_route(payload)?;
+    let pool = state.pool().await?;
+    if v.model_name != old_name {
+        let exists =
+            sqlx::query::<sqlx::Postgres>("SELECT 1 FROM model_routes WHERE model_name = $1")
+                .bind(&v.model_name)
+                .fetch_optional(pool)
+                .await?
+                .is_some();
+        if exists {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "model name already exists",
+            ));
+        }
+    }
+    let result = sqlx::query::<sqlx::Postgres>(
+        "UPDATE model_routes SET model_name = $1, backend_ids = $2, fallback_backend_id = $3, \
+         chars_per_token = $4, first_byte_timeout = $5, provider_model_name = $6, \
+         context_tokens = $7, max_output_tokens = $8, price_input_per_mtok_usd = $9, \
+         price_output_per_mtok_usd = $10, enabled = $11 WHERE model_name = $12",
+    )
+    .bind(&v.model_name)
+    .bind(&v.backend_ids_json)
+    .bind(v.fallback_backend_id)
+    .bind(v.chars_per_token)
+    .bind(v.first_byte_timeout as i64)
+    .bind(&v.provider_model_name)
+    .bind(v.context_tokens)
+    .bind(v.max_output_tokens)
+    .bind(v.price_input_per_mtok_usd)
+    .bind(v.price_output_per_mtok_usd)
+    .bind(v.enabled)
+    .bind(&old_name)
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("route not found"));
+    }
+    state.reload_now().await?;
+    Ok(Json(route_response(v)))
 }
 
 /// Xoá model route theo public model name, rồi reload ngay.

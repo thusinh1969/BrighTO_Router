@@ -483,6 +483,9 @@ async fn handle_generate(state: Arc<AppState>, req: Request<Body>) -> Response<B
     let Some(route) = snapshot.routes.get(model).cloned() else {
         return build_error(&request_id, StatusCode::NOT_FOUND, "model not configured");
     };
+    if !route.enabled {
+        return build_error(&request_id, StatusCode::NOT_FOUND, "model is disabled");
+    }
 
     // 5. Budget reserve + concurrency (RAII: nếu mọi đường return sau đây, tự rollback/release).
     let allow_streaming_upload =
@@ -512,6 +515,32 @@ async fn handle_generate(state: Arc<AppState>, req: Request<Body>) -> Response<B
             return build_error(&request_id, StatusCode::BAD_REQUEST, "invalid JSON");
         }
     };
+    // Viết lại top-level "model" từ public name -> provider model name (nếu khác) cho body buffered.
+    // Streaming upload (large prompt) yêu cầu public == provider (không parse full body hot path).
+    let (head, mut proxy_body) = (head, proxy_body);
+    if route.provider_model_name != model {
+        match &proxy_body {
+            ProxyRequestBody::Buffered(body) => {
+                match rewrite_model_field(body, &route.provider_model_name) {
+                    Some(b) => proxy_body = ProxyRequestBody::Buffered(Bytes::from(b)),
+                    None => {
+                        return build_error(
+                            &request_id,
+                            StatusCode::BAD_REQUEST,
+                            "could not rewrite model field",
+                        );
+                    }
+                }
+            }
+            ProxyRequestBody::Streaming { .. } => {
+                return build_error(
+                    &request_id,
+                    StatusCode::BAD_REQUEST,
+                    "streaming upload requires public model name == provider model name",
+                );
+            }
+        }
+    }
     let stream = head.stream;
     let stream_options_present = head.stream_options_present;
 
@@ -573,6 +602,18 @@ fn extract_api_key(headers: &HeaderMap) -> Option<String> {
         return Some(key_str.to_string());
     }
     None
+}
+
+/// Viết lại top-level "model" trong body JSON (chỉ cho body buffered nhỏ; không dùng cho streaming large body).
+fn rewrite_model_field(body: &[u8], new_model: &str) -> Option<Vec<u8>> {
+    let mut value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            "model".to_string(),
+            serde_json::Value::String(new_model.to_string()),
+        );
+    }
+    serde_json::to_vec(&value).ok()
 }
 
 fn generate_request_id() -> String {
@@ -681,6 +722,17 @@ mod tests {
     }
 
     #[test]
+    fn rewrite_model_field_swaps_top_level_model() {
+        let body = br#"{"model":"public","stream":false,"messages":[{"role":"user","content":"hi"}]}"#;
+        let out = rewrite_model_field(body, "provider-real-model").expect("rewrite");
+        let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(v["model"], "provider-real-model");
+        // Các field khác giữ nguyên.
+        assert_eq!(v["stream"], false);
+        assert_eq!(v["messages"][0]["content"], "hi");
+    }
+
+    #[test]
     fn estimate_tokens_positive() {
         let route = ModelRoute {
             model_name: "test".to_string(),
@@ -688,6 +740,12 @@ mod tests {
             fallback_backend_id: None,
             chars_per_token: 4.0,
             first_byte_timeout: std::time::Duration::from_secs(180),
+            provider_model_name: "test".to_string(),
+            context_tokens: None,
+            max_output_tokens: None,
+            price_input_per_mtok_usd: None,
+            price_output_per_mtok_usd: None,
+            enabled: true,
         };
         let body = Bytes::from_static(b"hello world");
         let est = estimate_tokens_len(body.len(), &route);

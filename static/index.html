@@ -514,7 +514,10 @@ function openRouteModal(route){
     if(pi.value!=="") payload.price_input_per_mtok_usd=Number(pi.value);
     if(po.value!=="") payload.price_output_per_mtok_usd=Number(po.value);
     if(fb.value) payload.fallback_backend_id=Number(fb.value);
-    try{ await api("/admin/routes","POST",payload); closeModal(); toast("Route saved"); routes=await api("/admin/routes","GET"); renderModels($("content")); }
+    var isEdit=!!route.model_name;
+    var path=isEdit?"/admin/routes/"+encodeURIComponent(route.model_name):"/admin/routes";
+    var method=isEdit?"PATCH":"POST";
+    try{ await api(path,method,payload); closeModal(); toast("Route saved"); routes=await api("/admin/routes","GET"); renderModels($("content")); }
     catch(e){ toast("Save failed: "+e.message,"err"); }
   };
   act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
