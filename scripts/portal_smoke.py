@@ -101,6 +101,10 @@ def main():
         check("admin /keys starts empty", r.status_code == 200 and r.json() == [])
         r = requests.get(base + "/admin/stats?days=30", headers=admin)
         check("admin /stats starts empty", r.status_code == 200 and r.json() == [])
+        r = requests.get(base + "/admin/summary?days=30", headers=admin)
+        ok = (r.status_code == 200 and "totals" in r.json()
+              and "by_model" in r.json() and "by_team" in r.json() and "by_key" in r.json())
+        check("admin /summary returns grouped stats", ok)
 
         # Create a client key (plaintext returned once)
         r = requests.post(base + "/admin/keys", headers=admin,
