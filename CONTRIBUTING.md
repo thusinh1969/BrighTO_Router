@@ -10,10 +10,10 @@ Run the standard local checks before opening a pull request:
 python3 scripts/hotpath_guard.py
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked --all-targets
+make test
 ```
 
-Integration tests use Postgres through `sqlx::test`. Set `DATABASE_URL` or use the project test wrapper once it is merged.
+Integration tests use PostgreSQL through `sqlx::test`. Run `make test` for the safest local path; it starts a temporary PostgreSQL container unless you explicitly set a non-default `DATABASE_URL` or `TEST_DATABASE_URL`.
 
 ## Benchmark changes
 
