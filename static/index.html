@@ -390,7 +390,7 @@ function openProviderModal(b){
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
   m.appendChild(el("h3",null, b.id?"Edit provider · "+b.name:"Add provider"));
-  var fields=[["name","Name",b.name||""],["base_url","Base URL",b.base_url||""],["api_key_ref","API key ref (env:NAME)",b.api_key_ref||""],["format","Format (openai / anthropic)",b.format||"openai"],["weight","Weight",String(b.weight||1)],["max_inflight","Max concurrent (0 = unlimited)",String(b.max_inflight||0)]];
+  var fields=[["name","Name",b.name||""],["base_url","Base URL",b.base_url||""],["format","Format (openai / anthropic)",b.format||"openai"],["weight","Weight",String(b.weight||1)],["max_inflight","Max concurrent (0 = unlimited)",String(b.max_inflight||0)]];
   var inputs={};
   fields.forEach(function(f){ var box=el("div","field"); box.appendChild(el("label",null,f[1])); var i=el("input"); i.value=f[2]; inputs[f[0]]=i; box.appendChild(i); m.appendChild(box); });
   var en=el("div","field");
@@ -400,7 +400,7 @@ function openProviderModal(b){
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary", b.id?"Save":"Add");
   save.onclick=async function(){
-    var payload={name:inputs.name.value.trim(),base_url:inputs.base_url.value.trim(),api_key_ref:inputs.api_key_ref.value.trim(),format:inputs.format.value.trim(),weight:Number(inputs.weight.value)||1,max_inflight:Number(inputs.max_inflight.value)||0,enabled:cb.checked};
+    var payload={name:inputs.name.value.trim(),base_url:inputs.base_url.value.trim(),api_key_ref:"env:NONE",format:inputs.format.value.trim(),weight:Number(inputs.weight.value)||1,max_inflight:Number(inputs.max_inflight.value)||0,enabled:cb.checked};
     try{
       if(b.id){ await api("/admin/backends/"+b.id,"PATCH",payload); }
       else { await api("/admin/backends","POST",payload); }
@@ -469,6 +469,16 @@ function openRouteModal(route){
   if(route.backend_ids && route.backend_ids.length) ps.value=route.backend_ids[0];
   f0.appendChild(ps); m.appendChild(f0);
 
+  var fa=el("div","field"); fa.appendChild(el("label",null,"Authentication"));
+  var am=el("select");
+  [["bearer","Bearer API key (OpenAI-compatible)"],["anthropic","Anthropic x-api-key"],["none","No API key (local llama.cpp/vLLM)"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];am.appendChild(o);});
+  if(route.auth_mode) am.value=route.auth_mode;
+  fa.appendChild(am); m.appendChild(fa);
+  var fk=el("div","field"); fk.appendChild(el("label",null,"Provider API key (blank = keep existing)"));
+  var pk=el("input"); pk.type="password"; pk.placeholder="sk-..."; fk.appendChild(pk); m.appendChild(fk);
+  am.onchange=function(){ fk.style.display = am.value==="none"?"none":""; };
+  if(am.value==="none") fk.style.display="none";
+
   var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model — load then pick one"));
   var row=el("div","row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
   var ms=el("select"); ms.style.flex="1";
@@ -478,7 +488,8 @@ function openRouteModal(route){
   loadBtn.onclick=async function(){
     loadBtn.disabled=true; loadBtn.textContent="Loading…";
     try{
-      var data=await api("/admin/backends/"+ps.value+"/models","GET");
+      var b=backends.find(function(x){return x.id===Number(ps.value);});
+      var data=await api("/admin/routes/preview-models","POST",{base_url:b.base_url,protocol:b.format,auth_mode:am.value,provider_key:pk.value});
       ms.innerHTML="";
       if(!data.models.length){ var eo=el("option",null,"No models returned"); eo.value=""; ms.appendChild(eo); return; }
       data.models.forEach(function(md){ var o=el("option",null,md); o.value=md; ms.appendChild(o); });
@@ -509,6 +520,8 @@ function openRouteModal(route){
     var modelSel=ms.value.trim();
     if(!modelSel){toast("Load models and pick a provider model","err");return;}
     var payload={model_name:name,backend_ids:[Number(ps.value)],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel};
+    payload.auth_mode=am.value;
+    if(pk.value.trim()) payload.provider_key=pk.value.trim();
     if(ct.value) payload.context_tokens=Number(ct.value);
     if(mo.value) payload.max_output_tokens=Number(mo.value);
     if(pi.value!=="") payload.price_input_per_mtok_usd=Number(pi.value);
