@@ -19,10 +19,16 @@ What happens:
 4. Default team and provider templates are seeded.
 5. Docker pulls and starts `thusinh1969/brighto_airouter:v1`.
 
-Open:
+Open on the same server:
 
 ```text
 http://127.0.0.1:18080/
+```
+
+Open from another machine by replacing `<SERVER_IP>` with the server address:
+
+```text
+http://<SERVER_IP>:18080/
 ```
 
 Default local admin key:
@@ -31,7 +37,14 @@ Default local admin key:
 brightoIsGreat@2026
 ```
 
-Change `ADMIN_MASTER_KEY` before any shared or production use.
+If the page opens but **Load providers** returns `403: ip not allowed`, allow your client network in `.env` and restart:
+
+```bash
+ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0
+./start.sh restart
+```
+
+For shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW_CIDR` to your VPN, office subnet, or reverse proxy.
 
 ## Daily commands
 
