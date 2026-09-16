@@ -264,6 +264,7 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/backends/{id}/key", put(put_backend_key))
         .route("/backends/{id}/models", get(fetch_backend_models))
         .route("/routes", get(list_routes).post(upsert_route))
+        .route("/routes/preview-models", post(preview_models))
         .route(
             "/routes/{model_name}",
             patch(patch_route).delete(delete_route),
@@ -390,6 +391,14 @@ struct ModelListResponse {
 }
 
 #[derive(Deserialize)]
+struct PreviewModelsRequest {
+    base_url: String,
+    protocol: String,
+    auth_mode: Option<String>,
+    provider_key: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct UpsertRoute {
     model_name: String,
     backend_ids: Vec<i64>,
@@ -403,6 +412,10 @@ struct UpsertRoute {
     price_input_per_mtok_usd: Option<f64>,
     price_output_per_mtok_usd: Option<f64>,
     enabled: Option<bool>,
+    /// Plaintext provider key (write-only). Ghi ra file secrets + lưu provider_key_ref.
+    provider_key: Option<String>,
+    /// bearer | anthropic | none
+    auth_mode: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -418,6 +431,7 @@ struct RouteResponse {
     price_input_per_mtok_usd: Option<f64>,
     price_output_per_mtok_usd: Option<f64>,
     enabled: bool,
+    auth_mode: String,
 }
 
 #[derive(Deserialize)]
@@ -591,7 +605,7 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
     let rows = sqlx::query::<sqlx::Postgres>(
         "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
-         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, auth_mode \
          FROM model_routes ORDER BY model_name",
     )
     .fetch_all(pool)
@@ -612,6 +626,7 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
             price_input_per_mtok_usd: row.try_get("price_input_per_mtok_usd")?,
             price_output_per_mtok_usd: row.try_get("price_output_per_mtok_usd")?,
             enabled: row.try_get("enabled")?,
+            auth_mode: row.try_get("auth_mode")?,
         });
     }
     Ok(out)
@@ -910,6 +925,78 @@ async fn fetch_backend_models(
     }))
 }
 
+/// Load models dùng credential từ body (KHÔNG persist). Cho route wizard "Load models" trước khi save.
+async fn preview_models(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(payload): Json<PreviewModelsRequest>,
+) -> Result<Json<ModelListResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let base_url = non_empty_trimmed(payload.base_url, "base_url")?;
+    let protocol = normalize_backend_format(&payload.protocol)?;
+    let auth_mode = payload
+        .auth_mode
+        .as_deref()
+        .unwrap_or("bearer")
+        .trim()
+        .to_string();
+    let key = payload
+        .provider_key
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let url = join_provider_url(&base_url, "/v1/models");
+    let mut req = state
+        .runtime
+        .client
+        .get(url)
+        .timeout(Duration::from_secs(15));
+    if auth_mode != "none" && !key.is_empty() {
+        match protocol {
+            "openai" => {
+                req = req.bearer_auth(key);
+            }
+            "anthropic" => {
+                req = req
+                    .header("x-api-key", key)
+                    .header("anthropic-version", "2023-06-01");
+            }
+            _ => {}
+        }
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| ApiError::internal(format!("fetch models: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            format!("provider models endpoint returned {}", resp.status()),
+        ));
+    }
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| ApiError::internal(format!("parse models response: {e}")))?;
+    let models = body
+        .get("data")
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.get("id").and_then(|v| v.as_str()).map(str::to_owned))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Ok(Json(ModelListResponse {
+        backend_id: 0,
+        backend_name: base_url,
+        models,
+    }))
+}
+
 async fn list_routes(
     Extension(state): Extension<Arc<AdminState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -933,6 +1020,8 @@ struct ValidatedRoute {
     price_input_per_mtok_usd: Option<f64>,
     price_output_per_mtok_usd: Option<f64>,
     enabled: bool,
+    provider_key_ref: Option<String>,
+    auth_mode: String,
 }
 
 fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
@@ -984,6 +1073,50 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| model_name.clone());
     let enabled = payload.enabled.unwrap_or(true);
+    let auth_mode = match payload.auth_mode.as_deref().unwrap_or("bearer").trim() {
+        "bearer" | "anthropic" | "none" => payload
+            .auth_mode
+            .as_deref()
+            .unwrap_or("bearer")
+            .trim()
+            .to_string(),
+        other => {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!("auth_mode must be bearer, anthropic or none, got: {other}"),
+            ));
+        }
+    };
+    // Ghi provider key (plaintext) ra file secrets nếu được cung cấp; chỉ lưu ref.
+    let provider_key_ref = match payload
+        .provider_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(key) => {
+            if auth_mode == "none" {
+                return Err(ApiError::new(
+                    StatusCode::BAD_REQUEST,
+                    "provider key must be empty when auth_mode is none",
+                ));
+            }
+            let data_dir =
+                std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/llm-router".to_string());
+            let dir = std::path::Path::new(&data_dir).join("provider_keys");
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| ApiError::internal(format!("create provider_keys dir: {e}")))?;
+            let file = format!(
+                "route_{}.key",
+                hex_encode(&Sha256::digest(model_name.as_bytes()))
+            );
+            let path = dir.join(&file);
+            std::fs::write(&path, key)
+                .map_err(|e| ApiError::internal(format!("write provider key: {e}")))?;
+            Some(format!("file:{}", path.display()))
+        }
+        None => None,
+    };
     let backend_ids_json = serde_json::to_string(&payload.backend_ids)?;
     Ok(ValidatedRoute {
         model_name,
@@ -998,6 +1131,8 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
         price_input_per_mtok_usd: payload.price_input_per_mtok_usd,
         price_output_per_mtok_usd: payload.price_output_per_mtok_usd,
         enabled,
+        provider_key_ref,
+        auth_mode,
     })
 }
 
@@ -1014,6 +1149,7 @@ fn route_response(v: ValidatedRoute) -> RouteResponse {
         price_input_per_mtok_usd: v.price_input_per_mtok_usd,
         price_output_per_mtok_usd: v.price_output_per_mtok_usd,
         enabled: v.enabled,
+        auth_mode: v.auth_mode,
     }
 }
 
@@ -1029,15 +1165,16 @@ async fn upsert_route(
     sqlx::query::<sqlx::Postgres>(
         "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
-         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) \
          ON CONFLICT (model_name) DO UPDATE SET \
          backend_ids = EXCLUDED.backend_ids, fallback_backend_id = EXCLUDED.fallback_backend_id, \
          chars_per_token = EXCLUDED.chars_per_token, first_byte_timeout = EXCLUDED.first_byte_timeout, \
          provider_model_name = EXCLUDED.provider_model_name, context_tokens = EXCLUDED.context_tokens, \
          max_output_tokens = EXCLUDED.max_output_tokens, \
          price_input_per_mtok_usd = EXCLUDED.price_input_per_mtok_usd, \
-         price_output_per_mtok_usd = EXCLUDED.price_output_per_mtok_usd, enabled = EXCLUDED.enabled",
+         price_output_per_mtok_usd = EXCLUDED.price_output_per_mtok_usd, enabled = EXCLUDED.enabled, \
+         provider_key_ref = EXCLUDED.provider_key_ref, auth_mode = EXCLUDED.auth_mode",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -1050,6 +1187,8 @@ async fn upsert_route(
     .bind(v.price_input_per_mtok_usd)
     .bind(v.price_output_per_mtok_usd)
     .bind(v.enabled)
+    .bind(&v.provider_key_ref)
+    .bind(&v.auth_mode)
     .execute(pool)
     .await?;
     state.reload_now().await?;
@@ -1086,7 +1225,8 @@ async fn patch_route(
         "UPDATE model_routes SET model_name = $1, backend_ids = $2, fallback_backend_id = $3, \
          chars_per_token = $4, first_byte_timeout = $5, provider_model_name = $6, \
          context_tokens = $7, max_output_tokens = $8, price_input_per_mtok_usd = $9, \
-         price_output_per_mtok_usd = $10, enabled = $11 WHERE model_name = $12",
+         price_output_per_mtok_usd = $10, enabled = $11, provider_key_ref = $12, auth_mode = $13 \
+         WHERE model_name = $14",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -1099,6 +1239,8 @@ async fn patch_route(
     .bind(v.price_input_per_mtok_usd)
     .bind(v.price_output_per_mtok_usd)
     .bind(v.enabled)
+    .bind(&v.provider_key_ref)
+    .bind(&v.auth_mode)
     .bind(&old_name)
     .execute(pool)
     .await?;
