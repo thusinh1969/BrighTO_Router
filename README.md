@@ -2,11 +2,20 @@
 
 GitHub repository: `https://github.com/thusinh1969/Brighto_AIRouter`
 
-BrighTO-Router is a high-performance LLM router written in Rust. It sits between applications and LLM backends, keeps the API surface compatible with OpenAI-style clients, and adds the operational controls teams need in production: model routing, fallback, team/API-key budgets, rate limits, concurrency limits, usage ledger, admin portal, health checks, and Prometheus metrics.
+BrighTO-Router is a high-performance LLM router written in Rust. LLM means Large Language Model. It sits between applications and model backends, keeps the API surface compatible with OpenAI-style clients, and adds the operational controls teams need in production: model routing, fallback, team/API-key budgets, rate limits, concurrency limits, usage ledger, admin portal, health checks, and Prometheus metrics. API means Application Programming Interface.
 
 The project goal is explicit: keep the inference path as small and predictable as possible. The router should add sub-millisecond overhead in the common case, preserve streaming behavior, and avoid infrastructure that is not required for the fastest production profile.
 
-Current status: the local mock benchmark gate has passed on this workspace with the root-cause performance stack applied. The current audited artifact is `bench/results/20260917-000839`. Some broader `BENCHMARK.md` gates are still being automated; see [Benchmark truth](#benchmark-truth) before using broader claims.
+Current status: this repository contains the full benchmark strategy, 500k/1M token-class stress payload support, router RSS memory sampling, baseline regression enforcement, and true B10 ledger-lag measurement. RSS means resident set size, the physical memory reported by Linux. B10 measures the p99 time from request completion in the router to insertion in PostgreSQL. The latest local checks verify Rust tests, Postgres integration, Docker Compose config, Docker Hub image availability, and a short B10 smoke run. A full public release baseline is still intentionally separate: run the full gate with `BASELINE_BOOTSTRAP=1`, review the result, then commit `bench/baseline.json` before claiming the entire `BENCHMARK.md` contract green for a release.
+
+Common terms used in this README:
+
+- **SDK** means Software Development Kit, usually a client library used by an application.
+- **TTFB** means time to first byte, the time until the first response byte arrives.
+- **RPS** means requests per second.
+- **SME** means small or medium-sized enterprise.
+- **JSONL** means newline-delimited JSON, one JSON record per line.
+- **TLS** means Transport Layer Security, the encryption layer normally used by HTTPS.
 
 ## What it does
 
@@ -26,7 +35,7 @@ BrighTO-Router provides:
 - Admin API and embedded portal for teams, keys, budgets, and usage lookup.
 - `/healthz`, `/readyz`, `/metrics`, and JSON logs.
 
-It is designed for SMEs and teams that need one internal LLM endpoint instead of many provider-specific endpoints and keys.
+It is designed for small and medium-sized enterprises and teams that need one internal LLM endpoint instead of many provider-specific endpoints and keys.
 
 ## Why Rust
 
@@ -56,7 +65,7 @@ BrighTO-Router
     |-- budget: RAM counters for team/key/model budgets, RPM, concurrency
     |-- route: choose backend from current config snapshot
     |-- proxy: forward request, preserve streaming, tap usage
-    |-- ledger: enqueue UsageEvent, write Postgres in background, fallback to JSONL if DB is down
+    |-- ledger: enqueue usage event, write Postgres in background, fallback to JSONL file if DB is down
     |-- metrics/logs: Prometheus and structured JSON logs
     v
 LLM backends
@@ -93,7 +102,7 @@ scripts/                # production checks and canonical benchmark harness
 benchmarks/             # benchmark spec, payload generator, threshold file
 k8s/                    # minimal Kubernetes manifests
 swarm/                  # build/audit history and agent-working artifacts
-bench/results/          # generated benchmark artifacts; ignored by git
+bench/                  # reviewed baseline plus generated benchmark results
 ```
 
 ## Install
@@ -326,7 +335,7 @@ Prometheus metrics include request counts, token counts, TTFB, router overhead, 
 
 ## Benchmark truth
 
-The project is benchmark-first. The benchmark contract lives in `benchmarks/BENCHMARK.md`; thresholds live in `benchmarks/thresholds.toml`. The canonical local performance harness is `scripts/bench_real.py` and the compatibility shell entrypoint is `benchmarks/gate.sh`.
+The project is benchmark-first. The full benchmark strategy lives in [benchmarks/STRATEGY.md](benchmarks/STRATEGY.md); the release contract lives in [benchmarks/BENCHMARK.md](benchmarks/BENCHMARK.md); thresholds live in [benchmarks/thresholds.toml](benchmarks/thresholds.toml). The canonical local performance harness is `scripts/bench_real.py` and the compatibility shell entrypoint is `benchmarks/gate.sh`.
 
 The local benchmark uses a deterministic Rust mock upstream, `brighto-router-mock`, so router overhead is not hidden behind model latency. The benchmark generates 1k, 50k, and 200k-token-class payloads, measures direct-to-mock versus router-to-mock, and records raw `oha` JSON for audit.
 
@@ -358,7 +367,7 @@ B4 200k TTFB delta -0.017ms
 B6 target throughput 8499.48 rps, non-200 0
 ```
 
-The artifact passed the long local harness before this repository cleanup. The current harness now records B3 flatness and worst-run fields directly. Baseline regression enforcement and the true B10 ledger-lag gate are still tracked under `swarm/audits/`; until those are integrated and rerun, do not treat the artifact as proof of every row in `BENCHMARK.md`.
+The artifact passed the long local harness before the B10 ledger-lag, RSS memory, 500k/1M stress, and baseline-regression additions. The current harness now records B3 flatness, worst-run fields, router RSS memory samples, true B10 ledger lag with an isolated benchmark model, and baseline status. Rerun the full gate with `BASELINE_BOOTSTRAP=1` before treating the current tree as proof of every row in `BENCHMARK.md`.
 
 Run a short smoke test:
 
@@ -366,11 +375,35 @@ Run a short smoke test:
 ./start.sh smoke
 ```
 
-Run the release gate:
+Run the release gate after a reviewed `bench/baseline.json` exists:
 
 ```bash
 ./start.sh gate
 ```
+
+Create the first baseline only from a full reviewed green run:
+
+```bash
+BASELINE_BOOTSTRAP=1 ./start.sh gate
+cp bench/results/<timestamp>/baseline_candidate.json bench/baseline.json
+```
+
+Run a large prompt stress proof for 500k and 1M token-class pass-through behavior:
+
+```bash
+BENCH_PAYLOADS=500k,1m \
+BENCH_STREAM_PAYLOADS=500k-stream,1m-stream \
+CONCS=1,50,200 \
+RUNS=3 \
+DUR=60s \
+WARM=15s \
+BENCH_B6=0 \
+BENCH_B10=0 \
+REQUIRE_PASS=0 \
+python3 scripts/bench_real.py
+```
+
+This stress proof records router memory through RSS, which means resident set size reported by Linux. The stress proof is measurement-first until a reviewed baseline exists; it should not fail on made-up speed targets.
 
 For public claims such as “fastest LLM router”, compare BrighTO-Router against named routers on the same hardware, same payloads, same backend, same TLS/proxy settings, and same offered-rate shape. The repository keeps raw artifacts so these claims can be audited rather than inferred.
 
@@ -419,7 +452,7 @@ BrighTO-Router was built from the benchmark contract backward:
 6. Reject larger rewrites when they improve one run but fail the full gate or add unnecessary architecture.
 7. Keep production dependencies minimal: Rust binary + Postgres for control/ledger persistence.
 
-The most important performance fixes are documented in `swarm/audits/`. The current fast path is based on exact-length upload passthrough, no backend gzip decode, small-response fast path, streamed large responses, 4 Tokio worker threads for the measured machine, in-memory config snapshots, in-memory counters, and async ledger writes.
+The most important performance fixes and review notes are documented in `swarm/audits/`. The current fast path is based on exact-length upload passthrough, no backend gzip decode, small-response fast path, streamed large responses, 4 Tokio worker threads for the measured machine, in-memory config snapshots, in-memory counters, and async ledger writes.
 
 ## SME/team use cases
 

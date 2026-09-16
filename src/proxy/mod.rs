@@ -462,6 +462,7 @@ impl CompletionReporter {
             ttfb_ms: self.ttfb_ms,
             total_ms,
             router_overhead_ms: self.pre_forward_ms,
+            completed_at_ms: now_millis(),
             stream: self.stream,
             client_aborted,
             error_class,
@@ -536,6 +537,7 @@ impl Drop for CompletionReporter {
                 ttfb_ms: self.ttfb_ms,
                 total_ms,
                 router_overhead_ms: self.pre_forward_ms,
+                completed_at_ms: now_millis(),
                 stream: self.stream,
                 client_aborted: true,
                 error_class: Some("client_aborted".to_string()),
@@ -555,6 +557,13 @@ impl Drop for CompletionReporter {
 
 fn is_retryable_status(status: u16) -> bool {
     status >= 500 || status == 429
+}
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 fn build_response(

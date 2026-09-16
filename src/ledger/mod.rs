@@ -222,7 +222,7 @@ async fn insert_batch(pool: &PgPool, batch: &[UsageEvent]) -> anyhow::Result<()>
 
     let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "INSERT INTO usage_ledger (ts, request_id, key_id, team_id, model, backend_id, status, \
-         input_tokens, output_tokens, estimated, ttfb_ms, total_ms, router_overhead_ms, stream, \
+         input_tokens, output_tokens, estimated, ttfb_ms, total_ms, router_overhead_ms, completed_at_ms, stream, \
          client_aborted, error_class) ",
     );
     qb.push_values(batch.iter(), |mut b, ev| {
@@ -239,6 +239,7 @@ async fn insert_batch(pool: &PgPool, batch: &[UsageEvent]) -> anyhow::Result<()>
             .push_bind(u64_to_i64(ev.ttfb_ms))
             .push_bind(u64_to_i64(ev.total_ms))
             .push_bind(u64_to_i64(ev.router_overhead_ms))
+            .push_bind(u64_to_i64(ev.completed_at_ms))
             .push_bind(ev.stream)
             .push_bind(ev.client_aborted)
             .push_bind(ev.error_class.as_deref());
@@ -446,6 +447,7 @@ mod tests {
             ttfb_ms: 100,
             total_ms: 200,
             router_overhead_ms: 5,
+            completed_at_ms: now_ms(),
             stream: false,
             client_aborted: false,
             error_class: None,

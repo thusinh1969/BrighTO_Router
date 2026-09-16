@@ -47,3 +47,12 @@ max_mismatch_pct = 30               # x-router-overhead-ms so với đo ngoài
 
 [regression]
 max_worse_than_baseline_pct = 10
+
+[stress]
+# 500k and 1m payloads are measurement-first until a reviewed baseline exists.
+# Do not add hard speed thresholds here without an artifact and written reason.
+payloads = ["500k", "1m"]
+
+[memory]
+# RSS means resident set size from Linux /proc/<pid>/status.
+record_rss = true
