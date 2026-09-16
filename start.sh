@@ -10,8 +10,10 @@ ENV_FILE="$ROOT/.env"
 DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router"
 DEFAULT_ADMIN_KEY="brightoIsGreat@2026"
 DEFAULT_LISTEN_ADDR="0.0.0.0:18080"
+# Legacy defaults are kept only to upgrade old local .env files in place.
 OLD_DEFAULT_LISTEN_ADDR="0.0.0.0:8080"
 OLD_DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router"
+OLD_DEFAULT_ADMIN_KEY="brighto-admin-dev"
 
 say() { printf '\n==> %s\n' "$*"; }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -72,7 +74,7 @@ PY
 
 ensure_env_defaults() {
   [[ -f "$ENV_FILE" ]] || return 0
-  if grep -q '^ADMIN_MASTER_KEY=brighto-admin-dev$' "$ENV_FILE"; then
+  if grep -q "^ADMIN_MASTER_KEY=${OLD_DEFAULT_ADMIN_KEY}$" "$ENV_FILE"; then
     set_env_var ADMIN_MASTER_KEY "$DEFAULT_ADMIN_KEY"
   fi
   if grep -q "^DATABASE_URL=${OLD_DEFAULT_URL}$" "$ENV_FILE"; then

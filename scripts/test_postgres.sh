@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 DEFAULT_DATABASE_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router"
+# Legacy default is recognized only so tests do not use an old local development DB by accident.
 OLD_DEFAULT_DATABASE_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router"
 DATABASE_URL_WAS_SET=0
 TEST_DATABASE_URL_WAS_SET=0
