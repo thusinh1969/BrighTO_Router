@@ -375,12 +375,22 @@ function renderProviders(c){
       var td=el("td"); var row=el("div","row"); row.style.gap="6px";
       var f=el("button","btn sm ghost","Load models"); f.onclick=function(){fetchModels(b);};
       var e=el("button","btn sm primary","Edit"); e.onclick=function(){openProviderModal(b);};
-      row.appendChild(f); row.appendChild(e); td.appendChild(row); tr.appendChild(td);
+      var d=el("button","btn sm danger","Delete"); d.onclick=function(){deleteProvider(b);};
+      row.appendChild(f); row.appendChild(e); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
     t.appendChild(tb); w.appendChild(t); p.appendChild(w);
   }
   c.appendChild(p);
+}
+async function deleteProvider(b){
+  if(!confirm("Delete provider "+b.name+"?")) return;
+  try{
+    await api("/admin/backends/"+b.id,"DELETE");
+    toast("Provider deleted");
+    backends=await api("/admin/backends","GET");
+    renderProviders($("content"));
+  }catch(e){ toast("Delete failed: "+e.message,"err"); }
 }
 function openProviderModal(b){
   b=b||{};
