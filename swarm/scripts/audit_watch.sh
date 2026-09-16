@@ -1,43 +1,36 @@
-#!/bin/bash
-# audit_watch.sh — cron job: poll audits/ mỗi 5 phút, bắt verdict mới/chỉnh sửa từ Auditor (CODEX/GLM).
-# Fingerprint = mtime + size + sha256 => bắt cả file mới lẫn file bị SỬA (không chỉ file mới).
-# Kết quả dồn vào swarm/out/audit_verdicts.md để CODER đọc gọn; log vào audits/WATCH.log.
-set -u
+#!/usr/bin/env bash
+set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$SELF_DIR/.." && pwd)"
-AUD="$REPO/audits"
-OUT="$REPO/swarm/out/audit_verdicts.md"
+REPO="$(cd "$SELF_DIR/../.." && pwd)"
+AUD="$REPO/swarm/audits"
+OUT_DIR="$REPO/swarm/out"
+OUT="$OUT_DIR/audit_verdicts.md"
 LOG="$AUD/WATCH.log"
-SEEN="$REPO/swarm/out/.audit_seen"
+SEEN="$OUT_DIR/.audit_seen"
 
-mkdir -p "$REPO/swarm/out"
-touch "$SEEN" 2>/dev/null || true
+mkdir -p "$OUT_DIR"
+touch "$SEEN"
 
 shopt -s nullglob
-for f in "$AUD"/*; do
-  [ -f "$f" ] || continue
-  b="$(basename "$f")"
-  case "$b" in
-    WATCH.log|watch_noop.log|README.md) continue ;;
+for file in "$AUD"/*; do
+  [[ -f "$file" ]] || continue
+  base="$(basename "$file")"
+  case "$base" in
+    WATCH.log|watch_noop.log|README.md|AUDITOR-POLL-STATE.md) continue ;;
   esac
 
-  # Bỏ qua checkpoint Jupyter (bản sao cũ, dễ gây nhiễu).
-  case "$b" in
-    *-checkpoint.md|*.ipynb) continue ;;
-  esac
-
-  fp="$(stat -c '%Y %s' "$f" 2>/dev/null) $(sha256sum "$f" 2>/dev/null | cut -d' ' -f1)"
-  key="$b|$fp"
+  fp="$(stat -c '%Y %s' "$file") $(sha256sum "$file" | cut -d' ' -f1)"
+  key="$base|$fp"
   if ! grep -qFx "$key" "$SEEN"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') NEW/CHANGED AUDIT: $b" >> "$LOG"
     {
-      echo ""
-      echo "## $(date '+%Y-%m-%d %H:%M:%S') — verdict: $b"
-      echo "=== NOI DUNG ($b) ==="
-      cat "$f"
-      echo ""
+      printf '%s NEW_OR_CHANGED_AUDIT %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$base"
+    } >> "$LOG"
+    {
+      printf '\n## %s — %s\n\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$base"
+      cat "$file"
+      printf '\n'
     } >> "$OUT"
-    echo "$key" >> "$SEEN"
+    printf '%s\n' "$key" >> "$SEEN"
   fi
 done

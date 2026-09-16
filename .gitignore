@@ -22,3 +22,7 @@ benchmarks/payloads/
 .wtest
 __pycache__/
 *.pyc
+
+# local auditor watcher output
+swarm/out/
+swarm/audits/WATCH.log
