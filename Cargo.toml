@@ -34,8 +34,6 @@ memchr      = "2.8.3"                                    # scan chunks for "usag
 arc-swap    = "1.9.2"                                    # lock-free config snapshot swap
 dashmap     = "6.2.1"                                    # per-instance backend inflight counters
 # Keep the default fastest path PostgreSQL-only.
-# If strict multi-instance global quotas become a measured production requirement,
-# add Redis behind an optional feature instead of the default router binary.
 
 # --- DB: config and ledger. Production/default runtime is PostgreSQL only. ---
 # tls-rustls-aws-lc-rs matches the reqwest TLS provider.

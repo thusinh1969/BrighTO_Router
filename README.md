@@ -6,7 +6,7 @@ BrighTO-Router is a Rust LLM router for teams that want one fast, controlled int
 
 An **LLM** is a Large Language Model. A **router** is the service between your application and model providers. BrighTO-Router receives OpenAI-style or Anthropic-style API requests, chooses the configured backend, forwards the request, streams the response, and records usage.
 
-The design goal is simple: keep the request path short enough that the router is not the bottleneck. Postgres stores configuration and usage. Redis is not part of the default runtime because the fastest production profile should not add another network hop unless a deployment proves it needs strict shared quotas across many router instances.
+The design goal is simple: keep the request path short enough that the router is not the bottleneck. PostgreSQL stores configuration and usage. The production runtime is the Rust router plus PostgreSQL.
 
 Official repository: `https://github.com/thusinh1969/Brighto_AIRouter`
 
@@ -254,7 +254,6 @@ The enterprise edition is the right place for features that teams usually need a
 - Central audit log export.
 - Secrets manager integration.
 - Multi-region deployment guidance.
-- Optional Redis-backed shared quotas when strict multi-instance quota enforcement is required.
 - Provider cost dashboards and chargeback reports.
 - Support packages and performance certification on customer hardware.
 

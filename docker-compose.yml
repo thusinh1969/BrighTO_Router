@@ -1,7 +1,7 @@
 name: brighto-airouter
 
 # Single-node runtime: router + PostgreSQL 16.
-# Fastest default profile uses PostgreSQL only. Add Redis only after proving a strict multi-instance quota requirement.
+# Production default uses PostgreSQL only.
 services:
   router:
     image: ${BRIGHTO_ROUTER_IMAGE:-thusinh1969/brighto_airouter:v1}
