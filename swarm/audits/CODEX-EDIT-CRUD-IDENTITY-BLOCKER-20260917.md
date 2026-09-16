@@ -68,3 +68,32 @@ The user explicitly requested checking all edit flows:
 - Provider edit: must update the same backend id, not create a new backend.
 - API key edit/disable: current portal appears to support disabling, not full edit. If full edit is intentionally unsupported, label it clearly as Disable, not Edit. If edit is required, add `PATCH /admin/keys/{id}` with owner/limits/budget/expiry/allowed models/enabled.
 
+
+## Live user report: delete action also failing
+
+After this audit was created, the user reported from the live portal: “Delete cũng ko được”. DeepSeek must not treat CRUD as fixed until delete is tested in the real browser.
+
+Required delete checks:
+
+1. Model route delete:
+   - Create a unique route.
+   - Click Delete in portal.
+   - Confirm browser dialog if present.
+   - Expected: row disappears after refresh and `GET /admin/routes` no longer contains the route.
+   - If the row stays visible, inspect whether the UI forgot to refresh, delete endpoint failed, model name path encoding is wrong, or modal/table state is stale.
+
+2. Provider delete:
+   - There is currently no obvious `DELETE /admin/backends/{id}` endpoint in the admin router.
+   - If the UI shows delete for provider, it cannot work correctly until backend supports it or UI labels it as Disable.
+   - Do not hard-delete a provider referenced by routes without either blocking with a clear message or cascading intentionally.
+
+3. Team delete:
+   - There is currently no obvious `DELETE /admin/teams/{id}` endpoint in the admin router.
+   - If UI shows delete, it must either disable the team or backend must implement safe delete rules.
+
+4. API key delete/disable:
+   - API endpoint is `DELETE /admin/keys/{id}` and should disable, not remove.
+   - UI must show the row becomes disabled after clicking.
+   - If the user sees no effect, fix frontend refresh/state or error toast visibility.
+
+Production rule: every destructive button must be backed by a tested API endpoint and a visible post-action state change. If the backend only supports disable, the button text must say `Disable`, not `Delete`.
