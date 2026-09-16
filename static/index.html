@@ -3,298 +3,647 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BrighTO-Router Admin</title>
+  <title>BrighTO-Router Portal</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-    section { border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 2rem; }
-    label { display: block; margin: 0.75rem 0 0.25rem; }
-    input, textarea { width: 100%; padding: 0.4rem; border: 1px solid #ccc; border-radius: 4px; }
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --ink: #142033;
+      --muted: #64748b;
+      --line: #d8e0ec;
+      --brand: #2957ff;
+      --brand-dark: #173bc2;
+      --good: #087f5b;
+      --warn: #b45309;
+      --bad: #b42318;
+      --soft: #eef3ff;
+      --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(41, 87, 255, 0.18), transparent 32rem),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 45%, #eef2f7 100%);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    .shell { max-width: 1180px; margin: 0 auto; padding: 32px 20px 56px; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.45fr 0.85fr;
+      gap: 24px;
+      align-items: stretch;
+      margin-bottom: 22px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(216, 224, 236, 0.9);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-main { padding: 30px; }
+    .hero-side { padding: 22px; }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--brand-dark);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    h1 { margin: 16px 0 10px; font-size: clamp(32px, 5vw, 54px); line-height: 1.02; letter-spacing: -0.04em; }
+    h2 { margin: 0 0 6px; font-size: 20px; letter-spacing: -0.015em; }
+    h3 { margin: 0 0 10px; font-size: 16px; }
+    p { margin: 0; color: var(--muted); }
+
+    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 14px;
+      background: var(--brand);
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
+      box-shadow: 0 10px 22px rgba(41, 87, 255, 0.18);
+    }
+
+    button:hover { background: var(--brand-dark); transform: translateY(-1px); }
+    button.secondary { background: #edf2f7; color: #1f2a44; box-shadow: none; }
+    button.secondary:hover { background: #dfe7f2; }
+    button.ghost { background: transparent; color: var(--brand-dark); box-shadow: none; padding: 6px 8px; }
+    button.danger { background: var(--bad); }
+
+    .status-grid { display: grid; gap: 10px; margin-top: 18px; }
+    .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: #f1f5f9;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .pill.good { background: #dcfce7; color: var(--good); }
+    .pill.warn { background: #ffedd5; color: var(--warn); }
+    .pill.bad { background: #fee2e2; color: var(--bad); }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+    .wide { grid-column: 1 / -1; }
+    section.card { padding: 22px; }
+
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+    .step { padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: #fbfdff; }
+    .step strong { display: block; margin-bottom: 4px; }
+    .step span { color: var(--muted); font-size: 13px; }
+
+    label { display: block; margin: 12px 0 6px; font-weight: 700; font-size: 13px; color: #263449; }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 12px;
+      background: white;
+      color: var(--ink);
+      font: inherit;
+      outline: none;
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 4px rgba(41, 87, 255, 0.10); }
     input[type="checkbox"] { width: auto; }
-    button { margin-top: 1rem; padding: 0.5rem 1.2rem; cursor: pointer; }
-    pre { background: #f5f5f5; padding: 0.75rem; border-radius: 6px; overflow-x: auto; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-    th, td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left; }
-    th { background: #fafafa; }
-    .note { color: #a33; margin-top: 0.5rem; }
+    textarea { min-height: 86px; resize: vertical; }
+
+    .inline { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .checkline { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: 700; }
+    .help { margin-top: 8px; font-size: 13px; color: var(--muted); }
+    code { background: #edf2f7; color: #1f2a44; padding: 2px 5px; border-radius: 6px; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 14px; }
+    th, td { padding: 10px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.wrap { word-break: break-word; max-width: 280px; }
+    tr:hover td { background: #fbfdff; }
+
+    pre {
+      margin: 12px 0 0;
+      padding: 12px;
+      border-radius: 12px;
+      background: #0f172a;
+      color: #dbeafe;
+      overflow-x: auto;
+      min-height: 42px;
+      white-space: pre-wrap;
+    }
+
+    .notice {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #fff7ed;
+      color: #9a3412;
+      border: 1px solid #fed7aa;
+    }
+    .notice.good { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+    .notice.bad { background: #fef2f2; color: #b42318; border-color: #fecaca; }
+    .hidden { display: none; }
+    .model-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .model-chip { background: #eef3ff; color: var(--brand-dark); border: 1px solid #c7d2fe; box-shadow: none; }
+    .footer { margin-top: 24px; color: var(--muted); font-size: 13px; text-align: center; }
+
+    @media (max-width: 900px) {
+      .hero, .grid, .inline { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 560px) {
+      .shell { padding: 18px 12px 36px; }
+      .hero-main, .hero-side, section.card { padding: 18px; }
+      .steps { grid-template-columns: 1fr; }
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+    }
   </style>
 </head>
 <body>
-  <h1>BrighTO-Router Admin</h1>
+  <main class="shell">
+    <div class="hero">
+      <div class="card hero-main">
+        <div class="eyebrow">BrighTO-Router Portal</div>
+        <h1>One control page for teams, models, budgets, and usage.</h1>
+        <p>Set one admin key, connect provider backends, expose approved model routes, and create team API keys. The router keeps request routing fast; this Portal only manages control-plane settings.</p>
+        <div class="actions">
+          <button onclick="loadEverything()">Load dashboard</button>
+          <button class="secondary" onclick="checkRuntime()">Check runtime</button>
+        </div>
+        <div id="global-message" class="notice hidden"></div>
+      </div>
 
-  <section>
-    <h2>Admin key</h2>
-    <label>Master key (x-admin-key)</label>
-    <input id="admin-key" type="password" placeholder="ADMIN_MASTER_KEY">
-  </section>
+      <div class="card hero-side">
+        <h2>Admin access</h2>
+        <p>Use the value of <code>ADMIN_MASTER_KEY</code> from <code>.env</code>.</p>
+        <label for="admin-key">Master key</label>
+        <input id="admin-key" type="password" placeholder="brightoIsGreat@2026" autocomplete="off">
+        <div class="pill-row">
+          <span id="health-pill" class="pill">health: unknown</span>
+          <span id="ready-pill" class="pill">ready: unknown</span>
+          <span id="provider-pill" class="pill">providers: not loaded</span>
+        </div>
+        <div class="notice">
+          Provider keys are set on the server with <code>./start.sh set-key provider api-key</code>. The Portal never displays plaintext provider keys.
+        </div>
+      </div>
+    </div>
 
+    <section class="card wide">
+      <h2>First-time setup path</h2>
+      <div class="steps">
+        <div class="step"><strong>1. Load providers</strong><span>Verify seeded OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, and Custom.</span></div>
+        <div class="step"><strong>2. Set provider key</strong><span>Run <code>./start.sh set-key openai sk-...</code> on the server.</span></div>
+        <div class="step"><strong>3. Enable backend</strong><span>Choose the backend, confirm URL/format, then save.</span></div>
+        <div class="step"><strong>4. Route and issue key</strong><span>Fetch models, create a route, then create a team API key.</span></div>
+      </div>
+    </section>
 
-  <section>
-    <h2>Provider backends</h2>
-    <p>Run <code>./start.sh seed</code> once if this table is empty. Put provider API keys in <code>.env</code> with <code>./start.sh set-key openai sk-...</code>; the database stores only env references such as <code>env:OPENAI_API_KEY</code>.</p>
-    <button onclick="loadBackends()">Load providers</button>
-    <table id="backend-table">
-      <thead>
-        <tr><th>ID</th><th>Name</th><th>Enabled</th><th>Key ready</th><th>Base URL</th><th>Format</th><th>Action</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <pre id="backend-error"></pre>
+    <div class="grid">
+      <section class="card wide">
+        <h2>Provider backends</h2>
+        <p>Disabled providers are templates. Enable only providers with a configured key.</p>
+        <div class="actions">
+          <button onclick="loadBackends()">Load providers</button>
+          <button class="secondary" onclick="loadRoutes()">Load routes</button>
+        </div>
+        <table id="backend-table">
+          <thead>
+            <tr><th>ID</th><th>Name</th><th>Enabled</th><th>Key ready</th><th>Base URL</th><th>Format</th><th>Action</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <pre id="backend-result"></pre>
+      </section>
 
-    <h3>Update backend</h3>
-    <label>Backend ID</label>
-    <input id="backend-id" type="number" placeholder="1">
-    <label>Base URL</label>
-    <input id="backend-base-url" placeholder="https://api.openai.com">
-    <label>API key reference</label>
-    <input id="backend-key-ref" placeholder="env:OPENAI_API_KEY">
-    <label>Format</label>
-    <input id="backend-format" placeholder="openai or anthropic">
-    <label><input id="backend-enabled" type="checkbox"> Enabled</label>
-    <button onclick="updateBackend()">Save backend</button>
-    <pre id="backend-result"></pre>
+      <section class="card">
+        <h2>Edit backend</h2>
+        <label for="backend-id">Backend ID</label>
+        <input id="backend-id" type="number" placeholder="1">
+        <label for="backend-base-url">Base URL</label>
+        <input id="backend-base-url" placeholder="https://api.openai.com">
+        <label for="backend-key-ref">API key reference</label>
+        <input id="backend-key-ref" placeholder="env:OPENAI_API_KEY">
+        <div class="inline">
+          <div>
+            <label for="backend-format">Format</label>
+            <select id="backend-format">
+              <option value="openai">OpenAI-style</option>
+              <option value="anthropic">Anthropic Messages</option>
+            </select>
+          </div>
+          <div>
+            <label for="backend-max-inflight">Max in-flight, 0 = unlimited</label>
+            <input id="backend-max-inflight" type="number" min="0" value="0">
+          </div>
+        </div>
+        <label class="checkline"><input id="backend-enabled" type="checkbox"> Enabled</label>
+        <button onclick="updateBackend()">Save backend</button>
+        <div class="help">If key ready is false, run <code>./start.sh set-key &lt;provider&gt; &lt;api-key&gt;</code> on the server.</div>
+      </section>
 
-    <h3>Fetch models and create route</h3>
-    <label>Backend ID</label>
-    <input id="models-backend-id" type="number" placeholder="1">
-    <button onclick="fetchModels()">Fetch models</button>
-    <div id="models-list"></div>
-    <label>Manual model name</label>
-    <input id="route-model" placeholder="gpt-4o-mini">
-    <label>Route backend IDs</label>
-    <input id="route-backends" placeholder="1 or 1,2,3">
-    <button onclick="createRouteFromInputs()">Create or update route</button>
-    <pre id="route-result"></pre>
-  </section>
+      <section class="card">
+        <h2>Fetch models and create route</h2>
+        <label for="models-backend-id">Backend ID</label>
+        <input id="models-backend-id" type="number" placeholder="1">
+        <button onclick="fetchModels()">Fetch models</button>
+        <div id="models-list" class="model-list"></div>
+        <label for="route-model">Model name exposed to users</label>
+        <input id="route-model" placeholder="gpt-4o-mini">
+        <label for="route-backends">Backend IDs</label>
+        <input id="route-backends" placeholder="1 or 1,2,3">
+        <div class="inline">
+          <div>
+            <label for="route-chars-per-token">Chars per token</label>
+            <input id="route-chars-per-token" type="number" step="0.1" min="0.1" value="4">
+          </div>
+          <div>
+            <label for="route-timeout">First byte timeout, seconds</label>
+            <input id="route-timeout" type="number" min="1" value="180">
+          </div>
+        </div>
+        <button onclick="createRouteFromInputs()">Create or update route</button>
+        <pre id="route-result"></pre>
+      </section>
 
-  <section>
-    <h2>Create team</h2>
-    <label>Team name</label>
-    <input id="team-name" placeholder="team-a">
-    <label>Budget JSON (optional)</label>
-    <textarea id="team-budget" rows="3">{"period":"month","max_tokens":1000000}</textarea>
-    <label><input id="team-enabled" type="checkbox" checked> Enabled</label>
-    <button onclick="createTeam()">Create team</button>
-    <pre id="team-result"></pre>
-  </section>
+      <section class="card wide">
+        <h2>Current model routes</h2>
+        <p>These are the model names clients can call through <code>/v1/chat/completions</code>, <code>/v1/completions</code>, or <code>/v1/embeddings</code>.</p>
+        <table id="route-table">
+          <thead><tr><th>Model</th><th>Backends</th><th>Fallback</th><th>Chars/token</th><th>Timeout</th><th>Action</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <pre id="routes-result"></pre>
+      </section>
 
-  <section>
-    <h2>Create API key</h2>
-    <label>Team ID</label>
-    <input id="key-team-id" type="number" value="1">
-    <label>Owner</label>
-    <input id="key-owner" placeholder="user@example.com">
-    <label>Allowed models (CSV, empty = all)</label>
-    <input id="key-models" placeholder="gpt-4o,deepseek-v3">
-    <label>Budget JSON (optional)</label>
-    <textarea id="key-budget" rows="3"></textarea>
-    <label>RPM limit (optional)</label>
-    <input id="key-rpm" type="number">
-    <label>Concurrency limit (optional)</label>
-    <input id="key-concurrency" type="number">
-    <label>Expires at (Unix seconds, optional)</label>
-    <input id="key-expires" type="number">
-    <button onclick="createKey()">Create key</button>
-    <pre id="key-result"></pre>
-    <div class="note" id="key-note"></div>
-  </section>
+      <section class="card">
+        <h2>Create team</h2>
+        <label for="team-name">Team name</label>
+        <input id="team-name" placeholder="team-a">
+        <label for="team-budget">Budget JSON, optional</label>
+        <textarea id="team-budget">{"period":"month","max_tokens":1000000}</textarea>
+        <label class="checkline"><input id="team-enabled" type="checkbox" checked> Enabled</label>
+        <button onclick="createTeam()">Create team</button>
+        <pre id="team-result"></pre>
+      </section>
 
-  <section>
-    <h2>Set team budget</h2>
-    <label>Team ID</label>
-    <input id="patch-team-id" type="number" value="1">
-    <label>Budget JSON</label>
-    <textarea id="patch-budget" rows="3">{"period":"day","max_tokens":500000}</textarea>
-    <button onclick="patchTeam()">Update budget</button>
-    <pre id="patch-result"></pre>
-  </section>
+      <section class="card">
+        <h2>Create API key</h2>
+        <label for="key-team-id">Team ID</label>
+        <input id="key-team-id" type="number" value="1">
+        <label for="key-owner">Owner</label>
+        <input id="key-owner" placeholder="user@example.com">
+        <label for="key-models">Allowed models, comma-separated; empty = all</label>
+        <input id="key-models" placeholder="gpt-4o-mini,deepseek-chat">
+        <label for="key-budget">Budget JSON, optional</label>
+        <textarea id="key-budget"></textarea>
+        <div class="inline">
+          <div>
+            <label for="key-rpm">Requests per minute, optional</label>
+            <input id="key-rpm" type="number" min="1">
+          </div>
+          <div>
+            <label for="key-concurrency">Concurrent requests, optional</label>
+            <input id="key-concurrency" type="number" min="1">
+          </div>
+        </div>
+        <label for="key-expires">Expires at, Unix seconds, optional</label>
+        <input id="key-expires" type="number">
+        <button onclick="createKey()">Create API key</button>
+        <pre id="key-result"></pre>
+        <div class="notice good hidden" id="key-note"></div>
+      </section>
 
-  <section>
-    <h2>Usage last 30 days</h2>
-    <label>Team ID (optional)</label>
-    <input id="usage-team" type="number">
-    <label>From Unix seconds (optional)</label>
-    <input id="usage-from" type="number">
-    <label>To Unix seconds (optional)</label>
-    <input id="usage-to" type="number">
-    <button onclick="loadUsage()">Load usage</button>
-    <table id="usage-table">
-      <thead>
-        <tr>
-          <th>ts</th><th>request_id</th><th>team</th><th>model</th>
-          <th>status</th><th>input</th><th>output</th><th>ttfb_ms</th><th>total_ms</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <pre id="usage-error"></pre>
-  </section>
+      <section class="card">
+        <h2>Set team budget</h2>
+        <label for="patch-team-id">Team ID</label>
+        <input id="patch-team-id" type="number" value="1">
+        <label for="patch-budget">Budget JSON</label>
+        <textarea id="patch-budget">{"period":"day","max_tokens":500000}</textarea>
+        <button onclick="patchTeam()">Update budget</button>
+        <pre id="patch-result"></pre>
+      </section>
+
+      <section class="card wide">
+        <h2>Usage ledger</h2>
+        <p>Shows the latest 1,000 usage rows from PostgreSQL.</p>
+        <div class="inline">
+          <div>
+            <label for="usage-team">Team ID, optional</label>
+            <input id="usage-team" type="number">
+          </div>
+          <div>
+            <label for="usage-from">From Unix seconds, optional</label>
+            <input id="usage-from" type="number">
+          </div>
+        </div>
+        <label for="usage-to">To Unix seconds, optional</label>
+        <input id="usage-to" type="number">
+        <button onclick="loadUsage()">Load usage</button>
+        <table id="usage-table">
+          <thead>
+            <tr><th>Time</th><th>Request</th><th>Team</th><th>Model</th><th>Status</th><th>Input</th><th>Output</th><th>First byte</th><th>Total</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <pre id="usage-result"></pre>
+      </section>
+    </div>
+
+    <div class="footer">BrighTO-Router open-source control portal. Keep provider secrets in server environment variables or files.</div>
+  </main>
 
   <script>
-    function adminKey() {
-      return document.getElementById('admin-key').value;
+    let backendRows = new Map();
+
+    function byId(id) { return document.getElementById(id); }
+    function val(id) { return byId(id).value.trim(); }
+    function setText(id, text) { byId(id).textContent = text; }
+
+    function show(id, data) {
+      byId(id).textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    }
+
+    function flash(message, kind = 'good') {
+      const box = byId('global-message');
+      box.className = `notice ${kind}`;
+      box.textContent = message;
+    }
+
+    function adminKey() { return val('admin-key'); }
+
+    function requireAdminKey() {
+      const key = adminKey();
+      if (!key) throw new Error('Enter ADMIN_MASTER_KEY first. Default local key is brightoIsGreat@2026.');
+      return key;
     }
 
     function headers() {
-      return {
-        'Content-Type': 'application/json',
-        'x-admin-key': adminKey(),
-      };
+      return { 'Content-Type': 'application/json', 'x-admin-key': requireAdminKey() };
     }
 
-    async function api(path, method, body) {
-      const res = await fetch(path, {
-        method,
-        headers: headers(),
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`${res.status}: ${text}`);
-      }
+    async function api(path, method = 'GET', body) {
+      const res = await fetch(path, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
       if (res.status === 204) return null;
       return res.json();
     }
 
-    function show(id, data) {
-      document.getElementById(id).textContent =
-        typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    function setPill(id, text, kind) {
+      const el = byId(id);
+      el.textContent = text;
+      el.className = `pill ${kind || ''}`.trim();
     }
 
-    let backendRows = new Map();
+    async function checkRuntime() {
+      await Promise.all([
+        fetch('/healthz').then(r => setPill('health-pill', `health: ${r.ok ? 'ok' : r.status}`, r.ok ? 'good' : 'bad')).catch(() => setPill('health-pill', 'health: error', 'bad')),
+        fetch('/readyz').then(r => setPill('ready-pill', `ready: ${r.ok ? 'ready' : r.status}`, r.ok ? 'good' : 'bad')).catch(() => setPill('ready-pill', 'ready: error', 'bad')),
+      ]);
+    }
+
+    async function loadEverything() {
+      try {
+        requireAdminKey();
+        await checkRuntime();
+        await loadBackends();
+        await loadRoutes();
+        flash('Dashboard loaded.');
+      } catch (e) {
+        flash(String(e), 'bad');
+      }
+    }
+
+    function td(text, className) {
+      const cell = document.createElement('td');
+      cell.textContent = text == null ? '' : String(text);
+      if (className) cell.className = className;
+      return cell;
+    }
 
     function fillBackendForm(row) {
-      document.getElementById('backend-id').value = row.id;
-      document.getElementById('backend-base-url').value = row.base_url;
-      document.getElementById('backend-key-ref').value = row.api_key_ref;
-      document.getElementById('backend-format').value = row.format;
-      document.getElementById('backend-enabled').checked = row.enabled;
-      document.getElementById('models-backend-id').value = row.id;
+      byId('backend-id').value = row.id;
+      byId('backend-base-url').value = row.base_url;
+      byId('backend-key-ref').value = row.api_key_ref;
+      byId('backend-format').value = row.format;
+      byId('backend-max-inflight').value = row.max_inflight;
+      byId('backend-enabled').checked = row.enabled;
+      byId('models-backend-id').value = row.id;
+      flash(`Selected backend ${row.name}.`);
     }
 
     async function loadBackends() {
       const tbody = document.querySelector('#backend-table tbody');
-      const err = document.getElementById('backend-error');
       tbody.innerHTML = '';
-      err.textContent = '';
       try {
-        const data = await api('/admin/backends', 'GET');
+        const data = await api('/admin/backends');
         backendRows = new Map(data.map(row => [row.id, row]));
         for (const row of data) {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${row.id}</td><td>${row.name}</td><td>${row.enabled}</td>`
-            + `<td>${row.key_resolved}</td><td>${row.base_url}</td><td>${row.format}</td>`
-            + `<td><button type="button" onclick="fillBackendForm(backendRows.get(${row.id}))">Edit</button></td>`;
+          tr.appendChild(td(row.id));
+          tr.appendChild(td(row.name));
+          tr.appendChild(td(row.enabled ? 'yes' : 'no'));
+          tr.appendChild(td(row.key_resolved ? 'yes' : 'no'));
+          tr.appendChild(td(row.base_url, 'wrap'));
+          tr.appendChild(td(row.format));
+          const action = document.createElement('td');
+          const button = document.createElement('button');
+          button.className = 'secondary';
+          button.type = 'button';
+          button.textContent = 'Edit';
+          button.onclick = () => fillBackendForm(row);
+          action.appendChild(button);
+          tr.appendChild(action);
           tbody.appendChild(tr);
         }
+        const enabled = data.filter(row => row.enabled).length;
+        const ready = data.filter(row => row.key_resolved).length;
+        setPill('provider-pill', `providers: ${data.length}, ready: ${ready}, enabled: ${enabled}`, data.length ? 'good' : 'warn');
+        show('backend-result', `Loaded ${data.length} providers.`);
       } catch (e) {
-        err.textContent = String(e);
+        show('backend-result', String(e));
+        throw e;
       }
     }
 
     async function updateBackend() {
       try {
-        const id = Number(document.getElementById('backend-id').value);
-        const payload = { enabled: document.getElementById('backend-enabled').checked };
-        const base = document.getElementById('backend-base-url').value.trim();
-        const keyRef = document.getElementById('backend-key-ref').value.trim();
-        const format = document.getElementById('backend-format').value.trim();
+        const id = Number(val('backend-id'));
+        if (!Number.isInteger(id) || id <= 0) throw new Error('Backend ID must be a positive integer.');
+        const payload = { enabled: byId('backend-enabled').checked };
+        const base = val('backend-base-url');
+        const keyRef = val('backend-key-ref');
+        const format = val('backend-format');
+        const maxInflight = val('backend-max-inflight');
         if (base) payload.base_url = base;
         if (keyRef) payload.api_key_ref = keyRef;
         if (format) payload.format = format;
+        if (maxInflight) payload.max_inflight = Number(maxInflight);
         const data = await api(`/admin/backends/${id}`, 'PATCH', payload);
         show('backend-result', data);
         await loadBackends();
+        flash('Backend saved and router config reloaded.');
       } catch (e) {
         show('backend-result', String(e));
       }
     }
 
     async function fetchModels() {
-      const box = document.getElementById('models-list');
+      const box = byId('models-list');
       box.innerHTML = '';
       try {
-        const id = Number(document.getElementById('models-backend-id').value);
-        const data = await api(`/admin/backends/${id}/models`, 'GET');
-        document.getElementById('route-backends').value = String(id);
+        const id = Number(val('models-backend-id'));
+        if (!Number.isInteger(id) || id <= 0) throw new Error('Backend ID must be a positive integer.');
+        const data = await api(`/admin/backends/${id}/models`);
+        byId('route-backends').value = String(id);
         if (!data.models.length) {
-          box.textContent = 'Provider returned no models.';
+          box.textContent = 'Provider returned no models. Type a model name manually.';
           return;
         }
         for (const model of data.models) {
           const btn = document.createElement('button');
-          btn.textContent = `Use ${model}`;
-          btn.onclick = () => createRoute(model, [id]);
+          btn.type = 'button';
+          btn.className = 'model-chip';
+          btn.textContent = model;
+          btn.onclick = () => { byId('route-model').value = model; byId('route-backends').value = String(id); };
           box.appendChild(btn);
-          box.appendChild(document.createTextNode(' '));
         }
+        flash(`Fetched ${data.models.length} models from ${data.backend_name}.`);
       } catch (e) {
         box.textContent = String(e);
       }
     }
 
-    async function createRoute(model, backendIds) {
-      const payload = {
-        model_name: model,
-        backend_ids: backendIds,
-        chars_per_token: 4.0,
-        first_byte_timeout: 180,
-      };
-      const data = await api('/admin/routes', 'POST', payload);
-      show('route-result', data);
+    function parseIdList(text) {
+      const ids = text.split(',').map(v => Number(v.trim())).filter(v => !Number.isNaN(v));
+      if (!ids.length || ids.some(v => !Number.isInteger(v) || v <= 0)) throw new Error('Backend IDs must be positive integers, for example 1 or 1,2,3.');
+      return ids;
     }
 
     async function createRouteFromInputs() {
       try {
-        const model = document.getElementById('route-model').value.trim();
-        const backendIds = document.getElementById('route-backends').value
-          .split(',')
-          .map(s => Number(s.trim()))
-          .filter(Boolean);
-        await createRoute(model, backendIds);
+        const model = val('route-model');
+        if (!model) throw new Error('Model name is required.');
+        const backendIds = parseIdList(val('route-backends'));
+        const charsPerToken = Number(val('route-chars-per-token') || '4');
+        const timeout = Number(val('route-timeout') || '180');
+        if (!Number.isFinite(charsPerToken) || charsPerToken <= 0) throw new Error('Chars per token must be greater than zero.');
+        if (!Number.isInteger(timeout) || timeout <= 0) throw new Error('First byte timeout must be a positive integer.');
+        const payload = { model_name: model, backend_ids: backendIds, chars_per_token: charsPerToken, first_byte_timeout: timeout };
+        const data = await api('/admin/routes', 'POST', payload);
+        show('route-result', data);
+        await loadRoutes();
+        flash('Route saved and router config reloaded.');
       } catch (e) {
         show('route-result', String(e));
       }
     }
 
+    function fillRouteForm(row) {
+      byId('route-model').value = row.model_name;
+      byId('route-backends').value = row.backend_ids.join(',');
+      byId('route-chars-per-token').value = row.chars_per_token;
+      byId('route-timeout').value = row.first_byte_timeout;
+      flash(`Selected route ${row.model_name}.`);
+    }
+
+    async function loadRoutes() {
+      const tbody = document.querySelector('#route-table tbody');
+      tbody.innerHTML = '';
+      try {
+        const data = await api('/admin/routes');
+        for (const row of data) {
+          const tr = document.createElement('tr');
+          tr.appendChild(td(row.model_name));
+          tr.appendChild(td(row.backend_ids.join(',')));
+          tr.appendChild(td(row.fallback_backend_id));
+          tr.appendChild(td(row.chars_per_token));
+          tr.appendChild(td(`${row.first_byte_timeout}s`));
+          const action = document.createElement('td');
+          const button = document.createElement('button');
+          button.className = 'secondary';
+          button.type = 'button';
+          button.textContent = 'Edit';
+          button.onclick = () => fillRouteForm(row);
+          action.appendChild(button);
+          tr.appendChild(action);
+          tbody.appendChild(tr);
+        }
+        show('routes-result', data.length ? `Loaded ${data.length} routes.` : 'No routes yet. Create one after enabling a provider.');
+      } catch (e) {
+        show('routes-result', String(e));
+      }
+    }
+
+    function parseOptionalJson(id) {
+      const text = val(id);
+      if (!text) return undefined;
+      try { return JSON.parse(text); } catch (e) { throw new Error(`${id} contains invalid JSON: ${e.message}`); }
+    }
+
     async function createTeam() {
       try {
-        const budgetText = document.getElementById('team-budget').value.trim();
-        const payload = {
-          name: document.getElementById('team-name').value,
-          enabled: document.getElementById('team-enabled').checked,
-        };
-        if (budgetText) payload.budget = JSON.parse(budgetText);
+        const name = val('team-name');
+        if (!name) throw new Error('Team name is required.');
+        const payload = { name, enabled: byId('team-enabled').checked };
+        const budget = parseOptionalJson('team-budget');
+        if (budget !== undefined) payload.budget = budget;
         const data = await api('/admin/teams', 'POST', payload);
         show('team-result', data);
+        byId('key-team-id').value = data.id;
+        flash(`Team ${data.name} created.`);
       } catch (e) {
         show('team-result', String(e));
       }
     }
 
     async function createKey() {
-      const note = document.getElementById('key-note');
-      note.textContent = '';
       try {
+        const teamId = Number(val('key-team-id'));
+        const owner = val('key-owner');
+        if (!Number.isInteger(teamId) || teamId <= 0) throw new Error('Team ID must be a positive integer.');
+        if (!owner) throw new Error('Owner is required.');
         const payload = {
-          team_id: Number(document.getElementById('key-team-id').value),
-          owner: document.getElementById('key-owner').value,
-          allowed_models: document.getElementById('key-models').value
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean),
+          team_id: teamId,
+          owner,
+          allowed_models: val('key-models').split(',').map(v => v.trim()).filter(Boolean),
         };
-        const budgetText = document.getElementById('key-budget').value.trim();
-        const rpm = document.getElementById('key-rpm').value;
-        const conc = document.getElementById('key-concurrency').value;
-        const exp = document.getElementById('key-expires').value;
-        if (budgetText) payload.budget = JSON.parse(budgetText);
-        if (rpm) payload.rpm_limit = Number(rpm);
-        if (conc) payload.concurrency_limit = Number(conc);
-        if (exp) payload.expires_at = Number(exp);
-
+        const budget = parseOptionalJson('key-budget');
+        if (budget !== undefined) payload.budget = budget;
+        for (const [field, id] of [['rpm_limit', 'key-rpm'], ['concurrency_limit', 'key-concurrency'], ['expires_at', 'key-expires']]) {
+          const text = val(id);
+          if (text) payload[field] = Number(text);
+        }
         const data = await api('/admin/keys', 'POST', payload);
         show('key-result', data);
-        note.textContent = 'The plaintext key is shown only once. Save it now.';
+        const note = byId('key-note');
+        note.className = 'notice good';
+        note.textContent = 'Copy this API key now. It is returned only once.';
+        flash('API key created. Copy it now.');
       } catch (e) {
         show('key-result', String(e));
       }
@@ -302,46 +651,48 @@
 
     async function patchTeam() {
       try {
-        const id = Number(document.getElementById('patch-team-id').value);
-        const budgetText = document.getElementById('patch-budget').value.trim();
-        const payload = {};
-        if (budgetText) payload.budget = JSON.parse(budgetText);
+        const id = Number(val('patch-team-id'));
+        if (!Number.isInteger(id) || id <= 0) throw new Error('Team ID must be a positive integer.');
+        const payload = { budget: parseOptionalJson('patch-budget') };
         const data = await api(`/admin/teams/${id}`, 'PATCH', payload);
         show('patch-result', data);
+        flash('Team budget updated and router config reloaded.');
       } catch (e) {
         show('patch-result', String(e));
       }
     }
 
     async function loadUsage() {
-      const team = document.getElementById('usage-team').value;
-      const from = document.getElementById('usage-from').value;
-      const to = document.getElementById('usage-to').value;
-      const qs = new URLSearchParams();
-      if (team) qs.set('team', team);
-      if (from) qs.set('from', from);
-      if (to) qs.set('to', to);
-
-      const tbody = document.querySelector('#usage-table tbody');
-      const err = document.getElementById('usage-error');
-      tbody.innerHTML = '';
-      err.textContent = '';
-
       try {
-        const data = await api(`/admin/usage?${qs.toString()}`, 'GET');
+        requireAdminKey();
+        const qs = new URLSearchParams();
+        for (const [key, id] of [['team', 'usage-team'], ['from', 'usage-from'], ['to', 'usage-to']]) {
+          const text = val(id);
+          if (text) qs.set(key, text);
+        }
+        const data = await api(`/admin/usage?${qs.toString()}`);
+        const tbody = document.querySelector('#usage-table tbody');
+        tbody.innerHTML = '';
         for (const row of data) {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${row.ts}</td><td>${row.request_id}</td>`
-            + `<td>${row.team_id}</td><td>${row.model}</td>`
-            + `<td>${row.status}</td><td>${row.input_tokens}</td>`
-            + `<td>${row.output_tokens}</td><td>${row.ttfb_ms}</td>`
-            + `<td>${row.total_ms}</td>`;
+          tr.appendChild(td(new Date(row.ts * 1000).toLocaleString()));
+          tr.appendChild(td(row.request_id, 'wrap'));
+          tr.appendChild(td(row.team_id));
+          tr.appendChild(td(row.model));
+          tr.appendChild(td(row.status));
+          tr.appendChild(td(row.input_tokens));
+          tr.appendChild(td(row.output_tokens));
+          tr.appendChild(td(`${row.ttfb_ms} ms`));
+          tr.appendChild(td(`${row.total_ms} ms`));
           tbody.appendChild(tr);
         }
+        show('usage-result', data.length ? `Loaded ${data.length} usage rows.` : 'No usage rows yet.');
       } catch (e) {
-        err.textContent = String(e);
+        show('usage-result', String(e));
       }
     }
+
+    checkRuntime();
   </script>
 </body>
 </html>

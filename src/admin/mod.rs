@@ -261,7 +261,7 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/backends", get(list_backends))
         .route("/backends/{id}", patch(update_backend))
         .route("/backends/{id}/models", get(fetch_backend_models))
-        .route("/routes", post(upsert_route))
+        .route("/routes", get(list_routes).post(upsert_route))
         .route("/teams/{id}", patch(update_team))
         .route("/keys/{id}", delete(disable_key))
         .route("/usage", get(get_usage))
@@ -439,6 +439,34 @@ fn join_provider_url(base_url: &str, route: &str) -> String {
     } else {
         format!("{trimmed}/{path}")
     }
+}
+
+fn parse_backend_ids(value: &str) -> Result<Vec<i64>, ApiError> {
+    serde_json::from_str::<Vec<i64>>(value).map_err(|_| {
+        ApiError::internal(format!("invalid backend_ids JSON in model_routes: {value}"))
+    })
+}
+
+async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiError> {
+    let rows = sqlx::query::<sqlx::Postgres>(
+        "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout \
+         FROM model_routes ORDER BY model_name",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let backend_ids_json: String = row.try_get("backend_ids")?;
+        out.push(RouteResponse {
+            model_name: row.try_get("model_name")?,
+            backend_ids: parse_backend_ids(&backend_ids_json)?,
+            fallback_backend_id: row.try_get("fallback_backend_id")?,
+            chars_per_token: row.try_get("chars_per_token")?,
+            first_byte_timeout: row.try_get::<i64, _>("first_byte_timeout")? as u64,
+        });
+    }
+    Ok(out)
 }
 
 async fn list_backends(
@@ -640,6 +668,16 @@ async fn fetch_backend_models(
         backend_name: name,
         models,
     }))
+}
+
+async fn list_routes(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<RouteResponse>>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    Ok(Json(list_routes_from_pool(pool).await?))
 }
 
 async fn upsert_route(
@@ -969,6 +1007,46 @@ mod tests {
             ),
             "https://dashscope.example.com/compatible-mode/v1/models"
         );
+    }
+
+    #[test]
+    fn backend_ids_parser_accepts_json_integer_array() {
+        assert_eq!(parse_backend_ids("[1,2,3]").unwrap(), vec![1, 2, 3]);
+        assert!(parse_backend_ids("not-json").is_err());
+        assert!(parse_backend_ids("[1,\"bad\"]").is_err());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn list_routes_from_pool_returns_sorted_routes(pool: PgPool) -> anyhow::Result<()> {
+        sqlx::query(
+            "INSERT INTO model_routes \
+             (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout) \
+             VALUES ($1, $2, $3, $4, $5), ($6, $7, $8, $9, $10)",
+        )
+        .bind("z-model")
+        .bind("[2,3]")
+        .bind(3_i64)
+        .bind(4.0_f64)
+        .bind(180_i64)
+        .bind("a-model")
+        .bind("[1]")
+        .bind(None::<i64>)
+        .bind(3.5_f64)
+        .bind(90_i64)
+        .execute(&pool)
+        .await?;
+
+        let routes = list_routes_from_pool(&pool).await.expect("list routes");
+        assert_eq!(routes.len(), 2);
+        assert_eq!(routes[0].model_name, "a-model");
+        assert_eq!(routes[0].backend_ids, vec![1]);
+        assert_eq!(routes[0].fallback_backend_id, None);
+        assert_eq!(routes[0].chars_per_token, 3.5);
+        assert_eq!(routes[0].first_byte_timeout, 90);
+        assert_eq!(routes[1].model_name, "z-model");
+        assert_eq!(routes[1].backend_ids, vec![2, 3]);
+        assert_eq!(routes[1].fallback_backend_id, Some(3));
+        Ok(())
     }
 
     #[test]

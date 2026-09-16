@@ -23,10 +23,16 @@ cd Brighto_AIRouter
 ./start.sh status
 ```
 
-Open the portal:
+Open the portal on the same server:
 
 ```text
 http://127.0.0.1:18080/
+```
+
+From another machine, use the server IP:
+
+```text
+http://<SERVER_IP>:18080/
 ```
 
 Default local admin key:
@@ -35,7 +41,7 @@ Default local admin key:
 brightoIsGreat@2026
 ```
 
-Change `ADMIN_MASTER_KEY` in `.env` before any shared or production deployment.
+If the page opens but **Load providers** returns `403: ip not allowed`, set `ADMIN_ALLOW_CIDR` in `.env` to include your client network and run `./start.sh restart`. For a quick private test, use `ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0`; for shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW_CIDR` to your VPN, office subnet, or reverse proxy.
 
 ## What install creates by default
 
