@@ -38,7 +38,13 @@ impl DbConfigLoader {
             snapshot.keys_by_hash.insert(k.key_hash, k);
         }
 
-        // usage_ledger boot counter — chỉ để log/giám sát lúc boot.
+        Ok(snapshot)
+    }
+
+    /// Log usage-ledger totals một lần lúc boot. KHÔNG gọi trong poll 5s —
+    /// query SUM toàn bảng ledger sẽ scan bảng usage lớn mỗi poll nếu để chung
+    /// với load_snapshot. CODEX: giữ config reload chỉ chạm bảng cấu hình.
+    pub async fn log_usage_boot_counter(&self) -> Result<()> {
         let ledger_row = sqlx::query(
             "SELECT COUNT(*), \
              CAST(COALESCE(SUM(input_tokens), 0) AS BIGINT), \
@@ -50,11 +56,13 @@ impl DbConfigLoader {
         let cnt: i64 = ledger_row.try_get(0)?;
         let sum_in: i64 = ledger_row.try_get(1)?;
         let sum_out: i64 = ledger_row.try_get(2)?;
-        eprintln!(
-            "INFO config: usage_ledger boot counter rows={cnt} input={sum_in} output={sum_out}"
+        tracing::info!(
+            rows = cnt,
+            input = sum_in,
+            output = sum_out,
+            "usage_ledger boot counter"
         );
-
-        Ok(snapshot)
+        Ok(())
     }
 
     async fn load_backends(&self) -> Result<Vec<Backend>> {
