@@ -656,7 +656,19 @@ function openKeyModal(){
   var f4=el("div","field"); f4.appendChild(el("label",null,"Expiry date (optional)")); var ex=el("input"); ex.type="date"; f4.appendChild(ex); m.appendChild(f4);
   var f5=el("div","field"); f5.appendChild(el("label",null,"Requests per minute (optional)")); var rpm=el("input"); rpm.type="number"; rpm.placeholder="unlimited"; f5.appendChild(rpm); m.appendChild(f5);
   var f6=el("div","field"); f6.appendChild(el("label",null,"Concurrency limit (optional)")); var conc=el("input"); conc.type="number"; conc.placeholder="unlimited"; f6.appendChild(conc); m.appendChild(f6);
-  var f7=el("div","field"); f7.appendChild(el("label",null,"Budget (JSON, optional — inherit team if empty)")); var bud=el("textarea"); bud.placeholder='{"period":"month","max_tokens":1000000}'; f7.appendChild(bud); m.appendChild(f7);
+  var f7=el("div","field"); f7.appendChild(el("label",null,"Budget"));
+  var kbm=el("select");
+  [["inherit","Inherit team budget"],["token","Token budget"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];kbm.appendChild(o);});
+  f7.appendChild(kbm); m.appendChild(f7);
+  var f8=el("div","field"); f8.appendChild(el("label",null,"Period"));
+  var kbp=el("select"); [["day","Daily"],["month","Monthly"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];kbp.appendChild(o);});
+  f8.appendChild(kbp); m.appendChild(f8);
+  var f9=el("div","field"); f9.appendChild(el("label",null,"Token amount")); var kba=el("input"); kba.type="number"; kba.placeholder="e.g. 1000000"; f9.appendChild(kba); m.appendChild(f9);
+  var f10=el("div","field");
+  var advBtn=el("button","linkbtn","Advanced JSON (money budget, per-model caps)");
+  var bud=el("textarea"); bud.style.display="none"; bud.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}';
+  advBtn.onclick=function(){bud.style.display = bud.style.display==="none"?"block":"none";};
+  f10.appendChild(advBtn); f10.appendChild(bud); m.appendChild(f10);
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary","Create");
   save.onclick=async function(){
@@ -665,6 +677,7 @@ function openKeyModal(){
     if(rpm.value) payload.rpm_limit=Number(rpm.value);
     if(conc.value) payload.concurrency_limit=Number(conc.value);
     if(bud.value.trim()){ try{payload.budget=JSON.parse(bud.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
+    else if(kbm.value==="token"){ var amt=Number(kba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;} payload.budget={period:kbp.value,max_tokens:amt,per_model:{}}; }
     try{
       var data=await api("/admin/keys","POST",payload);
       closeModal();

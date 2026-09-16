@@ -84,6 +84,12 @@ async fn main() -> anyhow::Result<()> {
     let boot_snap = boot_loader.load_snapshot().await?;
     wire_snapshot(&budget, &backends, &boot_snap);
 
+    // Usage-ledger boot counter: chạy MỘT lần lúc boot để log tổng. Không nằm trong
+    // load_snapshot — poll 5s phải chỉ chạm bảng cấu hình (CODEX config-reload audit).
+    if let Err(e) = boot_loader.log_usage_boot_counter().await {
+        tracing::warn!(error = %e, "usage_ledger boot counter skipped");
+    }
+
     // Seed budget counters từ ledger period hiện tại — chống reset budget sau restart.
     match brighto_router::ledger::load_usage_seeds(&cfg_pool).await {
         Ok(seeds) => {
