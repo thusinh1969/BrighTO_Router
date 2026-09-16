@@ -131,7 +131,7 @@ def main():
            "-d", "llm_router", "-q", "-c",
            "INSERT INTO usage_ledger (ts, request_id, key_id, team_id, model, backend_id, status, "
            "input_tokens, output_tokens, estimated, ttfb_ms, total_ms, router_overhead_ms, stream, client_aborted) "
-           "VALUES (%d, 'smoke-req-1', %d, 1, 'smoke-model', 1, 200, 100, 10, false, 0, 0, 0, false, false);"
+           "VALUES (%d, 'smoke-req-1', %d, 1, 'smoke-model', 1, 200, 100, 10, false, 50, 100, 3, false, false);"
            % (now, key_id),
            env=dict(os.environ, PGPASSWORD="llm_router_dev"))
 
@@ -142,8 +142,15 @@ def main():
         check("GET /portal/me returns own key + team", ok)
 
         r = requests.get(base + "/portal/me/usage", headers=user)
-        ok = r.status_code == 200 and isinstance(r.json(), list) and len(r.json()) == 1
-        check("GET /portal/me/usage returns own row", ok)
+        u0 = r.json()[0] if (r.status_code == 200 and len(r.json()) == 1) else {}
+        ok = (r.status_code == 200 and len(r.json()) == 1
+              and u0.get("total_tokens") == 110
+              and u0.get("prompt_size_bucket") == "<2k"
+              and u0.get("duration_display") == "100 ms"
+              and u0.get("router_overhead_display") == "3 ms"
+              and u0.get("total_tokens_per_second") == 1100.0
+              and u0.get("cost_known") is False)
+        check("GET /portal/me/usage returns enriched row (tok/s, bucket, duration, cost)", ok)
 
         r = requests.get(base + "/portal/me/stats?days=30", headers=user)
         js = r.json()
