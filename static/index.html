@@ -6,163 +6,192 @@
 <title>BrighTO Router</title>
 <style>
 :root{
-  --bg:#0e0e12; --bg2:#15151b; --panel:#1a1a21; --panel2:#20202a; --border:#2c2c38;
-  --text:#e7e7ee; --muted:#9a9ab0; --faint:#6b6b80;
-  --accent:#7c6cf0; --accent2:#a78bfa; --green:#34d399; --red:#f87171; --amber:#fbbf24; --cyan:#22d3ee;
-  --radius:12px; --shadow:0 8px 30px rgba(0,0,0,.45);
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --bg1:#08111f; --bg2:#111827; --panel:#0f172a; --sidebar:#0b1220; --card:#111c31;
+  --border:#26364f; --border2:#334155;
+  --text:#e2e8f0; --muted:#94a3b8; --faint:#64748b; --accent-text:#7dd3fc;
+  --sky:#38bdf8; --violet:#8b5cf6; --primary:#1d4ed8; --primary2:#1e40af;
+  --green:#22c55e; --amber:#f59e0b; --red:#f87171; --cyan:#22d3ee;
+  --radius:18px; --radius-lg:26px; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%}
-body{background:radial-gradient(1200px 600px at 20% -10%,#1c1830 0%,var(--bg) 55%);color:var(--text);
-  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;
-  -webkit-font-smoothing:antialiased}
-a{color:var(--accent2);text-decoration:none}
+body{font-family:var(--font);font-size:14px;line-height:1.5;color:var(--text);
+  background:linear-gradient(135deg,var(--bg1),var(--bg2));min-height:100vh;-webkit-font-smoothing:antialiased}
 .hidden{display:none!important}
-code{font-family:var(--mono);background:var(--panel2);padding:1px 6px;border-radius:6px;font-size:12px;color:var(--accent2)}
-#login-view{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-.login-card{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--border);border-radius:16px;
-  padding:36px 32px;box-shadow:var(--shadow)}
-.brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-.brand .logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
-  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#fff;flex:0 0 auto}
-.brand h1{font-size:20px;margin:0;letter-spacing:-.02em}
-.subtitle{color:var(--muted);margin:2px 0 26px;font-size:13px}
+code{font-family:var(--mono);background:rgba(30,41,59,.6);padding:2px 7px;border-radius:6px;font-size:12px;color:var(--accent-text)}
+
+/* ---------- Login ---------- */
+#login-view{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden}
+#login-view::before,#login-view::after{content:"";position:absolute;border-radius:50%;filter:blur(80px);opacity:.35;pointer-events:none}
+#login-view::before{width:520px;height:520px;background:#2563eb;top:-120px;right:-100px}
+#login-view::after{width:480px;height:480px;background:#14b8a6;bottom:-140px;left:-120px;opacity:.2}
+.login-card{position:relative;width:100%;max-width:420px;background:var(--panel);border:1px solid var(--border);
+  border-radius:24px;padding:38px 34px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.brand .logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--sky),var(--violet));
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:21px;color:#fff;flex:0 0 auto}
+.brand h1{font-size:21px;margin:0;letter-spacing:-.02em;font-weight:800}
+.brand .sub{font-size:12px;color:var(--accent-text);font-weight:600}
+.subtitle{color:var(--muted);margin:0 0 24px;font-size:13.5px}
 .field{margin-bottom:16px}
-.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-input,select,textarea{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);
-  padding:10px 12px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}
-input:focus,select:focus,textarea:focus{border-color:var(--accent)}
-textarea{resize:vertical;min-height:70px}
-.seg{display:flex;gap:8px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:20px}
-.seg button{flex:1;border:none;background:transparent;color:var(--muted);padding:9px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600}
-.seg button.active{background:var(--accent);color:#fff}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--border);
-  background:var(--panel2);color:var(--text);padding:10px 16px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;transition:.15s}
-.btn:hover{border-color:var(--accent);color:#fff}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn.primary:hover{background:#6b5ce0}
+.field label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+input,select,textarea{width:100%;background:#111827;border:1px solid var(--border2);border-radius:10px;color:var(--text);
+  padding:11px 13px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(56,189,248,.12)}
+textarea{resize:vertical;min-height:72px}
+.seg{display:flex;gap:6px;background:#111827;border:1px solid var(--border);border-radius:11px;padding:4px;margin-bottom:18px}
+.seg button{flex:1;border:none;background:transparent;color:var(--muted);padding:9px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700}
+.seg button.active{background:var(--primary);color:#fff}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--border2);
+  background:#111827;color:var(--text);padding:10px 16px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:700;transition:.15s}
+.btn:hover{border-color:var(--sky);color:#fff}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.primary:hover{background:var(--primary2)}
 .btn.danger{color:var(--red)}
 .btn.danger:hover{border-color:var(--red);color:var(--red)}
-.btn.sm{padding:6px 10px;font-size:12px}
+.btn.sm{padding:6px 11px;font-size:12px;border-radius:8px}
 .btn.ghost{background:transparent}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn-block{width:100%}
+.linkbtn{background:none;border:none;color:var(--accent-text);cursor:pointer;font-size:13px;padding:0;font-weight:600}
+.linkbtn:hover{text-decoration:underline}
+
+/* ---------- App shell ---------- */
 #app-view{display:flex;min-height:100vh}
-.sidebar{width:232px;background:var(--panel);border-right:1px solid var(--border);padding:20px 14px;
-  display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;flex:0 0 auto}
-.sidebar .brand{padding:0 8px 18px;border-bottom:1px solid var(--border);margin-bottom:10px}
-.nav{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;color:var(--muted);
-  cursor:pointer;font-size:13.5px;font-weight:500;border:none;background:none;width:100%;text-align:left;transition:.12s}
-.nav:hover{background:var(--panel2);color:var(--text)}
-.nav.active{background:var(--panel2);color:var(--text);box-shadow:inset 0 0 0 1px var(--border)}
-.nav svg{width:17px;height:17px;flex:0 0 auto;opacity:.8}
-.nav .badge{margin-left:auto;background:var(--accent);color:#fff;font-size:10px;padding:1px 7px;border-radius:99px;font-weight:700}
-.sidebar .foot{margin-top:auto;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
-.mode-pill{font-size:11px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:99px;
-  padding:4px 10px;text-align:center;text-transform:uppercase;letter-spacing:.05em}
-.main{flex:1;padding:28px 34px;max-width:1180px}
-.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
-.topbar h2{font-size:22px;margin:0;letter-spacing:-.02em}
-.topbar .desc{color:var(--muted);font-size:13px;margin-top:2px}
-.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
-.spacer{flex:1}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:22px}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
-.card h3{font-size:15px;margin:0 0 6px}
-.card .big{font-size:26px;font-weight:700;letter-spacing:-.02em}
-.card .muted{color:var(--muted);font-size:12px}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px}
-.panel h3{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px}
-.panel .hint{color:var(--muted);font-size:12px;margin:0 0 14px}
-.panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap}
+.sidebar{width:240px;background:var(--sidebar);border-right:1px solid var(--border);padding:22px 14px;
+  display:flex;flex-direction:column;gap:3px;position:sticky;top:0;height:100vh;flex:0 0 auto}
+.sidebar .brand{padding:0 10px 18px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-direction:column;align-items:flex-start;gap:2px}
+.sidebar .brand .row{display:flex;align-items:center;gap:10px}
+.sidebar .brand h1{font-size:19px}
+.nav{display:flex;align-items:center;gap:10px;padding:10px 13px;border-radius:10px;color:var(--muted);
+  cursor:pointer;font-size:13.5px;font-weight:600;border:none;background:none;width:100%;text-align:left;transition:.12s}
+.nav:hover{background:#111827;color:var(--text)}
+.nav.active{background:var(--primary);color:#fff}
+.nav svg{width:17px;height:17px;flex:0 0 auto}
+.sidebar .foot{margin-top:auto;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:7px}
+.mode-pill{font-size:11px;color:var(--muted);background:#111827;border:1px solid var(--border);border-radius:99px;
+  padding:4px 11px;text-align:center;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+
+.main{flex:1;padding:30px 38px;max-width:1260px;min-width:0}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;gap:14px;flex-wrap:wrap}
+.topbar h2{font-size:26px;margin:0;letter-spacing:-.02em;font-weight:850}
+.topbar .desc{color:var(--muted);font-size:13.5px;margin-top:3px}
+.verified{display:inline-flex;align-items:center;gap:8px;background:#111827;border:1px solid var(--border);
+  border-radius:99px;padding:8px 14px;font-size:13px;font-weight:700;color:var(--text)}
+.verified .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+
+/* ---------- Cards / panels ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:14px;margin-bottom:22px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 18px 16px}
+.card .label{color:var(--muted);font-size:12px;font-weight:700}
+.card .big{font-size:30px;font-weight:850;letter-spacing:-.02em;margin-top:6px}
+.card .foot{color:var(--muted);font-size:12px;margin-top:3px}
+.card .foot b{font-weight:800}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;margin-bottom:20px}
+.panel h3{margin:0 0 5px;font-size:16px;font-weight:800;display:flex;align-items:center;gap:9px}
+.panel .hint{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:10px;flex-wrap:wrap}
 .panel-head h3{margin:0}
-.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px}
+
+/* ---------- Tables ---------- */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:#0b1220}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
-th{background:var(--panel2);color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0}
+th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+th{background:#111827;color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0}
 tr:last-child td{border-bottom:none}
-tbody tr:hover{background:var(--bg2)}
+tbody tr:hover{background:#111c31}
 td.mono{font-family:var(--mono);font-size:12px}
 .num{text-align:right;font-variant-numeric:tabular-nums}
-.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px}
+
+/* ---------- Pills ---------- */
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px}
 .pill .dot{width:6px;height:6px;border-radius:50%}
-.pill.on{background:rgba(52,211,153,.12);color:var(--green)} .pill.on .dot{background:var(--green)}
-.pill.off{background:rgba(248,113,113,.12);color:var(--red)} .pill.off .dot{background:var(--red)}
-.pill.warn{background:rgba(251,191,36,.12);color:var(--amber)} .pill.warn .dot{background:var(--amber)}
-.pill.info{background:rgba(34,211,238,.12);color:var(--cyan)} .pill.info .dot{background:var(--cyan)}
-#modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;
-  padding:40px 20px;z-index:50;overflow-y:auto}
-.modal{background:var(--panel);border:1px solid var(--border);border-radius:16px;width:100%;max-width:560px;
-  padding:24px;box-shadow:var(--shadow)}
-.modal h3{margin:0 0 14px;font-size:17px}
-.modal .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.pill.on{background:rgba(34,197,94,.14);color:var(--green)} .pill.on .dot{background:var(--green)}
+.pill.off{background:rgba(248,113,113,.14);color:var(--red)} .pill.off .dot{background:var(--red)}
+.pill.warn{background:rgba(245,158,11,.14);color:var(--amber)} .pill.warn .dot{background:var(--amber)}
+.pill.info{background:rgba(56,189,248,.14);color:var(--sky)} .pill.info .dot{background:var(--sky)}
+
+/* ---------- Modal ---------- */
+#modal-overlay{position:fixed;inset:0;background:rgba(2,6,18,.68);display:flex;align-items:flex-start;justify-content:center;
+  padding:42px 20px;z-index:50;overflow-y:auto;backdrop-filter:blur(3px)}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:20px;width:100%;max-width:580px;
+  padding:26px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.modal h3{margin:0 0 16px;font-size:18px;font-weight:800}
+.modal .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-.chip{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:99px;
-  padding:5px 12px;font-size:12px;cursor:pointer;color:var(--text)}
-.chip.selected{border-color:var(--accent);background:rgba(124,108,240,.14);color:var(--accent2)}
-.chip input{margin:0;accent-color:var(--accent)}
+.chip{display:flex;align-items:center;gap:7px;background:#111827;border:1px solid var(--border2);border-radius:99px;
+  padding:6px 13px;font-size:12.5px;cursor:pointer;color:var(--text);font-weight:600}
+.chip.selected{border-color:var(--sky);background:rgba(56,189,248,.12);color:var(--accent-text)}
+.chip input{margin:0;accent-color:var(--sky)}
+
+/* ---------- Toast ---------- */
 #toast{position:fixed;bottom:22px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:100}
-.toast{background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;
-  padding:12px 16px;font-size:13px;box-shadow:var(--shadow);max-width:360px;animation:slide .2s ease}
+.toast{background:#111827;border:1px solid var(--border);border-left:3px solid var(--sky);border-radius:10px;
+  padding:13px 17px;font-size:13px;box-shadow:0 12px 34px rgba(0,0,0,.5);max-width:380px;animation:slide .2s ease}
 .toast.ok{border-left-color:var(--green)} .toast.err{border-left-color:var(--red)}
-@keyframes slide{from{transform:translateX(20px);opacity:0}to{transform:none;opacity:1}}
+@keyframes slide{from{transform:translateX(18px);opacity:0}to{transform:none;opacity:1}}
+
+/* ---------- Charts ---------- */
 .chart-wrap{width:100%;overflow-x:auto}
 .chart-wrap svg{display:block}
-.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px}
-.legend span{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
+.legend span{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
 .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
-.empty{color:var(--faint);text-align:center;padding:36px 16px;font-size:13px}
-.empty svg{width:34px;height:34px;margin-bottom:8px;opacity:.4}
-.key-reveal{background:var(--bg2);border:1px dashed var(--accent);border-radius:10px;padding:14px;margin:14px 0;
-  font-family:var(--mono);font-size:14px;word-break:break-all;color:var(--accent2)}
-.warn-note{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);color:var(--amber);border-radius:8px;
-  padding:10px 12px;font-size:12px;margin:10px 0}
+
+.empty{color:var(--faint);text-align:center;padding:40px 16px;font-size:13px}
+.empty svg{width:36px;height:36px;margin-bottom:8px;opacity:.4}
+.key-reveal{background:#0b1220;border:1px dashed var(--sky);border-radius:12px;padding:15px;margin:14px 0;
+  font-family:var(--mono);font-size:14px;word-break:break-all;color:var(--accent-text);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.warn-note{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);color:var(--amber);border-radius:9px;
+  padding:10px 13px;font-size:12px;margin:10px 0}
+.kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--muted)} .kv .v{font-weight:600}
 .hamburger{display:none}
 @media(max-width:820px){.hamburger{display:inline-flex}.sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s}
   .sidebar.open{transform:none}.main{padding:20px}.topbar{flex-direction:column;align-items:flex-start}}
 </style>
 </head>
 <body>
+
+<!-- ============ LOGIN ============ -->
 <div id="login-view">
   <div class="login-card">
-    <div class="brand"><div class="logo">B</div><h1>BrighTO Router</h1></div>
-    <div class="subtitle">Manage providers, model routes, teams, keys and usage — all in one place.</div>
+    <div class="brand">
+      <div class="logo">B</div>
+      <div><h1>BrighTO</h1><div class="sub">Router</div></div>
+    </div>
+    <p class="subtitle" id="login-sub">Sign in to manage your LLM gateway.</p>
     <div class="seg">
       <button id="seg-admin" class="active" onclick="setMode('admin')">Admin</button>
       <button id="seg-user" onclick="setMode('user')">User</button>
     </div>
-    <div class="hint" id="login-mode-desc" style="margin:0 0 14px"></div>
-    <div class="field">
-      <label id="login-label">Admin master key</label>
-      <input id="login-key" type="password" placeholder="brightoIsGreat@2026" autocomplete="off">
+    <div id="admin-fields">
+      <div class="field"><label>Username</label><input id="login-user" value="admin" autocomplete="username"></div>
+      <div class="field"><label>Password</label><input id="login-pass" type="password" placeholder="ADMIN_MASTER_KEY" autocomplete="current-password"></div>
     </div>
+    <div class="field hidden" id="user-field"><label>API key</label><input id="login-apikey" type="password" placeholder="lc-..." autocomplete="off"></div>
     <button class="btn primary btn-block" onclick="login()">Sign in</button>
     <div class="warn-note hidden" id="login-error"></div>
-    <div class="hint" style="margin-top:14px">
-      Admin key is set via <code>ADMIN_MASTER_KEY</code>. A User signs in with their client API key
-      (<code>Bearer</code>) to see only their own usage, charts and logs.
-    </div>
   </div>
 </div>
 
+<!-- ============ APP ============ -->
 <div id="app-view" class="hidden">
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><div class="logo">B</div><h1 style="font-size:16px">BrighTO</h1></div>
-    <button class="nav active" data-view="dashboard" onclick="go('dashboard')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z"/></svg>Dashboard</button>
-    <button class="nav" data-view="models" onclick="go('models')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/></svg>Models</button>
-    <button class="nav" data-view="providers" onclick="go('providers')" id="nav-providers">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg>Providers</button>
-    <button class="nav" data-view="teams" onclick="go('teams')" id="nav-teams">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Teams</button>
-    <button class="nav" data-view="keys" onclick="go('keys')" id="nav-keys">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zM15 6l3 3m-1-4l3 3"/></svg>API Keys</button>
-    <button class="nav" data-view="usage" onclick="go('usage')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg>Usage</button>
-    <button class="nav" data-view="logs" onclick="go('logs')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Logs</button>
+    <div class="brand">
+      <div class="row"><div class="logo">B</div><h1>BrighTO</h1></div>
+      <div class="sub" id="sidebar-sub">Admin Portal</div>
+    </div>
+    <button class="nav active" data-view="dashboard" onclick="go('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z"/></svg>Dashboard</button>
+    <button class="nav" data-view="providers" onclick="go('providers')" id="nav-providers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg>Providers</button>
+    <button class="nav" data-view="models" onclick="go('models')" id="nav-models"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/></svg>Models &amp; Routes</button>
+    <button class="nav" data-view="teams" onclick="go('teams')" id="nav-teams"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Teams</button>
+    <button class="nav" data-view="keys" onclick="go('keys')" id="nav-keys"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zM15 6l3 3m-1-4l3 3"/></svg>API Keys</button>
+    <button class="nav" data-view="usage" onclick="go('usage')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg>Usage</button>
+    <button class="nav" data-view="settings" onclick="go('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</button>
     <div class="foot">
       <div class="mode-pill" id="mode-pill">Admin</div>
       <button class="btn ghost sm" onclick="logout()">Sign out</button>
@@ -171,9 +200,9 @@ td.mono{font-family:var(--mono);font-size:12px}
 
   <main class="main">
     <div class="topbar">
-      <button class="btn sm ghost hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+      <button class="btn sm ghost hamburger" onclick="toggleSidebar()">☰</button>
       <div><h2 id="page-title">Dashboard</h2><div class="desc" id="page-desc"></div></div>
-      <div class="row"><button class="btn sm" onclick="refresh()">Refresh</button></div>
+      <div class="verified"><span class="dot"></span><span id="verified-label">Admin key verified</span></div>
     </div>
     <div id="content"></div>
   </main>
@@ -186,635 +215,492 @@ td.mono{font-family:var(--mono);font-size:12px}
 "use strict";
 var mode = "admin";
 var authKey = "";
-var backends = [];
-var routes = [];
-var teams = [];
-var keys = [];
+var backends = [], routes = [], teams = [], keys = [];
+
 function $(id){ return document.getElementById(id); }
 function el(tag, cls, text){ var n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
 function fmt(n){ if(n===null||n===undefined)return "-"; return Number(n).toLocaleString(); }
-function fmtTs(sec){ if(!sec)return "-"; var d=new Date(sec*1000); return d.toISOString().replace("T"," ").slice(0,19); }
-function fmtDate(sec){ var d=new Date(sec*1000); return d.toISOString().slice(0,10); }
+function fmtTs(sec){ if(!sec)return "-"; var d=new Date(sec*1000); return d.toISOString().replace("T"," ").slice(0,16); }
+function fmtDate(sec){ return new Date(sec*1000).toISOString().slice(0,10); }
 function authHeaders(){
-  if(mode === "admin"){ return {"Content-Type":"application/json","x-admin-key":authKey}; }
+  if(mode==="admin") return {"Content-Type":"application/json","x-admin-key":authKey};
   return {"Content-Type":"application/json","Authorization":"Bearer "+authKey};
 }
 async function api(path, method, body){
   var res = await fetch(path, {method:method, headers:authHeaders(), body:body?JSON.stringify(body):undefined});
-  if(!res.ok){
-    var text = await res.text();
-    var msg = text;
-    try { var j = JSON.parse(text); if(j.error) msg = j.error.message || j.error; } catch(e){}
-    throw new Error(res.status + " " + msg);
-  }
-  if(res.status === 204) return null;
+  if(!res.ok){ var t=await res.text(); var m=t; try{var j=JSON.parse(t); if(j.error)m=j.error.message||j.error;}catch(e){}
+    throw new Error(res.status+" "+m); }
+  if(res.status===204) return null;
   return res.json();
 }
-function toast(msg, type){
-  var box = $("toast");
-  var t = el("div","toast "+(type||""), msg);
-  box.appendChild(t);
-  setTimeout(function(){ t.remove(); }, 4000);
-}
+function toast(msg, type){ var b=$("toast"); var t=el("div","toast "+(type||""),msg); b.appendChild(t); setTimeout(function(){t.remove();},4000); }
+
+/* ===== Auth ===== */
 function setMode(m){
-  mode = m;
-  $("seg-admin").classList.toggle("active", m==="admin");
-  $("seg-user").classList.toggle("active", m==="user");
-  $("login-label").textContent = m==="admin" ? "Admin master key" : "Your API key";
-  $("login-key").placeholder = m==="admin" ? "brightoIsGreat@2026" : "lc-... or Bearer key";
-  $("login-mode-desc").textContent = m==="admin"
-    ? "Admin — full control: manage providers, model routes, teams, API keys and view all usage."
-    : "User — view-only: see your own key, team, usage charts and request logs.";
+  mode=m;
+  $("seg-admin").classList.toggle("active",m==="admin");
+  $("seg-user").classList.toggle("active",m==="user");
+  $("admin-fields").classList.toggle("hidden",m!=="admin");
+  $("user-field").classList.toggle("hidden",m==="admin");
+  $("login-sub").textContent = m==="admin" ? "Sign in with admin credentials." : "Sign in with your client API key.";
 }
 async function login(){
-  authKey = $("login-key").value.trim();
-  var err = $("login-error");
-  err.classList.add("hidden");
-  if(!authKey){ err.textContent = "Please enter a key."; err.classList.remove("hidden"); return; }
-  try{
-    if(mode === "admin"){ await api("/admin/backends","GET"); }
-    else { await api("/portal/me","GET"); }
-  }catch(e){
-    err.textContent = "Sign-in failed: " + e.message;
-    err.classList.remove("hidden");
-    return;
+  var err=$("login-error"); err.classList.add("hidden");
+  if(mode==="admin"){
+    var u=$("login-user").value.trim();
+    var p=$("login-pass").value;
+    if(u!=="admin" || !p){ err.textContent="Invalid admin username or password."; err.classList.remove("hidden"); return; }
+    authKey=p;
+    try{ await api("/admin/backends","GET"); }
+    catch(e){ err.textContent="Invalid admin username or password."; err.classList.remove("hidden"); return; }
+  }else{
+    authKey=$("login-apikey").value.trim();
+    if(!authKey){ err.textContent="Please enter your API key."; err.classList.remove("hidden"); return; }
+    try{ await api("/portal/me","GET"); }
+    catch(e){ err.textContent="Invalid API key."; err.classList.remove("hidden"); return; }
   }
   $("login-view").classList.add("hidden");
   $("app-view").classList.remove("hidden");
-  $("mode-pill").textContent = mode === "admin" ? "Admin" : "User · " + (authKey.slice(0,8) || "");
-  ["providers","teams","keys","models"].forEach(function(v){
-    var n = $("nav-"+v);
-    if(n) n.style.display = mode==="admin" ? "" : "none";
+  $("sidebar-sub").textContent = mode==="admin" ? "Admin Portal" : "User Portal";
+  $("verified-label").textContent = mode==="admin" ? "Admin key verified" : "API key verified";
+  $("mode-pill").textContent = mode==="admin" ? "Admin" : "User · "+(authKey.slice(0,8)||"");
+  ["providers","models","teams","keys","settings"].forEach(function(v){
+    var n=$("nav-"+v); if(n) n.style.display = mode==="admin" ? "" : "none";
   });
   await refresh();
 }
-function logout(){
-  authKey = "";
-  $("app-view").classList.add("hidden");
-  $("login-view").classList.remove("hidden");
-  $("content").innerHTML = "";
-}
-var titles = {dashboard:"Dashboard",models:"Models",providers:"Providers",teams:"Teams",keys:"API Keys",usage:"Usage",logs:"Request Logs"};
-var descs = {
-  dashboard:"Overview of your gateway",
-  models:"Model routes → provider backends",
-  providers:"Provider backends and API keys",
-  teams:"Teams and budgets",
-  keys:"Client API keys",
-  usage:"Token usage charts",
-  logs:"Recent requests"
-};
+function logout(){ authKey=""; $("app-view").classList.add("hidden"); $("login-view").classList.remove("hidden"); $("content").innerHTML=""; }
+
+/* ===== Nav ===== */
+var titles={dashboard:"Dashboard",providers:"Providers",models:"Models & Routes",teams:"Teams",keys:"API Keys",usage:"Usage",settings:"Settings"};
+var descs={dashboard:"Gateway overview",providers:"Connect LLM backends",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client API keys",usage:"Usage and requests",settings:"Runtime configuration"};
 function go(view){
   document.querySelectorAll(".nav").forEach(function(n){ n.classList.toggle("active", n.dataset.view===view); });
-  $("page-title").textContent = titles[view];
-  $("page-desc").textContent = descs[view];
+  $("page-title").textContent=titles[view]; $("page-desc").textContent=descs[view];
   render(view);
 }
 async function refresh(){
   try{
     if(mode==="admin"){
-      backends = await api("/admin/backends","GET");
-      routes = await api("/admin/routes","GET");
-      teams = await api("/admin/teams","GET");
-      keys = await api("/admin/keys","GET");
+      backends=await api("/admin/backends","GET");
+      routes=await api("/admin/routes","GET");
+      teams=await api("/admin/teams","GET");
+      keys=await api("/admin/keys","GET");
     }
-    var cur = document.querySelector(".nav.active");
-    if(cur) render(cur.dataset.view);
-    else go("dashboard");
+    var cur=document.querySelector(".nav.active");
+    if(cur) render(cur.dataset.view); else go("dashboard");
   }catch(e){ toast("Load failed: "+e.message,"err"); }
 }
 function render(view){
-  var c = $("content");
-  c.innerHTML = "";
-  if(mode === "user" && ["models","providers","teams","keys"].indexOf(view)>=0){ view = "dashboard"; }
+  var c=$("content"); c.innerHTML="";
+  if(mode==="user" && ["providers","models","teams","keys","settings"].indexOf(view)>=0) view="dashboard";
   if(view==="dashboard") renderDashboard(c);
-  else if(view==="models") renderModels(c);
   else if(view==="providers") renderProviders(c);
+  else if(view==="models") renderModels(c);
   else if(view==="teams") renderTeams(c);
   else if(view==="keys") renderKeys(c);
   else if(view==="usage") renderUsage(c);
-  else if(view==="logs") renderLogs(c);
+  else if(view==="settings") renderSettings(c);
 }
-function emptyBox(text){
-  var d = el("div","empty");
-  d.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
-  d.appendChild(document.createTextNode(text));
-  return d;
-}
+function emptyBox(text){ var d=el("div","empty"); d.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h10"/></svg>'; d.appendChild(document.createTextNode(text)); return d; }
+
+/* ===== Dashboard ===== */
 async function renderDashboard(c){
-  var stats = [];
-  try{
-    var path = mode==="admin" ? "/admin/stats?days=30" : "/portal/me/stats?days=30";
-    stats = await api(path,"GET");
-  }catch(e){ stats = []; }
-  var totalIn = stats.reduce(function(a,s){return a + s.input_tokens},0);
-  var totalOut = stats.reduce(function(a,s){return a + s.output_tokens},0);
-  var totalReq = stats.reduce(function(a,s){return a + s.requests},0);
-  var cards = [];
+  var stats=[], logs=[];
+  try{ stats=await api(mode==="admin"?"/admin/stats?days=30":"/portal/me/stats?days=30","GET"); }catch(e){}
+  try{ logs=await api(mode==="admin"?"/admin/usage":"/portal/me/usage","GET"); }catch(e){}
+  var inT=stats.reduce(function(a,s){return a+s.input_tokens},0);
+  var outT=stats.reduce(function(a,s){return a+s.output_tokens},0);
+  var req=stats.reduce(function(a,s){return a+s.requests},0);
+  var errs=logs.filter(function(r){return r.status>=400}).length;
+  var errRate=logs.length?Math.round(errs/logs.length*1000)/10:0;
+  var ttfb=logs.map(function(r){return r.ttfb_ms}).sort(function(a,b){return a-b;});
+  var p95=ttfb.length?ttfb[Math.floor(ttfb.length*0.95)]:0;
+
+  var cards=[];
   if(mode==="admin"){
-    cards = [
-      ["Providers", backends.length, backends.filter(function(b){return b.enabled}).length + " enabled"],
-      ["Models", routes.length, "routes configured"],
-      ["Teams", teams.length, teams.filter(function(t){return t.enabled}).length + " enabled"],
-      ["API keys", keys.length, keys.filter(function(k){return k.enabled}).length + " active"]
-    ];
+    cards=[["Active providers", backends.filter(function(b){return b.enabled}).length, "of "+backends.length+" configured"],
+           ["Active teams", teams.filter(function(t){return t.enabled}).length, "of "+teams.length+" teams"],
+           ["API keys", keys.filter(function(k){return k.enabled}).length, "issued"]];
   }
-  cards = cards.concat([
-    ["Requests (30d)", totalReq, "completed"],
-    ["Input tokens (30d)", fmt(totalIn), "total"],
-    ["Output tokens (30d)", fmt(totalOut), "total"]
+  cards=cards.concat([
+    ["Requests (30d)", fmt(req), "completed"],
+    ["Input tokens", fmt(inT), "total"],
+    ["Output tokens", fmt(outT), "total"],
+    ["Estimated spend", "—", "pricing coming soon"],
+    ["Error rate", errRate+"%", "recent window"],
+    ["P95 first byte", p95+"ms", "recent window"]
   ]);
-  var grid = el("div","grid");
-  cards.forEach(function(card){
-    var cardEl = el("div","card");
-    cardEl.appendChild(el("div","muted", card[0]));
-    cardEl.appendChild(el("div","big", card[1]));
-    cardEl.appendChild(el("div","muted", card[2]));
-    grid.appendChild(cardEl);
+  var grid=el("div","grid");
+  cards.forEach(function(cd){
+    var x=el("div","card");
+    x.appendChild(el("div","label",cd[0]));
+    x.appendChild(el("div","big",cd[1]));
+    x.appendChild(el("div","foot",cd[2]));
+    grid.appendChild(x);
   });
   c.appendChild(grid);
-  var panel = el("div","panel");
-  var head = el("div","panel-head");
-  head.appendChild(el("h3",null,"Tokens by model — last 30 days"));
-  panel.appendChild(head);
-  if(stats.length){ panel.appendChild(chartBars(stats)); }
-  else { panel.appendChild(emptyBox("No usage yet. Make a request through the router to see charts.")); }
-  c.appendChild(panel);
-  if(mode==="admin"){
-    var p2 = el("div","panel");
-    var h2 = el("div","panel-head");
-    h2.appendChild(el("h3",null,"Recent requests"));
-    p2.appendChild(h2);
-    p2.appendChild(await logsTable(null));
-    c.appendChild(p2);
-  }
+
+  var p=el("div","panel");
+  p.appendChild(el("h3",null,"Tokens by model — last 30 days"));
+  if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage yet. Requests flow here once the router is live."));
+  c.appendChild(p);
+
+  var p2=el("div","panel");
+  var h=el("div","panel-head"); h.appendChild(el("h3",null,"Recent requests"));
+  p2.appendChild(h);
+  p2.appendChild(logsTable(logs));
+  c.appendChild(p2);
 }
-function renderModels(c){
-  var panel = el("div","panel");
-  var head = el("div","panel-head");
-  head.appendChild(el("h3",null,"Model routes"));
-  var add = el("button","btn primary sm","New route");
-  add.onclick = openRouteModal;
-  head.appendChild(add);
-  panel.appendChild(head);
-  panel.appendChild(el("p","hint","A route maps a client-facing model name to one or more provider backends."));
-  if(!routes.length){ panel.appendChild(emptyBox("No routes yet. Click “New route”.")); }
+
+/* ===== Providers ===== */
+function renderProviders(c){
+  var p=el("div","panel");
+  var h=el("div","panel-head");
+  h.appendChild(el("h3",null,"Provider backends"));
+  var add=el("button","btn primary sm","Add provider"); add.onclick=openProviderModal;
+  h.appendChild(add);
+  p.appendChild(h);
+  p.appendChild(el("p","hint","Set provider API keys in the shell (<b>./start.sh set-key &lt;name&gt; &lt;key&gt;</b>) or edit the key reference here. Only <b>configured / missing</b> status is shown — never the secret."));
+  if(!backends.length){ p.appendChild(emptyBox("No providers yet.")); }
   else{
-    var wrap = el("div","table-wrap");
-    var t = el("table");
-    t.appendChild(thead(["Model","Backends","Fallback","Timeout",""]));
-    var tb = el("tbody");
-    routes.forEach(function(r){
-      var tr = el("tr");
-      tr.appendChild(el("td","mono", r.model_name));
-      tr.appendChild(el("td",null, r.backend_ids.join(", ")));
-      tr.appendChild(el("td",null, r.fallback_backend_id===null?"—":String(r.fallback_backend_id)));
-      tr.appendChild(el("td",null, r.first_byte_timeout+"s"));
-      var td = el("td");
-      var b = el("button","btn sm ghost","Edit");
-      b.onclick = function(){ openRouteModal(r); };
-      td.appendChild(b);
-      tr.appendChild(td);
+    var w=el("div","table-wrap"); var t=el("table");
+    t.appendChild(thead(["","Provider","Status","Models","Base URL",""]));
+    var tb=el("tbody");
+    backends.forEach(function(b){
+      var tr=el("tr");
+      tr.appendChild(el("td","mono",String(b.id)));
+      tr.appendChild(el("td",null,b.name));
+      var st=el("td");
+      st.appendChild(pill(b.enabled?(b.key_resolved?"Enabled · key ready":"Enabled · no key"):"Disabled", b.enabled?(b.key_resolved?"on":"warn"):"off"));
+      tr.appendChild(st);
+      tr.appendChild(el("td",null,"—"));
+      tr.appendChild(el("td","mono",b.base_url.replace("https://","").replace("http://","")));
+      var td=el("td"); var row=el("div","row"); row.style.gap="6px";
+      var f=el("button","btn sm ghost","Load models"); f.onclick=function(){fetchModels(b);};
+      var e=el("button","btn sm primary","Edit"); e.onclick=function(){openProviderModal(b);};
+      row.appendChild(f); row.appendChild(e); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
-    t.appendChild(tb);
-    wrap.appendChild(t);
-    panel.appendChild(wrap);
+    t.appendChild(tb); w.appendChild(t); p.appendChild(w);
   }
-  c.appendChild(panel);
+  c.appendChild(p);
 }
-function openRouteModal(route){
-  route = route || {};
-  var overlay = $("modal-overlay");
-  overlay.innerHTML = "";
-  var m = el("div","modal");
-  m.appendChild(el("h3",null, route.model_name ? "Edit route" : "Create route"));
-  var f = el("div","field");
-  f.appendChild(el("label",null,"Model name"));
-  var modelInput = el("input"); modelInput.placeholder = "gpt-4o-mini"; modelInput.value = route.model_name || ""; modelInput.id="f-model";
-  f.appendChild(modelInput); m.appendChild(f);
-  var f2 = el("div","field");
-  f2.appendChild(el("label",null,"Backend(s) — pick one or more"));
-  var chips = el("div","chips");
-  var selected = {};
-  (route.backend_ids||[]).forEach(function(id){ selected[id]=true; });
-  backends.forEach(function(b){
-    var ch = el("label","chip" + (selected[b.id]?" selected":""));
-    var cb = el("input"); cb.type="checkbox"; cb.value=b.id; cb.checked=!!selected[b.id];
-    cb.onchange = function(){ ch.classList.toggle("selected", cb.checked); };
-    ch.appendChild(cb);
-    ch.appendChild(document.createTextNode(b.name + " (id "+b.id+")"));
-    chips.appendChild(ch);
-  });
-  f2.appendChild(chips); m.appendChild(f2);
-  var f3 = el("div","field");
-  f3.appendChild(el("label",null,"Fallback backend (optional)"));
-  var fb = el("input"); fb.type="number"; fb.placeholder="backend id"; fb.value = route.fallback_backend_id===null||route.fallback_backend_id===undefined?"":route.fallback_backend_id;
-  f3.appendChild(fb); m.appendChild(f3);
-  var f4 = el("div","field");
-  f4.appendChild(el("label",null,"First-byte timeout (seconds)"));
-  var to = el("input"); to.type="number"; to.value = route.first_byte_timeout || 180;
-  f4.appendChild(to); m.appendChild(f4);
-  var actions = el("div","actions");
-  var cancel = el("button","btn","Cancel"); cancel.onclick = closeModal;
-  var save = el("button","btn primary","Save route");
-  save.onclick = async function(){
-    var name = modelInput.value.trim();
-    if(!name){ toast("Model name is required","err"); return; }
-    var ids = [];
-    chips.querySelectorAll("input:checked").forEach(function(cb){ ids.push(Number(cb.value)); });
-    if(!ids.length){ toast("Pick at least one backend","err"); return; }
-    var payload = {model_name:name, backend_ids:ids, chars_per_token:4.0, first_byte_timeout:Number(to.value)||180};
-    if(fb.value) payload.fallback_backend_id = Number(fb.value);
+function openProviderModal(b){
+  b=b||{};
+  var ov=$("modal-overlay"); ov.innerHTML="";
+  var m=el("div","modal");
+  m.appendChild(el("h3",null, b.id?"Edit provider · "+b.name:"Add provider"));
+  var fields=[["name","Name",b.name||""],["base_url","Base URL",b.base_url||""],["api_key_ref","API key ref (env:NAME)",b.api_key_ref||""],["format","Format (openai / anthropic)",b.format||"openai"],["weight","Weight",String(b.weight||1)],["max_inflight","Max concurrent (0 = unlimited)",String(b.max_inflight||0)]];
+  var inputs={};
+  fields.forEach(function(f){ var box=el("div","field"); box.appendChild(el("label",null,f[1])); var i=el("input"); i.value=f[2]; inputs[f[0]]=i; box.appendChild(i); m.appendChild(box); });
+  var en=el("div","field");
+  var lab=el("label","chip"+(b.enabled!==false?" selected":"")); var cb=el("input"); cb.type="checkbox"; cb.checked=b.enabled!==false;
+  lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); en.appendChild(lab); m.appendChild(en);
+  var act=el("div","actions");
+  var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+  var save=el("button","btn primary", b.id?"Save":"Add");
+  save.onclick=async function(){
+    var payload={name:inputs.name.value.trim(),base_url:inputs.base_url.value.trim(),api_key_ref:inputs.api_key_ref.value.trim(),format:inputs.format.value.trim(),weight:Number(inputs.weight.value)||1,max_inflight:Number(inputs.max_inflight.value)||0,enabled:cb.checked};
     try{
-      await api("/admin/routes","POST",payload);
-      closeModal(); toast("Route saved"); routes = await api("/admin/routes","GET"); renderModels($("content"));
+      if(b.id){ await api("/admin/backends/"+b.id,"PATCH",payload); }
+      else { await api("/admin/backends","POST",payload); }
+      closeModal(); toast("Provider saved"); backends=await api("/admin/backends","GET"); renderProviders($("content"));
     }catch(e){ toast("Save failed: "+e.message,"err"); }
   };
-  actions.appendChild(cancel); actions.appendChild(save);
-  m.appendChild(actions);
-  overlay.appendChild(m);
-  overlay.classList.remove("hidden");
-}
-function renderProviders(c){
-  var panel = el("div","panel");
-  var head = el("div","panel-head");
-  head.appendChild(el("h3",null,"Provider backends"));
-  panel.appendChild(head);
-  panel.appendChild(el("p","hint","Set provider API keys from the shell with <b>./start.sh set-key &lt;name&gt; &lt;key&gt;</b> — they are never shown here."));
-  var wrap = el("div","table-wrap");
-  var t = el("table");
-  t.appendChild(thead(["","Name","Format","Base URL","Key","Enabled",""]));
-  var tb = el("tbody");
-  backends.forEach(function(b){
-    var tr = el("tr");
-    tr.appendChild(el("td","mono", String(b.id)));
-    tr.appendChild(el("td",null,b.name));
-    tr.appendChild(el("td",null,b.format));
-    tr.appendChild(el("td","mono",b.base_url));
-    var keyCell = el("td");
-    keyCell.appendChild(pill(b.key_resolved ? "ready":"missing", b.key_resolved?"on":"warn"));
-    tr.appendChild(keyCell);
-    var en = el("td");
-    var sw = el("label","chip" + (b.enabled?" selected":""));
-    var cb = el("input"); cb.type="checkbox"; cb.checked=b.enabled;
-    cb.onchange = async function(){
-      try{ await api("/admin/backends/"+b.id,"PATCH",{enabled:cb.checked}); toast("Provider "+(cb.checked?"enabled":"disabled")); }
-      catch(e){ toast(e.message,"err"); cb.checked=!cb.checked; }
-    };
-    sw.appendChild(cb); sw.appendChild(document.createTextNode(b.enabled?"On":"Off"));
-    en.appendChild(sw);
-    tr.appendChild(en);
-    var td = el("td");
-    var row = el("div","row"); row.style.gap="6px";
-    var fetchB = el("button","btn sm ghost","Models"); fetchB.onclick = function(){ fetchModels(b); };
-    var editB = el("button","btn sm ghost","Edit"); editB.onclick = function(){ openBackendModal(b); };
-    row.appendChild(fetchB); row.appendChild(editB);
-    td.appendChild(row); tr.appendChild(td);
-    tb.appendChild(tr);
-  });
-  t.appendChild(tb);
-  wrap.appendChild(t);
-  panel.appendChild(wrap);
-  c.appendChild(panel);
-}
-function openBackendModal(b){
-  var overlay = $("modal-overlay");
-  overlay.innerHTML = "";
-  var m = el("div","modal");
-  m.appendChild(el("h3",null,"Edit provider · " + b.name));
-  var fields = [
-    ["name","Name", b.name],
-    ["base_url","Base URL", b.base_url],
-    ["api_key_ref","API key ref", b.api_key_ref],
-    ["format","Format (openai / anthropic)", b.format],
-    ["weight","Weight", String(b.weight)],
-    ["max_inflight","Max inflight (0 = unlimited)", String(b.max_inflight)]
-  ];
-  var inputs = {};
-  fields.forEach(function(f){
-    var box = el("div","field");
-    box.appendChild(el("label",null,f[1]));
-    var inp = el("input"); inp.value = f[2]; inputs[f[0]] = inp;
-    box.appendChild(inp); m.appendChild(box);
-  });
-  var actions = el("div","actions");
-  var cancel = el("button","btn","Cancel"); cancel.onclick = closeModal;
-  var save = el("button","btn primary","Save");
-  save.onclick = async function(){
-    var payload = {
-      name: inputs.name.value.trim(),
-      base_url: inputs.base_url.value.trim(),
-      api_key_ref: inputs.api_key_ref.value.trim(),
-      format: inputs.format.value.trim(),
-      weight: Number(inputs.weight.value)||1,
-      max_inflight: Number(inputs.max_inflight.value)||0
-    };
-    try{
-      await api("/admin/backends/"+b.id,"PATCH",payload);
-      closeModal(); toast("Provider saved"); backends = await api("/admin/backends","GET"); renderProviders($("content"));
-    }catch(e){ toast("Save failed: "+e.message,"err"); }
-  };
-  actions.appendChild(cancel); actions.appendChild(save);
-  m.appendChild(actions);
-  overlay.appendChild(m);
-  overlay.classList.remove("hidden");
+  act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
+  ov.appendChild(m); ov.classList.remove("hidden");
 }
 async function fetchModels(b){
-  toast("Fetching models from "+b.name+" …");
+  toast("Loading models from "+b.name+" …");
   try{
-    var data = await api("/admin/backends/"+b.id+"/models","GET");
+    var data=await api("/admin/backends/"+b.id+"/models","GET");
     if(!data.models.length){ toast("Provider returned no models"); return; }
-    var overlay = $("modal-overlay");
-    overlay.innerHTML = "";
-    var m = el("div","modal");
-    m.appendChild(el("h3",null,"Models · " + b.name + " ("+data.models.length+")"));
-    var chips = el("div","chips");
-    data.models.slice(0,200).forEach(function(model){
-      var ch = el("button","chip", model);
-      ch.onclick = function(){
-        var backendIds = [b.id];
-        api("/admin/routes","POST",{model_name:model, backend_ids:backendIds, chars_per_token:4.0, first_byte_timeout:180})
-          .then(function(){ closeModal(); toast("Route created for " + model); routes = api("/admin/routes","GET"); })
-          .catch(function(e){ toast("Route failed: "+e.message,"err"); });
-      };
+    var ov=$("modal-overlay"); ov.innerHTML="";
+    var m=el("div","modal");
+    m.appendChild(el("h3",null,"Models · "+b.name+" ("+data.models.length+")"));
+    var chips=el("div","chips");
+    data.models.slice(0,200).forEach(function(md){
+      var ch=el("button","chip",md);
+      ch.onclick=function(){ api("/admin/routes","POST",{model_name:md,backend_ids:[b.id],chars_per_token:4.0,first_byte_timeout:180}).then(function(){closeModal();toast("Route created for "+md);routes=api("/admin/routes","GET");}).catch(function(e){toast("Route failed: "+e.message,"err");}); };
       chips.appendChild(ch);
     });
     m.appendChild(chips);
     m.appendChild(el("p","hint","Click a model to create a route to this provider."));
-    var actions = el("div","actions");
-    var cancel = el("button","btn","Close"); cancel.onclick = closeModal;
-    actions.appendChild(cancel); m.appendChild(actions);
-    overlay.appendChild(m);
-    overlay.classList.remove("hidden");
-  }catch(e){ toast("Fetch models: "+e.message,"err"); }
+    var act=el("div","actions"); var cl=el("button","btn","Close"); cl.onclick=closeModal; act.appendChild(cl); m.appendChild(act);
+    ov.appendChild(m); ov.classList.remove("hidden");
+  }catch(e){ toast("Load models: "+e.message,"err"); }
 }
-function renderTeams(c){
-  var panel = el("div","panel");
-  var head = el("div","panel-head");
-  head.appendChild(el("h3",null,"Teams"));
-  var add = el("button","btn primary sm","New team"); add.onclick = openTeamModal;
-  head.appendChild(add);
-  panel.appendChild(head);
-  if(!teams.length){ panel.appendChild(emptyBox("No teams yet.")); }
+
+/* ===== Models & Routes ===== */
+function renderModels(c){
+  var p=el("div","panel");
+  var h=el("div","panel-head"); h.appendChild(el("h3",null,"Model routes"));
+  var add=el("button","btn primary sm","Create model route"); add.onclick=function(){openRouteModal();};
+  h.appendChild(add);
+  p.appendChild(h);
+  p.appendChild(el("p","hint","Each route exposes a public model name to clients and maps it to a provider backend."));
+  if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
   else{
-    var wrap = el("div","table-wrap");
-    var t = el("table");
-    t.appendChild(thead(["ID","Name","Budget","Enabled",""]));
-    var tb = el("tbody");
-    teams.forEach(function(tm){
-      var tr = el("tr");
-      tr.appendChild(el("td","mono",String(tm.id)));
-      tr.appendChild(el("td",null,tm.name));
-      tr.appendChild(el("td",null, tm.budget ? budgetText(tm.budget) : "—"));
-      var en = el("td"); en.appendChild(pill(tm.enabled?"on":"off", tm.enabled?"on":"off")); tr.appendChild(en);
-      var td = el("td"); var b = el("button","btn sm ghost","Edit"); b.onclick = function(){ openTeamModal(tm); }; td.appendChild(b); tr.appendChild(td);
+    var w=el("div","table-wrap"); var t=el("table");
+    t.appendChild(thead(["Public model","Backends","Fallback","Timeout",""]));
+    var tb=el("tbody");
+    routes.forEach(function(r){
+      var tr=el("tr");
+      tr.appendChild(el("td","mono",r.model_name));
+      tr.appendChild(el("td",null,r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ")));
+      tr.appendChild(el("td",null,r.fallback_backend_id===null?"—":String(r.fallback_backend_id)));
+      tr.appendChild(el("td",null,r.first_byte_timeout+"s"));
+      var td=el("td"); var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openRouteModal(r);}; td.appendChild(b); tr.appendChild(td);
       tb.appendChild(tr);
     });
-    t.appendChild(tb); wrap.appendChild(t); panel.appendChild(wrap);
+    t.appendChild(tb); w.appendChild(t); p.appendChild(w);
   }
-  c.appendChild(panel);
+  c.appendChild(p);
 }
-function budgetText(b){ return (b.period || "?") + " · " + fmt(b.max_tokens) + " tokens"; }
-function openTeamModal(tm){
-  tm = tm || {};
-  var overlay = $("modal-overlay");
-  overlay.innerHTML = "";
-  var m = el("div","modal");
-  m.appendChild(el("h3",null, tm.id ? "Edit team" : "Create team"));
-  var f = el("div","field"); f.appendChild(el("label",null,"Team name"));
-  var nameInp = el("input"); nameInp.value = tm.name || ""; f.appendChild(nameInp); m.appendChild(f);
-  var f2 = el("div","field"); f2.appendChild(el("label",null,"Budget (JSON, optional)"));
-  var budInp = el("textarea");
-  budInp.value = tm.budget ? JSON.stringify(tm.budget) : '{"period":"month","max_tokens":1000000}';
-  f2.appendChild(budInp); m.appendChild(f2);
-  var f3 = el("div","field");
-  var enLabel = el("label","chip"+(tm.enabled===false?"":" selected"));
-  var cb = el("input"); cb.type="checkbox"; cb.checked = tm.enabled !== false;
-  enLabel.appendChild(cb); enLabel.appendChild(document.createTextNode("Enabled"));
-  f3.appendChild(enLabel); m.appendChild(f3);
-  var actions = el("div","actions");
-  var cancel = el("button","btn","Cancel"); cancel.onclick = closeModal;
-  var save = el("button","btn primary", tm.id?"Save":"Create");
-  save.onclick = async function(){
-    var payload = {name:nameInp.value.trim(), enabled:cb.checked};
-    var bt = budInp.value.trim();
-    if(bt){ try{ payload.budget = JSON.parse(bt); }catch(e){ toast("Invalid budget JSON: "+e.message,"err"); return; } }
-    try{
-      if(tm.id){ await api("/admin/teams/"+tm.id,"PATCH",payload); }
-      else { await api("/admin/teams","POST",payload); }
-      closeModal(); toast("Team saved"); teams = await api("/admin/teams","GET"); renderTeams($("content"));
-    }catch(e){ toast("Save failed: "+e.message,"err"); }
+function openRouteModal(route){
+  route=route||{};
+  var ov=$("modal-overlay"); ov.innerHTML="";
+  var m=el("div","modal");
+  m.appendChild(el("h3",null,route.model_name?"Edit route":"Create model route"));
+  var f=el("div","field"); f.appendChild(el("label",null,"Public model name (shown to clients)"));
+  var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi); m.appendChild(f);
+  var f2=el("div","field"); f2.appendChild(el("label",null,"Provider backend(s)"));
+  var chips=el("div","chips"); var sel={}; (route.backend_ids||[]).forEach(function(id){sel[id]=true;});
+  backends.forEach(function(b){ var ch=el("label","chip"+(sel[b.id]?" selected":"")); var cb=el("input"); cb.type="checkbox"; cb.value=b.id; cb.checked=!!sel[b.id];
+    cb.onchange=function(){ch.classList.toggle("selected",cb.checked);}; ch.appendChild(cb); ch.appendChild(document.createTextNode(b.name)); chips.appendChild(ch); });
+  f2.appendChild(chips); m.appendChild(f2);
+  var f3=el("div","field"); f3.appendChild(el("label",null,"Fallback backend (optional)")); var fb=el("input"); fb.type="number"; fb.value=route.fallback_backend_id||""; f3.appendChild(fb); m.appendChild(f3);
+  var f4=el("div","field"); f4.appendChild(el("label",null,"First-byte timeout (seconds)")); var to=el("input"); to.type="number"; to.value=route.first_byte_timeout||180; f4.appendChild(to); m.appendChild(f4);
+  var act=el("div","actions");
+  var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+  var save=el("button","btn primary","Save route");
+  save.onclick=async function(){
+    var name=mi.value.trim(); if(!name){toast("Model name is required","err");return;}
+    var ids=[]; chips.querySelectorAll("input:checked").forEach(function(cb){ids.push(Number(cb.value));});
+    if(!ids.length){toast("Pick at least one backend","err");return;}
+    var payload={model_name:name,backend_ids:ids,chars_per_token:4.0,first_byte_timeout:Number(to.value)||180};
+    if(fb.value) payload.fallback_backend_id=Number(fb.value);
+    try{ await api("/admin/routes","POST",payload); closeModal(); toast("Route saved"); routes=await api("/admin/routes","GET"); renderModels($("content")); }
+    catch(e){ toast("Save failed: "+e.message,"err"); }
   };
-  actions.appendChild(cancel); actions.appendChild(save);
-  m.appendChild(actions);
-  overlay.appendChild(m); overlay.classList.remove("hidden");
+  act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
+  ov.appendChild(m); ov.classList.remove("hidden");
 }
-function renderKeys(c){
-  var panel = el("div","panel");
-  var head = el("div","panel-head");
-  head.appendChild(el("h3",null,"API keys"));
-  var add = el("button","btn primary sm","New key"); add.onclick = openKeyModal;
-  head.appendChild(add);
-  panel.appendChild(head);
-  if(!keys.length){ panel.appendChild(emptyBox("No keys yet.")); }
+
+/* ===== Teams ===== */
+function renderTeams(c){
+  var p=el("div","panel");
+  var h=el("div","panel-head"); h.appendChild(el("h3",null,"Teams"));
+  var add=el("button","btn primary sm","New team"); add.onclick=function(){openTeamModal();};
+  h.appendChild(add);
+  p.appendChild(h);
+  if(!teams.length){ p.appendChild(emptyBox("No teams yet.")); }
   else{
-    var wrap = el("div","table-wrap");
-    var t = el("table");
+    var w=el("div","table-wrap"); var t=el("table");
+    t.appendChild(thead(["ID","Name","Budget","Enabled",""]));
+    var tb=el("tbody");
+    teams.forEach(function(tm){
+      var tr=el("tr");
+      tr.appendChild(el("td","mono",String(tm.id)));
+      tr.appendChild(el("td",null,tm.name));
+      tr.appendChild(el("td",null,tm.budget?budgetText(tm.budget):"Unlimited"));
+      tr.appendChild(el("td",null)); tr.lastChild.appendChild(pill(tm.enabled?"Enabled":"Disabled",tm.enabled?"on":"off"));
+      var td=el("td"); var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openTeamModal(tm);}; td.appendChild(b); tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); w.appendChild(t); p.appendChild(w);
+  }
+  c.appendChild(p);
+}
+function budgetText(b){ return (b.period||"?")+" · "+fmt(b.max_tokens)+" tokens"; }
+function openTeamModal(tm){
+  tm=tm||{};
+  var ov=$("modal-overlay"); ov.innerHTML="";
+  var m=el("div","modal");
+  m.appendChild(el("h3",null,tm.id?"Edit team":"Create team"));
+  var f=el("div","field"); f.appendChild(el("label",null,"Team name")); var ni=el("input"); ni.value=tm.name||""; f.appendChild(ni); m.appendChild(f);
+  var f2=el("div","field"); f2.appendChild(el("label",null,"Budget (JSON, optional — empty = unlimited)"));
+  var bi=el("textarea"); bi.value=tm.budget?JSON.stringify(tm.budget):""; bi.placeholder='{"period":"month","max_tokens":1000000}'; f2.appendChild(bi); m.appendChild(f2);
+  var f3=el("div","field"); var lab=el("label","chip"+(tm.enabled===false?"":" selected")); var cb=el("input"); cb.type="checkbox"; cb.checked=tm.enabled!==false; lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); f3.appendChild(lab); m.appendChild(f3);
+  var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+  var save=el("button","btn primary",tm.id?"Save":"Create");
+  save.onclick=async function(){
+    var payload={name:ni.value.trim(),enabled:cb.checked}; var bt=bi.value.trim();
+    if(bt){ try{payload.budget=JSON.parse(bt);}catch(e){toast("Invalid budget JSON: "+e.message,"err");return;} }
+    try{ if(tm.id){await api("/admin/teams/"+tm.id,"PATCH",payload);} else {await api("/admin/teams","POST",payload);}
+      closeModal(); toast("Team saved"); teams=await api("/admin/teams","GET"); renderTeams($("content")); }
+    catch(e){ toast("Save failed: "+e.message,"err"); }
+  };
+  act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
+  ov.appendChild(m); ov.classList.remove("hidden");
+}
+
+/* ===== API Keys ===== */
+function renderKeys(c){
+  var p=el("div","panel");
+  var h=el("div","panel-head"); h.appendChild(el("h3",null,"API keys"));
+  var add=el("button","btn primary sm","New key"); add.onclick=openKeyModal;
+  h.appendChild(add);
+  p.appendChild(h);
+  if(!keys.length){ p.appendChild(emptyBox("No keys yet.")); }
+  else{
+    var w=el("div","table-wrap"); var t=el("table");
     t.appendChild(thead(["ID","Prefix","Owner","Team","Allowed models","Enabled",""]));
-    var tb = el("tbody");
+    var tb=el("tbody");
     keys.forEach(function(k){
-      var tr = el("tr");
+      var tr=el("tr");
       tr.appendChild(el("td","mono",String(k.id)));
       tr.appendChild(el("td","mono",k.prefix));
       tr.appendChild(el("td",null,k.owner));
-      tr.appendChild(el("td",null,k.team_name + " ("+k.team_id+")"));
-      tr.appendChild(el("td",null, k.allowed_models.length?k.allowed_models.join(", "):"all"));
-      var en = el("td"); en.appendChild(pill(k.enabled?"on":"off", k.enabled?"on":"off")); tr.appendChild(en);
-      var td = el("td"); var b = el("button","btn sm danger","Disable"); b.onclick = function(){ disableKey(k); }; td.appendChild(b); tr.appendChild(td);
+      tr.appendChild(el("td",null,k.team_name));
+      tr.appendChild(el("td",null,k.allowed_models.length?k.allowed_models.join(", "):"all"));
+      var en=el("td"); en.appendChild(pill(k.enabled?"Enabled":"Disabled",k.enabled?"on":"off")); tr.appendChild(en);
+      var td=el("td"); var row=el("div","row"); row.style.gap="6px";
+      var v=el("button","btn sm ghost","View key"); v.onclick=function(){revealKey(k);};
+      var d=el("button","btn sm danger","Disable"); d.onclick=function(){disableKey(k);};
+      row.appendChild(v); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
-    t.appendChild(tb); wrap.appendChild(t); panel.appendChild(wrap);
+    t.appendChild(tb); w.appendChild(t); p.appendChild(w);
   }
-  c.appendChild(panel);
+  c.appendChild(p);
 }
 function openKeyModal(){
-  var overlay = $("modal-overlay");
-  overlay.innerHTML = "";
-  var m = el("div","modal");
+  var ov=$("modal-overlay"); ov.innerHTML="";
+  var m=el("div","modal");
   m.appendChild(el("h3",null,"Create API key"));
-  var f = el("div","field"); f.appendChild(el("label",null,"Team"));
-  var teamSel = el("select");
-  teams.forEach(function(tm){ var o=el("option",null,tm.name+" (id "+tm.id+")"); o.value=tm.id; teamSel.appendChild(o); });
-  f.appendChild(teamSel); m.appendChild(f);
-  var f2 = el("div","field"); f2.appendChild(el("label",null,"Owner"));
-  var ownerInp = el("input"); ownerInp.placeholder="alice@example.com"; f2.appendChild(ownerInp); m.appendChild(f2);
-  var f3 = el("div","field"); f3.appendChild(el("label",null,"Allowed models (comma-separated, empty = all)"));
-  var modelsInp = el("input"); modelsInp.placeholder="gpt-4o,deepseek-v3"; f3.appendChild(modelsInp); m.appendChild(f3);
-  var actions = el("div","actions");
-  var cancel = el("button","btn","Cancel"); cancel.onclick = closeModal;
-  var save = el("button","btn primary","Create");
-  save.onclick = async function(){
-    var payload = {
-      team_id:Number(teamSel.value),
-      owner:ownerInp.value.trim(),
-      allowed_models:modelsInp.value.split(",").map(function(s){return s.trim();}).filter(Boolean)
-    };
+  var f=el("div","field"); f.appendChild(el("label",null,"Team")); var ts=el("select");
+  teams.forEach(function(tm){var o=el("option",null,tm.name+" (id "+tm.id+")");o.value=tm.id;ts.appendChild(o);});
+  f.appendChild(ts); m.appendChild(f);
+  var f2=el("div","field"); f2.appendChild(el("label",null,"Owner (name / email)")); var oi=el("input"); oi.placeholder="alice@example.com"; f2.appendChild(oi); m.appendChild(f2);
+  var f3=el("div","field"); f3.appendChild(el("label",null,"Allowed models (comma-separated, empty = all)")); var mi=el("input"); mi.placeholder="gpt-4o,deepseek-v3"; f3.appendChild(mi); m.appendChild(f3);
+  var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
+  var save=el("button","btn primary","Create");
+  save.onclick=async function(){
+    var payload={team_id:Number(ts.value),owner:oi.value.trim(),allowed_models:mi.value.split(",").map(function(s){return s.trim();}).filter(Boolean)};
     try{
-      var data = await api("/admin/keys","POST",payload);
+      var data=await api("/admin/keys","POST",payload);
       closeModal();
-      overlay.innerHTML = "";
-      var m2 = el("div","modal");
-      m2.appendChild(el("h3",null,"Key created — copy it now"));
-      m2.appendChild(el("div","key-reveal", data.key));
-      m2.appendChild(el("p","hint","This plaintext key is shown <b>only once</b>. Store it securely."));
-      var actions2 = el("div","actions");
-      var done = el("button","btn primary","Done"); done.onclick = closeModal;
-      actions2.appendChild(done); m2.appendChild(actions2);
-      overlay.appendChild(m2); overlay.classList.remove("hidden");
-      keys = await api("/admin/keys","GET");
+      ov.innerHTML=""; var m2=el("div","modal");
+      m2.appendChild(el("h3",null,"Key created"));
+      m2.appendChild(el("div","key-reveal"));
+      var span=el("span",null,data.key); m2.querySelector(".key-reveal").appendChild(span);
+      var cp=el("button","btn sm","Copy"); cp.onclick=function(){navigator.clipboard.writeText(data.key).then(function(){toast("Copied");});}; m2.querySelector(".key-reveal").appendChild(cp);
+      m2.appendChild(el("p","hint","This is the only plaintext copy unless you re-open it later via <b>View key</b>."));
+      var act2=el("div","actions"); var done=el("button","btn primary","Done"); done.onclick=closeModal; act2.appendChild(done); m2.appendChild(act2);
+      ov.appendChild(m2); ov.classList.remove("hidden");
+      keys=await api("/admin/keys","GET");
     }catch(e){ toast("Create key failed: "+e.message,"err"); }
   };
-  actions.appendChild(cancel); actions.appendChild(save);
-  m.appendChild(actions);
-  overlay.appendChild(m); overlay.classList.remove("hidden");
+  act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
+  ov.appendChild(m); ov.classList.remove("hidden");
+}
+async function revealKey(k){
+  try{
+    var data=await api("/admin/keys/"+k.id+"/reveal","GET");
+    var ov=$("modal-overlay"); ov.innerHTML=""; var m=el("div","modal");
+    m.appendChild(el("h3",null,"Key · "+data.prefix+" · "+data.owner));
+    m.appendChild(el("div","key-reveal"));
+    var span=el("span",null,data.key); m.querySelector(".key-reveal").appendChild(span);
+    var cp=el("button","btn sm","Copy"); cp.onclick=function(){navigator.clipboard.writeText(data.key).then(function(){toast("Copied");});}; m.querySelector(".key-reveal").appendChild(cp);
+    var act=el("div","actions"); var cl=el("button","btn","Close"); cl.onclick=closeModal; act.appendChild(cl); m.appendChild(act);
+    ov.appendChild(m); ov.classList.remove("hidden");
+  }catch(e){ toast("Reveal failed: "+e.message,"err"); }
 }
 async function disableKey(k){
-  if(!confirm("Disable key " + k.prefix + " for " + k.owner + "?")) return;
-  try{ await api("/admin/keys/"+k.id,"DELETE"); toast("Key disabled"); keys = await api("/admin/keys","GET"); renderKeys($("content")); }
+  if(!confirm("Disable key "+k.prefix+" for "+k.owner+"?")) return;
+  try{ await api("/admin/keys/"+k.id,"DELETE"); toast("Key disabled"); keys=await api("/admin/keys","GET"); renderKeys($("content")); }
   catch(e){ toast(e.message,"err"); }
 }
+
+/* ===== Usage ===== */
 async function renderUsage(c){
-  var stats = [];
-  try{ stats = await api(mode==="admin" ? "/admin/stats?days=30" : "/portal/me/stats?days=30","GET"); }
-  catch(e){ stats=[]; }
-  var panel = el("div","panel");
-  panel.appendChild(el("h3",null,"Token usage — last 30 days"));
-  panel.appendChild(el("p","hint","Stacked by model, per day."));
-  if(stats.length){ panel.appendChild(chartBars(stats)); }
-  else { panel.appendChild(emptyBox("No usage data yet.")); }
-  c.appendChild(panel);
+  var stats=[], logs=[];
+  try{ stats=await api(mode==="admin"?"/admin/stats?days=30":"/portal/me/stats?days=30","GET"); }catch(e){}
+  try{ logs=await api(mode==="admin"?"/admin/usage":"/portal/me/usage","GET"); }catch(e){}
+  var p=el("div","panel");
+  p.appendChild(el("h3",null,"Token usage — last 30 days"));
+  if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage data yet."));
+  c.appendChild(p);
+  var p2=el("div","panel");
+  p2.appendChild(el("h3",null,"Request logs"));
+  p2.appendChild(logsTable(logs));
+  c.appendChild(p2);
 }
-async function renderLogs(c){
-  var panel = el("div","panel");
-  panel.appendChild(el("h3",null,"Recent requests"));
-  panel.appendChild(el("p","hint","Most recent 1000 requests."));
-  panel.appendChild(await logsTable(null));
-  c.appendChild(panel);
+
+/* ===== Settings ===== */
+async function renderSettings(c){
+  var p=el("div","panel");
+  p.appendChild(el("h3",null,"Runtime settings"));
+  p.appendChild(el("p","hint","Read-only. Change these via environment variables and restart."));
+  if(mode==="admin"){
+    try{
+      var s=await api("/admin/settings","GET");
+      var rows=[["Router address",s.listen_addr],["Database",s.database_ok?"connected":"unreachable"],["Config reload",s.config_reload_ok?"healthy":"stale"],["Max body bytes",fmt(s.max_body_bytes)],["Version",s.version]];
+      rows.forEach(function(r){ var kv=el("div","kv"); kv.appendChild(el("span","k",r[0])); kv.appendChild(el("span","v",r[1])); p.appendChild(kv); });
+    }catch(e){ p.appendChild(el("div","warn-note","Could not load settings: "+e.message)); }
+  }else{
+    p.appendChild(el("div","empty","Settings are admin-only."));
+  }
+  c.appendChild(p);
 }
-async function logsTable(teamFilter){
-  var qs = "";
-  if(teamFilter) qs = "?team=" + teamFilter;
-  var rows = [];
-  try{ rows = await api((mode==="admin" ? "/admin/usage" : "/portal/me/usage") + qs,"GET"); }catch(e){ rows=[]; }
-  var wrap = el("div","table-wrap");
-  var t = el("table");
-  t.appendChild(thead(["Time","Model","Status","Input","Output","TTFB","Total","Request ID"]));
-  var tb = el("tbody");
-  if(!rows.length){ wrap.appendChild(emptyBox("No requests logged yet.")); return wrap; }
+
+/* ===== Charts ===== */
+function chartBars(stats){
+  var days={}; stats.forEach(function(s){(days[s.day]=days[s.day]||{})[s.model]=s.input_tokens+s.output_tokens;});
+  var dk=Object.keys(days).map(Number).sort(function(a,b){return a-b;});
+  var models=[]; stats.forEach(function(s){if(models.indexOf(s.model)<0)models.push(s.model);});
+  var colors=["#38bdf8","#8b5cf6","#22d3ee","#34d399","#fbbf24","#f87171","#a78bfa","#818cf8"];
+  function color(i){return colors[i%colors.length];}
+  var max=1; dk.forEach(function(d){var s=0;models.forEach(function(m){s+=(days[d][m]||0);});if(s>max)max=s;});
+  var W=780,H=250,padL=52,padB=26,padT=12,cw=W-padL,ch=H-padT-padB,bw=Math.min(34,cw/Math.max(dk.length,1)*0.7);
+  var svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.setAttribute("viewBox","0 0 "+W+" "+H); svg.setAttribute("width","100%"); svg.setAttribute("height",H);
+  for(var g=0;g<=4;g++){ var y=padT+ch-(ch*g/4);
+    var ln=document.createElementNS("http://www.w3.org/2000/svg","line"); ln.setAttribute("x1",padL);ln.setAttribute("x2",W);ln.setAttribute("y1",y);ln.setAttribute("y2",y);ln.setAttribute("stroke","#26364f");ln.setAttribute("stroke-width","1");svg.appendChild(ln);
+    var lb=document.createElementNS("http://www.w3.org/2000/svg","text");lb.setAttribute("x",padL-8);lb.setAttribute("y",y+4);lb.setAttribute("text-anchor","end");lb.setAttribute("fill","#64748b");lb.setAttribute("font-size","10");lb.textContent=fmtNum(max*g/4);svg.appendChild(lb);
+  }
+  var n=dk.length,step=n>1?cw/(n-1):0;
+  dk.forEach(function(d,i){ var x=n>1?padL+i*step:padL+cw/2-bw/2,yB=padT+ch,yT=yB;
+    models.forEach(function(m,mi){ var v=days[d][m]||0; if(!v)return; var hh=(v/max)*ch;
+      var rc=document.createElementNS("http://www.w3.org/2000/svg","rect");rc.setAttribute("x",x);rc.setAttribute("y",yB-(yB-yT)-hh);rc.setAttribute("width",bw);rc.setAttribute("height",hh);rc.setAttribute("fill",color(mi));rc.setAttribute("rx","2");svg.appendChild(rc);yT=yB-(yB-yT)-hh; });
+    if(n<=16||i%Math.ceil(n/14)===0){ var lb=document.createElementNS("http://www.w3.org/2000/svg","text");lb.setAttribute("x",x+bw/2);lb.setAttribute("y",H-8);lb.setAttribute("text-anchor","middle");lb.setAttribute("fill","#64748b");lb.setAttribute("font-size","10");lb.textContent=fmtDate(d).slice(5);svg.appendChild(lb); }
+  });
+  var wrap=el("div","chart-wrap"); wrap.appendChild(svg);
+  var lg=el("div","legend");
+  models.forEach(function(m,i){ var s=el("span"); var dot=el("i");dot.style.background=color(i); s.appendChild(dot); s.appendChild(document.createTextNode(m)); lg.appendChild(s); });
+  wrap.appendChild(lg);
+  return wrap;
+}
+function fmtNum(v){ if(v>=1000000000)return(v/1000000000).toFixed(1)+"B"; if(v>=1000000)return(v/1000000).toFixed(1)+"M"; if(v>=1000)return(v/1000).toFixed(1)+"k"; return String(Math.round(v)); }
+
+/* ===== Logs table ===== */
+function logsTable(rows){
+  var w=el("div","table-wrap"); var t=el("table");
+  t.appendChild(thead(["Time","Team","Key","Model","Status","Input","Output","TTFB","Total","Request ID"]));
+  var tb=el("tbody");
+  if(!rows.length){ w.appendChild(emptyBox("No requests logged yet.")); return w; }
   rows.slice(0,200).forEach(function(r){
-    var tr = el("tr");
+    var tr=el("tr");
     tr.appendChild(el("td","mono",fmtTs(r.ts)));
+    tr.appendChild(el("td",null,String(r.team_id)));
+    tr.appendChild(el("td","mono",keys.find(function(k){return k.id===r.key_id})?keys.find(function(k){return k.id===r.key_id}).prefix:""+r.key_id));
     tr.appendChild(el("td",null,r.model));
-    var st = el("td"); st.appendChild(pill(String(r.status), r.status===200?"on":(r.status>=500?"off":"warn"))); tr.appendChild(st);
+    var st=el("td"); st.appendChild(pill(String(r.status),r.status===200?"on":(r.status>=500?"off":"warn"))); tr.appendChild(st);
     tr.appendChild(el("td","num",fmt(r.input_tokens)));
     tr.appendChild(el("td","num",fmt(r.output_tokens)));
-    tr.appendChild(el("td","num", r.ttfb_ms+"ms"));
-    tr.appendChild(el("td","num", r.total_ms+"ms"));
-    tr.appendChild(el("td","mono", r.request_id));
+    tr.appendChild(el("td","num",r.ttfb_ms+"ms"));
+    tr.appendChild(el("td","num",r.total_ms+"ms"));
+    tr.appendChild(el("td","mono",r.request_id));
     tb.appendChild(tr);
   });
-  t.appendChild(tb);
-  wrap.appendChild(t);
-  return wrap;
+  t.appendChild(tb); w.appendChild(t); return w;
 }
-function chartBars(stats){
-  var days = {};
-  stats.forEach(function(s){ (days[s.day] = days[s.day] || {})[s.model] = s.input_tokens + s.output_tokens; });
-  var dayKeys = Object.keys(days).map(Number).sort(function(a,b){return a-b;});
-  var models = [];
-  stats.forEach(function(s){ if(models.indexOf(s.model)<0) models.push(s.model); });
-  var colors = ["#7c6cf0","#22d3ee","#34d399","#fbbf24","#f87171","#a78bfa","#fb7185","#38bdf8"];
-  function color(i){ return colors[i % colors.length]; }
-  var max = 1;
-  dayKeys.forEach(function(d){ var sum=0; models.forEach(function(m){ sum += (days[d][m]||0); }); if(sum>max)max=sum; });
-  var W = 760, H = 260, padL = 56, padB = 26, padT = 12;
-  var cw = W - padL, ch = H - padT - padB;
-  var bw = Math.min(34, cw / Math.max(dayKeys.length,1) * 0.7);
-  var svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
-  svg.setAttribute("viewBox","0 0 "+W+" "+H);
-  svg.setAttribute("width","100%"); svg.setAttribute("height",H);
-  for(var g=0; g<=4; g++){
-    var y = padT + ch - (ch*g/4);
-    var line = document.createElementNS("http://www.w3.org/2000/svg","line");
-    line.setAttribute("x1",padL); line.setAttribute("x2",W); line.setAttribute("y1",y); line.setAttribute("y2",y);
-    line.setAttribute("stroke","#2c2c38"); line.setAttribute("stroke-width","1");
-    svg.appendChild(line);
-    var lab = document.createElementNS("http://www.w3.org/2000/svg","text");
-    lab.setAttribute("x",padL-8); lab.setAttribute("y",y+4); lab.setAttribute("text-anchor","end");
-    lab.setAttribute("fill","#6b6b80"); lab.setAttribute("font-size","10");
-    lab.textContent = fmtNum(max*g/4);
-    svg.appendChild(lab);
-  }
-  var n = dayKeys.length;
-  var totalW = n * bw;
-  var step = n>1 ? cw/(n-1) : 0;
-  dayKeys.forEach(function(d, i){
-    var x = n>1 ? padL + i*step : padL + cw/2 - bw/2;
-    var yBottom = padT + ch;
-    var yTop = yBottom;
-    models.forEach(function(m, mi){
-      var v = days[d][m]||0;
-      if(!v) return;
-      var h = (v/max)*ch;
-      var rect = document.createElementNS("http://www.w3.org/2000/svg","rect");
-      rect.setAttribute("x", x); rect.setAttribute("y", yBottom - (yBottom - yTop) - h);
-      rect.setAttribute("width", bw); rect.setAttribute("height", h);
-      rect.setAttribute("fill", color(mi)); rect.setAttribute("rx","2");
-      svg.appendChild(rect);
-      yTop = yBottom - (yBottom - yTop) - h;
-    });
-    if(n<=16 || i%Math.ceil(n/14)===0){
-      var lab = document.createElementNS("http://www.w3.org/2000/svg","text");
-      lab.setAttribute("x", x + bw/2); lab.setAttribute("y", H-8); lab.setAttribute("text-anchor","middle");
-      lab.setAttribute("fill","#6b6b80"); lab.setAttribute("font-size","10");
-      lab.textContent = fmtDate(d).slice(5);
-      svg.appendChild(lab);
-    }
-  });
-  var wrap = el("div","chart-wrap");
-  wrap.appendChild(svg);
-  var legend = el("div","legend");
-  models.forEach(function(m, i){
-    var s = el("span");
-    var dot = el("i"); dot.style.background = color(i);
-    s.appendChild(dot);
-    s.appendChild(document.createTextNode(m));
-    legend.appendChild(s);
-  });
-  wrap.appendChild(legend);
-  return wrap;
-}
-function fmtNum(v){
-  if(v>=1000000000) return (v/1000000000).toFixed(1)+"B";
-  if(v>=1000000) return (v/1000000).toFixed(1)+"M";
-  if(v>=1000) return (v/1000).toFixed(1)+"k";
-  return String(Math.round(v));
-}
-function thead(cols){
-  var tr = el("tr");
-  cols.forEach(function(h){ tr.appendChild(el("th",null,h)); });
-  var theadEl = document.createElement("thead");
-  theadEl.appendChild(tr);
-  return theadEl;
-}
-function pill(text, kind){
-  var p = el("span","pill "+kind);
-  var dot = el("span","dot");
-  p.appendChild(dot);
-  p.appendChild(document.createTextNode(text));
-  return p;
-}
+
+/* ===== shared ===== */
+function thead(cols){ var tr=el("tr"); cols.forEach(function(h){tr.appendChild(el("th",null,h));}); var th=document.createElement("thead"); th.appendChild(tr); return th; }
+function pill(text,kind){ var p=el("span","pill "+kind); var d=el("span","dot"); p.appendChild(d); p.appendChild(document.createTextNode(text)); return p; }
 function closeModal(){ $("modal-overlay").classList.add("hidden"); $("modal-overlay").innerHTML=""; }
 function toggleSidebar(){ $("sidebar").classList.toggle("open"); }
 setMode("admin");

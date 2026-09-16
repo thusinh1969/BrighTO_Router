@@ -259,16 +259,18 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/", get(portal))
         .route("/teams", post(create_team))
         .route("/keys", post(create_key))
-        .route("/backends", get(list_backends))
+        .route("/backends", get(list_backends).post(create_backend))
         .route("/backends/{id}", patch(update_backend))
         .route("/backends/{id}/models", get(fetch_backend_models))
         .route("/routes", get(list_routes).post(upsert_route))
         .route("/teams/{id}", patch(update_team))
         .route("/keys/{id}", delete(disable_key))
+        .route("/keys/{id}/reveal", get(reveal_key))
         .route("/teams", get(list_teams))
         .route("/keys", get(list_keys))
         .route("/stats", get(get_stats))
         .route("/usage", get(get_usage))
+        .route("/settings", get(get_settings))
         .layer(Extension(state))
 }
 
@@ -360,6 +362,18 @@ struct PatchBackend {
     max_inflight: Option<u32>,
     format: Option<String>,
     enabled: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct CreateBackend {
+    name: String,
+    base_url: String,
+    api_key_ref: String,
+    format: String,
+    weight: Option<u32>,
+    max_inflight: Option<u32>,
+    #[serde(default = "default_enabled")]
+    enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -486,6 +500,23 @@ struct MeTeam {
     enabled: bool,
 }
 
+#[derive(Serialize)]
+struct KeyRevealResponse {
+    id: i64,
+    prefix: String,
+    owner: String,
+    key: String,
+}
+
+#[derive(Serialize)]
+struct SettingsResponse {
+    listen_addr: String,
+    database_ok: bool,
+    config_reload_ok: bool,
+    max_body_bytes: usize,
+    version: String,
+}
+
 // ===== Handlers =====
 
 fn normalize_backend_format(value: &str) -> Result<&'static str, ApiError> {
@@ -554,6 +585,50 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
         });
     }
     Ok(out)
+}
+
+async fn create_backend(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateBackend>,
+) -> Result<Json<BackendResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let name = non_empty_trimmed(payload.name, "name")?;
+    let base_url = non_empty_trimmed(payload.base_url, "base_url")?;
+    let api_key_ref = non_empty_trimmed(payload.api_key_ref, "api_key_ref")?;
+    let format = normalize_backend_format(&payload.format)?;
+    let weight = payload.weight.unwrap_or(1).max(1);
+    let max_inflight = payload.max_inflight.unwrap_or(0);
+    let pool = state.pool().await?;
+    let row = sqlx::query::<sqlx::Postgres>(
+        "INSERT INTO backends (name, base_url, api_key_ref, weight, max_inflight, format, enabled) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+    )
+    .bind(&name)
+    .bind(&base_url)
+    .bind(&api_key_ref)
+    .bind(weight as i64)
+    .bind(max_inflight as i64)
+    .bind(format)
+    .bind(payload.enabled)
+    .fetch_one(pool)
+    .await?;
+    let id: i64 = row.try_get("id")?;
+    state.reload_now().await?;
+    Ok(Json(BackendResponse {
+        id,
+        name,
+        base_url,
+        key_resolved: resolve_backend_key(&api_key_ref)
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false),
+        api_key_ref,
+        weight: weight as i64,
+        max_inflight: max_inflight as i64,
+        format: format.to_string(),
+        enabled: payload.enabled,
+    }))
 }
 
 async fn list_backends(
@@ -888,8 +963,8 @@ async fn create_key(
 
     let row = sqlx::query::<sqlx::Postgres>(
         "INSERT INTO api_keys \
-         (key_hash, key_prefix, team_id, owner, allowed_models, budget, rpm_limit, concurrency_limit, expires_at, enabled) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id",
+         (key_hash, key_prefix, team_id, owner, allowed_models, budget, rpm_limit, concurrency_limit, expires_at, enabled, key_secret) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id",
     )
     .bind(hex_encode(&hash))
     .bind(&prefix)
@@ -901,6 +976,7 @@ async fn create_key(
     .bind(payload.concurrency_limit.map(|v| v as i64))
     .bind(payload.expires_at)
     .bind(true)
+    .bind(Some(&key))
     .fetch_one(pool)
     .await?;
 
@@ -1268,6 +1344,66 @@ async fn me_stats(
     Ok(Json(
         query_stats(pool, None, Some(key.id), params.days.unwrap_or(30)).await?,
     ))
+}
+
+/// Admin xem lại plaintext client key (yêu cầu user). Chỉ key tạo SAU migration 0003 có key_secret.
+async fn reveal_key(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<KeyRevealResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    let row = sqlx::query::<sqlx::Postgres>(
+        "SELECT key_prefix, owner, key_secret FROM api_keys WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| ApiError::not_found("key not found"))?;
+    let secret: Option<String> = row.try_get("key_secret")?;
+    let key = secret.ok_or_else(|| {
+        ApiError::new(
+            StatusCode::GONE,
+            "plaintext not stored (key created before key-reveal); disable and recreate it",
+        )
+    })?;
+    Ok(Json(KeyRevealResponse {
+        id,
+        prefix: row.try_get("key_prefix")?,
+        owner: row.try_get("owner")?,
+        key,
+    }))
+}
+
+/// Read-only runtime settings cho màn Settings (admin path, không phải hot path).
+async fn get_settings(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Result<Json<SettingsResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    let database_ok = sqlx::query::<sqlx::Postgres>("SELECT 1")
+        .fetch_optional(pool)
+        .await
+        .is_ok();
+    let ok = state
+        .runtime
+        .config_ok_at
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let err = state
+        .runtime
+        .config_err_at
+        .load(std::sync::atomic::Ordering::Relaxed);
+    Ok(Json(SettingsResponse {
+        listen_addr: std::env::var("LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:18080".to_string()),
+        database_ok,
+        config_reload_ok: ok > 0 && ok > err,
+        max_body_bytes: state.runtime.max_body_bytes,
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    }))
 }
 
 #[cfg(test)]
