@@ -17,6 +17,7 @@ This document defines how BrighTO-Router is measured. For the short table, read 
 - **p99** means the 99th percentile value: 99% of requests are faster, 1% are slower.
 - **TTFB** means time to first byte: time from sending a request until the first response byte arrives.
 - **RPS** means requests per second.
+- **Offered rate** means the request rate the load generator tries to start. For example, 4,000 RPS means it tries to start 4,000 requests per second. It is a local calibrated setting, not a global standard.
 - **RSS** means resident set size: physical memory currently used by the router process, reported by Linux from `/proc/<pid>/status`.
 - **Warm-up** means traffic sent before measurement starts, so connection pools and code paths are already active.
 - **Release gate** means a benchmark command whose failure blocks release.

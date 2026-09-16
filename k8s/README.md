@@ -1,16 +1,25 @@
-# Kubernetes
+# BrighTO-Router Kubernetes starter
 
-These manifests are intentionally small. They run BrighTO-Router with PostgreSQL-only production state and no Redis dependency.
+Use the root installer unless you are editing manifests directly.
 
-Use `postgres.dev.yaml` for a quick in-cluster development database. For production, point `DATABASE_URL` in `secret.example.yaml` at a managed or separately operated PostgreSQL service and run migrations as part of your release process.
+Local starter with in-cluster development PostgreSQL:
 
 ```bash
-kubectl create namespace brighto-router
-kubectl -n brighto-router apply -f k8s/postgres.dev.yaml
-kubectl -n brighto-router apply -f k8s/secret.example.yaml
-kubectl -n brighto-router apply -f k8s/configmap.example.yaml
-kubectl -n brighto-router apply -f k8s/deployment.yaml
-kubectl -n brighto-router apply -f k8s/service.yaml
+./start.sh install --k8s --replicas 2
 ```
 
-Replace the example secret before production.
+Production-style install with an existing PostgreSQL database:
+
+```bash
+./start.sh install --database-url 'postgres://user:pass@db-host:5432/brighto_router' --k8s --replicas 2
+```
+
+What the installer does:
+
+1. Creates or updates the namespace. Default namespace: `brighto-router`.
+2. Uses `k8s/postgres.dev.yaml` only when `DATABASE_URL` is the default local value.
+3. Runs migrations and `scripts/seed_defaults.sql`.
+4. Creates `brighto-router-secret` from `.env`.
+5. Applies config map, deployment, and service.
+
+The starter manifests are intentionally small. For production, use a managed PostgreSQL service, set a strong `ADMIN_MASTER_KEY`, store provider keys through your secret-management system, and tune CPU/memory requests for your traffic.

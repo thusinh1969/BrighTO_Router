@@ -28,6 +28,8 @@ A release artifact must include:
 
 The release gate measures these payloads at concurrency 1, 50, and 200. Hard pass/fail latency thresholds apply at concurrency 50. The other concurrency values are still recorded to catch load-shape problems.
 
+**Offered request rate** means the request rate the load generator tries to start. Example: `1k c=50 offered rate 4000 RPS` means the 1k-token payload, at most 50 active requests, and up to 4,000 request starts per second. This is a calibrated local load setting, not a global standard. The benchmark contract is the same-hardware direct-versus-router comparison.
+
 ## Large prompt stress payloads
 
 | Payload name | Approximate input tokens | Approximate JSON body size | Purpose |
