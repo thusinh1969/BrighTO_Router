@@ -420,6 +420,7 @@ struct RouteResponse {
 struct UsageQuery {
     team: Option<i64>,
     key: Option<i64>,
+    backend: Option<i64>,
     model: Option<String>,
     status: Option<String>,
     from: Option<i64>,
@@ -1164,45 +1165,34 @@ async fn disable_key(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn query_usage_rows(
     pool: &PgPool,
     team: Option<i64>,
     key: Option<i64>,
+    backend: Option<i64>,
     model: Option<&str>,
     status: Option<&str>,
     from: Option<i64>,
     to: Option<i64>,
 ) -> Result<Vec<UsageRow>, ApiError> {
+    let status = normalize_status(status)?;
     let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT ts, request_id, key_id, team_id, model, backend_id, status, \
          input_tokens, output_tokens, estimated, ttfb_ms, total_ms, router_overhead_ms, \
-         stream, client_aborted, error_class \
-         FROM usage_ledger WHERE 1=1",
+         stream, client_aborted, error_class FROM usage_ledger",
     );
-    if let Some(team) = team {
-        builder.push(" AND team_id = ").push_bind(team);
-    }
-    if let Some(key) = key {
-        builder.push(" AND key_id = ").push_bind(key);
-    }
-    if let Some(model) = model.filter(|m| !m.trim().is_empty()) {
-        builder.push(" AND model = ").push_bind(model);
-    }
-    match status {
-        Some("success") => {
-            builder.push(" AND status < 400");
-        }
-        Some("error") => {
-            builder.push(" AND status >= 400");
-        }
-        _ => {}
-    }
-    if let Some(from) = from {
-        builder.push(" AND ts >= ").push_bind(from);
-    }
-    if let Some(to) = to {
-        builder.push(" AND ts <= ").push_bind(to);
-    }
+    push_usage_filters(
+        &mut builder,
+        "",
+        team,
+        key,
+        backend,
+        model,
+        &status,
+        from,
+        to,
+    );
     builder.push(" ORDER BY ts DESC LIMIT 1000");
     let query = builder.build();
     let rows = query.fetch_all(pool).await?;
@@ -1244,6 +1234,7 @@ async fn get_usage(
             pool,
             params.team,
             params.key,
+            params.backend,
             params.model.as_deref(),
             params.status.as_deref(),
             params.from,
@@ -1441,6 +1432,7 @@ async fn me_usage(
             pool,
             None,
             Some(key.id),
+            None,
             params.model.as_deref(),
             params.status.as_deref(),
             params.from,
@@ -1526,6 +1518,7 @@ async fn get_settings(
 struct SummaryQuery {
     team: Option<i64>,
     key: Option<i64>,
+    backend: Option<i64>,
     model: Option<String>,
     status: Option<String>,
     from: Option<i64>,
@@ -1583,13 +1576,38 @@ struct SummaryResponse {
 
 /// Gắn bộ filter usage chung vào WHERE. `alias` = "" cho query usage_ledger trực tiếp, "u." cho JOIN.
 #[allow(clippy::too_many_arguments)]
+enum StatusFilter {
+    None,
+    Success,
+    Error,
+    Exact(i64),
+}
+
+/// Chuẩn hoá status filter: all/empty -> None, success -> 2xx, error -> >=400, số -> exact, lỗi -> 400.
+fn normalize_status(raw: Option<&str>) -> Result<StatusFilter, ApiError> {
+    let raw = raw.map(str::trim).filter(|s| !s.is_empty());
+    match raw.map(|s| s.to_ascii_lowercase()).as_deref() {
+        None | Some("all") => Ok(StatusFilter::None),
+        Some("success") | Some("ok") | Some("2xx") => Ok(StatusFilter::Success),
+        Some("error") | Some("err") | Some("4xx") | Some("5xx") => Ok(StatusFilter::Error),
+        Some(s) => s.parse::<i64>().map(StatusFilter::Exact).map_err(|_| {
+            ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!("invalid status filter: {s}"),
+            )
+        }),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn push_usage_filters(
     b: &mut sqlx::QueryBuilder<sqlx::Postgres>,
     alias: &str,
     team: Option<i64>,
     key: Option<i64>,
+    backend: Option<i64>,
     model: Option<&str>,
-    status: Option<&str>,
+    status: &StatusFilter,
     from: Option<i64>,
     to: Option<i64>,
 ) {
@@ -1600,17 +1618,34 @@ fn push_usage_filters(
     if let Some(k) = key {
         b.push(" AND ").push(alias).push("key_id = ").push_bind(k);
     }
+    if let Some(bid) = backend {
+        b.push(" AND ")
+            .push(alias)
+            .push("backend_id = ")
+            .push_bind(bid);
+    }
     if let Some(m) = model.filter(|m| !m.trim().is_empty()) {
         b.push(" AND ").push(alias).push("model = ").push_bind(m);
     }
     match status {
-        Some("success") => {
-            b.push(" AND ").push(alias).push("status < 400");
+        StatusFilter::None => {}
+        StatusFilter::Success => {
+            b.push(" AND ")
+                .push(alias)
+                .push("status >= 200")
+                .push(" AND ")
+                .push(alias)
+                .push("status < 400");
         }
-        Some("error") => {
+        StatusFilter::Error => {
             b.push(" AND ").push(alias).push("status >= 400");
         }
-        _ => {}
+        StatusFilter::Exact(code) => {
+            b.push(" AND ")
+                .push(alias)
+                .push("status = ")
+                .push_bind(*code);
+        }
     }
     if let Some(f) = from {
         b.push(" AND ").push(alias).push("ts >= ").push_bind(f);
@@ -1635,8 +1670,9 @@ async fn get_summary(
         .unwrap_or_else(|| now_secs() - i64::from(days) * 86_400);
     let team = params.team;
     let key = params.key;
+    let backend = params.backend;
     let model = params.model.as_deref();
-    let status = params.status.as_deref();
+    let status = normalize_status(params.status.as_deref())?;
     let to = params.to;
 
     let mut tb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
@@ -1645,7 +1681,17 @@ async fn get_summary(
          CAST(COALESCE(SUM(output_tokens),0) AS BIGINT) AS output_tokens, \
          COUNT(*) FILTER (WHERE status >= 400) AS errors FROM usage_ledger",
     );
-    push_usage_filters(&mut tb, "", team, key, model, status, Some(from), to);
+    push_usage_filters(
+        &mut tb,
+        "",
+        team,
+        key,
+        backend,
+        model,
+        &status,
+        Some(from),
+        to,
+    );
     let trow = tb.build().fetch_one(pool).await?;
     let requests: i64 = trow.try_get("requests")?;
     let errors: i64 = trow.try_get("errors")?;
@@ -1659,7 +1705,17 @@ async fn get_summary(
         "SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY ttfb_ms) AS p95_ttfb, \
          percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS p95_total FROM usage_ledger",
     );
-    push_usage_filters(&mut pb, "", team, key, model, status, Some(from), to);
+    push_usage_filters(
+        &mut pb,
+        "",
+        team,
+        key,
+        backend,
+        model,
+        &status,
+        Some(from),
+        to,
+    );
     let prow = pb.build().fetch_one(pool).await?;
     let p95_ttfb_ms: Option<f64> = prow.try_get("p95_ttfb")?;
     let p95_total_ms: Option<f64> = prow.try_get("p95_total")?;
@@ -1670,7 +1726,17 @@ async fn get_summary(
          CAST(COALESCE(SUM(output_tokens),0) AS BIGINT) AS output_tokens, \
          COUNT(*) FILTER (WHERE status >= 400) AS errors FROM usage_ledger",
     );
-    push_usage_filters(&mut mb, "", team, key, model, status, Some(from), to);
+    push_usage_filters(
+        &mut mb,
+        "",
+        team,
+        key,
+        backend,
+        model,
+        &status,
+        Some(from),
+        to,
+    );
     mb.push(" GROUP BY model ORDER BY requests DESC LIMIT 20");
     let mrows = mb.build().fetch_all(pool).await?;
     let by_model: Vec<GroupRow> = mrows
@@ -1691,7 +1757,17 @@ async fn get_summary(
          COUNT(*) FILTER (WHERE u.status >= 400) AS errors \
          FROM usage_ledger u LEFT JOIN teams t ON t.id = u.team_id",
     );
-    push_usage_filters(&mut tmb, "u.", team, key, model, status, Some(from), to);
+    push_usage_filters(
+        &mut tmb,
+        "u.",
+        team,
+        key,
+        backend,
+        model,
+        &status,
+        Some(from),
+        to,
+    );
     tmb.push(" GROUP BY u.team_id, t.name ORDER BY requests DESC LIMIT 20");
     let trows = tmb.build().fetch_all(pool).await?;
     let by_team: Vec<TeamGroupRow> = trows
@@ -1713,7 +1789,17 @@ async fn get_summary(
          COUNT(*) FILTER (WHERE u.status >= 400) AS errors \
          FROM usage_ledger u LEFT JOIN api_keys k ON k.id = u.key_id",
     );
-    push_usage_filters(&mut kb, "u.", team, key, model, status, Some(from), to);
+    push_usage_filters(
+        &mut kb,
+        "u.",
+        team,
+        key,
+        backend,
+        model,
+        &status,
+        Some(from),
+        to,
+    );
     kb.push(" GROUP BY u.key_id, k.key_prefix ORDER BY requests DESC LIMIT 20");
     let krows = kb.build().fetch_all(pool).await?;
     let by_key: Vec<KeyGroupRow> = krows
