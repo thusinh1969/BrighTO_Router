@@ -382,6 +382,21 @@ async function renderDashboard(c){
       sum.by_team.map(function(r){return [r.team_name, fmt(r.requests), fmt(r.input_tokens+r.output_tokens), fmt(r.errors)];})));
   }
 
+  if(mode==="admin" && sum && sum.totals){
+    var per=el("div","panel");
+    var ph=el("div","panel-head"); ph.appendChild(el("h3",null,"Performance diagnostics")); per.appendChild(ph);
+    var kv=el("div","kv");
+    kv.appendChild(el("span","k","Router overhead p95"));
+    kv.appendChild(el("span","v",fmtDur(sum.totals.p95_router_overhead_ms)));
+    per.appendChild(kv);
+    per.appendChild(el("p","hint","Router overhead is the time spent inside BrighTO before forwarding. Provider/model latency is shown per prompt-size bucket below."));
+    c.appendChild(per);
+    if(sum.by_bucket && sum.by_bucket.length){
+      c.appendChild(groupPanel("Latency by prompt size", ["Bucket","Requests","P95 first byte","P95 total","P95 router"],
+        sum.by_bucket.map(function(b){return [b.bucket, fmt(b.requests), fmtDur(b.p95_ttfb_ms), fmtDur(b.p95_total_ms), fmtDur(b.p95_router_overhead_ms)];})));
+    }
+  }
+
   var p2=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Recent requests"));
   p2.appendChild(h);
@@ -877,6 +892,7 @@ function fmtNum(v){ if(v>=1000000000)return(v/1000000000).toFixed(1)+"B"; if(v>=
 /* ===== Logs table ===== */
 function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
 function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
+function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
 function logsTable(rows){
   var w=el("div","table-wrap"); var t=el("table");
