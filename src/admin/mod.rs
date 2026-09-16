@@ -270,6 +270,7 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/teams", get(list_teams))
         .route("/keys", get(list_keys))
         .route("/stats", get(get_stats))
+        .route("/summary", get(get_summary))
         .route("/usage", get(get_usage))
         .route("/settings", get(get_settings))
         .layer(Extension(state))
@@ -419,6 +420,8 @@ struct RouteResponse {
 struct UsageQuery {
     team: Option<i64>,
     key: Option<i64>,
+    model: Option<String>,
+    status: Option<String>,
     from: Option<i64>,
     to: Option<i64>,
 }
@@ -1165,6 +1168,8 @@ async fn query_usage_rows(
     pool: &PgPool,
     team: Option<i64>,
     key: Option<i64>,
+    model: Option<&str>,
+    status: Option<&str>,
     from: Option<i64>,
     to: Option<i64>,
 ) -> Result<Vec<UsageRow>, ApiError> {
@@ -1179,6 +1184,18 @@ async fn query_usage_rows(
     }
     if let Some(key) = key {
         builder.push(" AND key_id = ").push_bind(key);
+    }
+    if let Some(model) = model.filter(|m| !m.trim().is_empty()) {
+        builder.push(" AND model = ").push_bind(model);
+    }
+    match status {
+        Some("success") => {
+            builder.push(" AND status < 400");
+        }
+        Some("error") => {
+            builder.push(" AND status >= 400");
+        }
+        _ => {}
     }
     if let Some(from) = from {
         builder.push(" AND ts >= ").push_bind(from);
@@ -1223,7 +1240,16 @@ async fn get_usage(
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
     Ok(Json(
-        query_usage_rows(pool, params.team, params.key, params.from, params.to).await?,
+        query_usage_rows(
+            pool,
+            params.team,
+            params.key,
+            params.model.as_deref(),
+            params.status.as_deref(),
+            params.from,
+            params.to,
+        )
+        .await?,
     ))
 }
 
@@ -1411,7 +1437,16 @@ async fn me_usage(
     let key = authorize_user_key(&state, &headers)?;
     let pool = state.pool().await?;
     Ok(Json(
-        query_usage_rows(pool, None, Some(key.id), params.from, params.to).await?,
+        query_usage_rows(
+            pool,
+            None,
+            Some(key.id),
+            params.model.as_deref(),
+            params.status.as_deref(),
+            params.from,
+            params.to,
+        )
+        .await?,
     ))
 }
 
@@ -1484,6 +1519,228 @@ async fn get_settings(
         config_reload_ok: ok > 0 && ok > err,
         max_body_bytes: state.runtime.max_body_bytes,
         version: env!("CARGO_PKG_VERSION").to_string(),
+    }))
+}
+
+#[derive(Deserialize)]
+struct SummaryQuery {
+    team: Option<i64>,
+    key: Option<i64>,
+    model: Option<String>,
+    status: Option<String>,
+    from: Option<i64>,
+    to: Option<i64>,
+    days: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct TotalsRow {
+    requests: i64,
+    input_tokens: i64,
+    output_tokens: i64,
+    errors: i64,
+    error_rate_pct: f64,
+    p95_ttfb_ms: f64,
+    p95_total_ms: f64,
+}
+
+#[derive(Serialize)]
+struct GroupRow {
+    model: String,
+    requests: i64,
+    input_tokens: i64,
+    output_tokens: i64,
+    errors: i64,
+}
+
+#[derive(Serialize)]
+struct TeamGroupRow {
+    team_id: i64,
+    team_name: String,
+    requests: i64,
+    input_tokens: i64,
+    output_tokens: i64,
+    errors: i64,
+}
+
+#[derive(Serialize)]
+struct KeyGroupRow {
+    key_id: i64,
+    key_prefix: String,
+    requests: i64,
+    input_tokens: i64,
+    output_tokens: i64,
+    errors: i64,
+}
+
+#[derive(Serialize)]
+struct SummaryResponse {
+    totals: TotalsRow,
+    by_model: Vec<GroupRow>,
+    by_team: Vec<TeamGroupRow>,
+    by_key: Vec<KeyGroupRow>,
+}
+
+/// Gắn bộ filter usage chung vào WHERE. `alias` = "" cho query usage_ledger trực tiếp, "u." cho JOIN.
+#[allow(clippy::too_many_arguments)]
+fn push_usage_filters(
+    b: &mut sqlx::QueryBuilder<sqlx::Postgres>,
+    alias: &str,
+    team: Option<i64>,
+    key: Option<i64>,
+    model: Option<&str>,
+    status: Option<&str>,
+    from: Option<i64>,
+    to: Option<i64>,
+) {
+    b.push(" WHERE 1=1");
+    if let Some(t) = team {
+        b.push(" AND ").push(alias).push("team_id = ").push_bind(t);
+    }
+    if let Some(k) = key {
+        b.push(" AND ").push(alias).push("key_id = ").push_bind(k);
+    }
+    if let Some(m) = model.filter(|m| !m.trim().is_empty()) {
+        b.push(" AND ").push(alias).push("model = ").push_bind(m);
+    }
+    match status {
+        Some("success") => {
+            b.push(" AND ").push(alias).push("status < 400");
+        }
+        Some("error") => {
+            b.push(" AND ").push(alias).push("status >= 400");
+        }
+        _ => {}
+    }
+    if let Some(f) = from {
+        b.push(" AND ").push(alias).push("ts >= ").push_bind(f);
+    }
+    if let Some(t) = to {
+        b.push(" AND ").push(alias).push("ts <= ").push_bind(t);
+    }
+}
+
+/// Dashboard summary: totals + error rate + p95 + nhóm theo model/team/key.
+async fn get_summary(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(params): Query<SummaryQuery>,
+) -> Result<Json<SummaryResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    let days = params.days.unwrap_or(30).clamp(1, 365);
+    let from = params
+        .from
+        .unwrap_or_else(|| now_secs() - i64::from(days) * 86_400);
+    let team = params.team;
+    let key = params.key;
+    let model = params.model.as_deref();
+    let status = params.status.as_deref();
+    let to = params.to;
+
+    let mut tb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT COUNT(*) AS requests, \
+         CAST(COALESCE(SUM(input_tokens),0) AS BIGINT) AS input_tokens, \
+         CAST(COALESCE(SUM(output_tokens),0) AS BIGINT) AS output_tokens, \
+         COUNT(*) FILTER (WHERE status >= 400) AS errors FROM usage_ledger",
+    );
+    push_usage_filters(&mut tb, "", team, key, model, status, Some(from), to);
+    let trow = tb.build().fetch_one(pool).await?;
+    let requests: i64 = trow.try_get("requests")?;
+    let errors: i64 = trow.try_get("errors")?;
+    let error_rate_pct = if requests > 0 {
+        errors as f64 * 100.0 / requests as f64
+    } else {
+        0.0
+    };
+
+    let mut pb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY ttfb_ms) AS p95_ttfb, \
+         percentile_cont(0.95) WITHIN GROUP (ORDER BY total_ms) AS p95_total FROM usage_ledger",
+    );
+    push_usage_filters(&mut pb, "", team, key, model, status, Some(from), to);
+    let prow = pb.build().fetch_one(pool).await?;
+    let p95_ttfb_ms: Option<f64> = prow.try_get("p95_ttfb")?;
+    let p95_total_ms: Option<f64> = prow.try_get("p95_total")?;
+
+    let mut mb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT model, COUNT(*) AS requests, \
+         CAST(COALESCE(SUM(input_tokens),0) AS BIGINT) AS input_tokens, \
+         CAST(COALESCE(SUM(output_tokens),0) AS BIGINT) AS output_tokens, \
+         COUNT(*) FILTER (WHERE status >= 400) AS errors FROM usage_ledger",
+    );
+    push_usage_filters(&mut mb, "", team, key, model, status, Some(from), to);
+    mb.push(" GROUP BY model ORDER BY requests DESC LIMIT 20");
+    let mrows = mb.build().fetch_all(pool).await?;
+    let by_model: Vec<GroupRow> = mrows
+        .iter()
+        .map(|r| GroupRow {
+            model: r.try_get("model").unwrap_or_default(),
+            requests: r.try_get("requests").unwrap_or(0),
+            input_tokens: r.try_get("input_tokens").unwrap_or(0),
+            output_tokens: r.try_get("output_tokens").unwrap_or(0),
+            errors: r.try_get("errors").unwrap_or(0),
+        })
+        .collect();
+
+    let mut tmb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT u.team_id, COALESCE(t.name,'') AS team_name, COUNT(*) AS requests, \
+         CAST(COALESCE(SUM(u.input_tokens),0) AS BIGINT) AS input_tokens, \
+         CAST(COALESCE(SUM(u.output_tokens),0) AS BIGINT) AS output_tokens, \
+         COUNT(*) FILTER (WHERE u.status >= 400) AS errors \
+         FROM usage_ledger u LEFT JOIN teams t ON t.id = u.team_id",
+    );
+    push_usage_filters(&mut tmb, "u.", team, key, model, status, Some(from), to);
+    tmb.push(" GROUP BY u.team_id, t.name ORDER BY requests DESC LIMIT 20");
+    let trows = tmb.build().fetch_all(pool).await?;
+    let by_team: Vec<TeamGroupRow> = trows
+        .iter()
+        .map(|r| TeamGroupRow {
+            team_id: r.try_get("team_id").unwrap_or(0),
+            team_name: r.try_get("team_name").unwrap_or_default(),
+            requests: r.try_get("requests").unwrap_or(0),
+            input_tokens: r.try_get("input_tokens").unwrap_or(0),
+            output_tokens: r.try_get("output_tokens").unwrap_or(0),
+            errors: r.try_get("errors").unwrap_or(0),
+        })
+        .collect();
+
+    let mut kb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT u.key_id, COALESCE(k.key_prefix,'') AS key_prefix, COUNT(*) AS requests, \
+         CAST(COALESCE(SUM(u.input_tokens),0) AS BIGINT) AS input_tokens, \
+         CAST(COALESCE(SUM(u.output_tokens),0) AS BIGINT) AS output_tokens, \
+         COUNT(*) FILTER (WHERE u.status >= 400) AS errors \
+         FROM usage_ledger u LEFT JOIN api_keys k ON k.id = u.key_id",
+    );
+    push_usage_filters(&mut kb, "u.", team, key, model, status, Some(from), to);
+    kb.push(" GROUP BY u.key_id, k.key_prefix ORDER BY requests DESC LIMIT 20");
+    let krows = kb.build().fetch_all(pool).await?;
+    let by_key: Vec<KeyGroupRow> = krows
+        .iter()
+        .map(|r| KeyGroupRow {
+            key_id: r.try_get("key_id").unwrap_or(0),
+            key_prefix: r.try_get("key_prefix").unwrap_or_default(),
+            requests: r.try_get("requests").unwrap_or(0),
+            input_tokens: r.try_get("input_tokens").unwrap_or(0),
+            output_tokens: r.try_get("output_tokens").unwrap_or(0),
+            errors: r.try_get("errors").unwrap_or(0),
+        })
+        .collect();
+
+    Ok(Json(SummaryResponse {
+        totals: TotalsRow {
+            requests,
+            input_tokens: trow.try_get("input_tokens")?,
+            output_tokens: trow.try_get("output_tokens")?,
+            errors,
+            error_rate_pct,
+            p95_ttfb_ms: p95_ttfb_ms.unwrap_or(0.0),
+            p95_total_ms: p95_total_ms.unwrap_or(0.0),
+        },
+        by_model,
+        by_team,
+        by_key,
     }))
 }
 

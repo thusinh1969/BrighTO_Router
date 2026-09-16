@@ -306,16 +306,15 @@ function emptyBox(text){ var d=el("div","empty"); d.innerHTML='<svg viewBox="0 0
 
 /* ===== Dashboard ===== */
 async function renderDashboard(c){
-  var stats=[], logs=[];
+  var stats=[], logs=[], sum=null;
   try{ stats=await api(mode==="admin"?"/admin/stats?days=30":"/portal/me/stats?days=30","GET"); }catch(e){}
   try{ logs=await api(mode==="admin"?"/admin/usage":"/portal/me/usage","GET"); }catch(e){}
-  var inT=stats.reduce(function(a,s){return a+s.input_tokens},0);
-  var outT=stats.reduce(function(a,s){return a+s.output_tokens},0);
-  var req=stats.reduce(function(a,s){return a+s.requests},0);
-  var errs=logs.filter(function(r){return r.status>=400}).length;
-  var errRate=logs.length?Math.round(errs/logs.length*1000)/10:0;
-  var ttfb=logs.map(function(r){return r.ttfb_ms}).sort(function(a,b){return a-b;});
-  var p95=ttfb.length?ttfb[Math.floor(ttfb.length*0.95)]:0;
+  if(mode==="admin"){ try{ sum=await api("/admin/summary?days=30","GET"); }catch(e){} }
+  var inT=sum?sum.totals.input_tokens:stats.reduce(function(a,s){return a+s.input_tokens},0);
+  var outT=sum?sum.totals.output_tokens:stats.reduce(function(a,s){return a+s.output_tokens},0);
+  var req=sum?sum.totals.requests:stats.reduce(function(a,s){return a+s.requests},0);
+  var errRate=sum?Math.round(sum.totals.error_rate_pct*10)/10:0;
+  var p95=sum?Math.round(sum.totals.p95_ttfb_ms):0;
 
   var cards=[];
   if(mode==="admin"){
@@ -328,8 +327,8 @@ async function renderDashboard(c){
     ["Input tokens", fmt(inT), "total"],
     ["Output tokens", fmt(outT), "total"],
     ["Estimated spend", "—", "pricing coming soon"],
-    ["Error rate", errRate+"%", "recent window"],
-    ["P95 first byte", p95+"ms", "recent window"]
+    ["Error rate", errRate+"%", "30d"],
+    ["P95 first byte", p95+"ms", "30d"]
   ]);
   var grid=el("div","grid");
   cards.forEach(function(cd){
@@ -655,18 +654,56 @@ async function disableKey(k){
 }
 
 /* ===== Usage ===== */
+var usageFilter={model:"",status:"all",team:"",days:"30"};
 async function renderUsage(c){
-  var stats=[], logs=[];
-  try{ stats=await api(mode==="admin"?"/admin/stats?days=30":"/portal/me/stats?days=30","GET"); }catch(e){}
-  try{ logs=await api(mode==="admin"?"/admin/usage":"/portal/me/usage","GET"); }catch(e){}
-  var p=el("div","panel");
-  p.appendChild(el("h3",null,"Token usage — last 30 days"));
-  if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage data yet."));
+  var qs="days="+usageFilter.days;
+  if(usageFilter.model) qs+="&model="+encodeURIComponent(usageFilter.model);
+  if(usageFilter.status!=="all") qs+="&status="+usageFilter.status;
+  if(usageFilter.team) qs+="&team="+usageFilter.team;
+
+  if(mode==="admin"){
+    var bar=el("div","panel");
+    var h=el("div","panel-head"); h.appendChild(el("h3",null,"Filters"));
+    bar.appendChild(h);
+    var row=el("div","row");
+    var mi=el("input"); mi.placeholder="Model"; mi.value=usageFilter.model; mi.style.maxWidth="190px"; row.appendChild(mi);
+    var st=el("select"); [["all","All statuses"],["success","Success"],["error","Error"]].forEach(function(s){var o=el("option",null,s[1]);o.value=s[0];st.appendChild(o);}); st.value=usageFilter.status; row.appendChild(st);
+    var ts=el("select"); var to=el("option",null,"All teams"); to.value=""; ts.appendChild(to); teams.forEach(function(tm){var o=el("option",null,tm.name);o.value=tm.id;ts.appendChild(o);}); ts.value=usageFilter.team; row.appendChild(ts);
+    var dy=el("select"); ["7","30","90"].forEach(function(d){var o=el("option",null,d+" days");o.value=d;dy.appendChild(o);}); dy.value=usageFilter.days; row.appendChild(dy);
+    var ap=el("button","btn primary sm","Apply"); ap.onclick=function(){ usageFilter={model:mi.value,status:st.value,team:ts.value,days:dy.value}; renderUsage($("content")); }; row.appendChild(ap);
+    bar.appendChild(row); c.appendChild(bar);
+  }
+
+  var stats=[], sum=null, logs=[];
+  try{ stats=await api((mode==="admin"?"/admin/stats?":"/portal/me/stats?")+qs,"GET"); }catch(e){}
+  if(mode==="admin"){ try{ sum=await api("/admin/summary?"+qs,"GET"); }catch(e){} }
+  try{ logs=await api((mode==="admin"?"/admin/usage?":"/portal/me/usage?")+qs,"GET"); }catch(e){}
+
+  if(sum){
+    var grid=el("div","grid");
+    var cards=[["Requests",fmt(sum.totals.requests)],["Input tokens",fmt(sum.totals.input_tokens)],["Output tokens",fmt(sum.totals.output_tokens)],["Errors",fmt(sum.totals.errors)+" ("+Math.round(sum.totals.error_rate_pct*10)/10+"%)"],["P95 first byte",Math.round(sum.totals.p95_ttfb_ms)+"ms"],["P95 total",Math.round(sum.totals.p95_total_ms)+"ms"]];
+    cards.forEach(function(cd){ var x=el("div","card"); x.appendChild(el("div","label",cd[0])); x.appendChild(el("div","big",cd[1])); grid.appendChild(x); });
+    c.appendChild(grid);
+  }
+
+  var p=el("div","panel"); p.appendChild(el("h3",null,"Tokens by model"));
+  if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage data for this filter."));
   c.appendChild(p);
-  var p2=el("div","panel");
-  p2.appendChild(el("h3",null,"Request logs"));
-  p2.appendChild(logsTable(logs));
-  c.appendChild(p2);
+
+  if(sum){
+    c.appendChild(groupPanel("By model",["Model","Requests","Input","Output","Errors"],sum.by_model.map(function(r){return [r.model,fmt(r.requests),fmt(r.input_tokens),fmt(r.output_tokens),fmt(r.errors)];})));
+    c.appendChild(groupPanel("By team",["Team","Requests","Input","Output","Errors"],sum.by_team.map(function(r){return [r.team_name,fmt(r.requests),fmt(r.input_tokens),fmt(r.output_tokens),fmt(r.errors)];})));
+    c.appendChild(groupPanel("By API key",["Key","Requests","Input","Output","Errors"],sum.by_key.map(function(r){return [r.key_prefix,fmt(r.requests),fmt(r.input_tokens),fmt(r.output_tokens),fmt(r.errors)];})));
+  }
+
+  var p2=el("div","panel"); p2.appendChild(el("h3",null,"Request logs")); p2.appendChild(logsTable(logs)); c.appendChild(p2);
+}
+function groupPanel(title,cols,rows){
+  var p=el("div","panel"); p.appendChild(el("h3",null,title));
+  var w=el("div","table-wrap"); var t=el("table"); t.appendChild(thead(cols)); var tb=el("tbody");
+  rows.forEach(function(r){ var tr=el("tr"); r.forEach(function(v,i){ tr.appendChild(el("td", i>0?"num":null, v)); }); tb.appendChild(tr); });
+  t.appendChild(tb); w.appendChild(t); p.appendChild(w);
+  return p;
 }
 
 /* ===== Settings ===== */
