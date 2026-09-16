@@ -259,6 +259,11 @@ async function login(){
     try{ await api("/portal/me","GET"); }
     catch(e){ err.textContent="Invalid API key."; err.classList.remove("hidden"); return; }
   }
+  enterApp();
+  saveSession();
+  await refresh();
+}
+function enterApp(){
   $("login-view").classList.add("hidden");
   $("app-view").classList.remove("hidden");
   $("sidebar-sub").textContent = mode==="admin" ? "Admin Portal" : "User Portal";
@@ -267,9 +272,32 @@ async function login(){
   ["providers","models","teams","keys","settings"].forEach(function(v){
     var n=$("nav-"+v); if(n) n.style.display = mode==="admin" ? "" : "none";
   });
-  await refresh();
 }
-function logout(){ authKey=""; $("app-view").classList.add("hidden"); $("login-view").classList.remove("hidden"); $("content").innerHTML=""; }
+var SESSION_KEY="brigto_session_v1";
+var SESSION_TTL_MS=12*3600*1000; // 12h
+function saveSession(){
+  try{ localStorage.setItem(SESSION_KEY, JSON.stringify({mode:mode, key:authKey, ts:Date.now()})); }catch(e){}
+}
+function clearSession(){
+  try{ localStorage.removeItem(SESSION_KEY); }catch(e){}
+}
+// F5 refresh: khôi phục phiên đã lưu (TTL 12h) và verify lại bằng API trước khi hiện app.
+async function restoreSession(){
+  var raw=null; try{ raw=localStorage.getItem(SESSION_KEY); }catch(e){}
+  if(!raw) return false;
+  var s=null; try{ s=JSON.parse(raw); }catch(e){ return false; }
+  if(!s || !s.key || !s.mode) return false;
+  if(Date.now()-s.ts > SESSION_TTL_MS){ clearSession(); return false; }
+  mode=s.mode; authKey=s.key; setMode(mode);
+  try{
+    if(mode==="admin"){ await api("/admin/backends","GET"); }
+    else { await api("/portal/me","GET"); }
+  }catch(e){ authKey=""; clearSession(); return false; }
+  enterApp();
+  await refresh();
+  return true;
+}
+function logout(){ authKey=""; clearSession(); $("app-view").classList.add("hidden"); $("login-view").classList.remove("hidden"); $("content").innerHTML=""; }
 
 /* ===== Nav ===== */
 var titles={dashboard:"Dashboard",providers:"Providers",models:"Models & Routes",teams:"Teams",keys:"API Keys",usage:"Usage",settings:"Settings"};
@@ -884,6 +912,7 @@ function pill(text,kind){ var p=el("span","pill "+kind); var d=el("span","dot");
 function closeModal(){ $("modal-overlay").classList.add("hidden"); $("modal-overlay").innerHTML=""; }
 function toggleSidebar(){ $("sidebar").classList.toggle("open"); }
 setMode("admin");
+restoreSession();
 </script>
 </body>
 </html>
