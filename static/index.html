@@ -314,17 +314,20 @@ async function renderDashboard(c){
   var outT=sum?sum.totals.output_tokens:stats.reduce(function(a,s){return a+s.output_tokens},0);
   var req=sum?sum.totals.requests:stats.reduce(function(a,s){return a+s.requests},0);
   var errRate=sum?Math.round(sum.totals.error_rate_pct*10)/10:0;
+  var cost=(mode==="admin"&&sum)?sum.totals.estimated_cost_usd:null;
+  var pricedReqs=(mode==="admin"&&sum)?sum.totals.cost_known_requests:0;
 
   var cards=[];
   if(mode==="admin"){
-    cards=[["Active providers", backends.filter(function(b){return b.enabled}).length, "of "+backends.length+" configured"],
-           ["Active teams", teams.filter(function(t){return t.enabled}).length, "of "+teams.length+" teams"],
-           ["API keys", keys.filter(function(k){return k.enabled}).length, "issued"]];
+    cards=[["Gateway","Ready","router online"],
+           ["Enabled routes", routes.filter(function(r){return r.enabled}).length, "of "+routes.length+" routes"],
+           ["Active providers", backends.filter(function(b){return b.enabled}).length, "of "+backends.length+" configured"],
+           ["Active teams", teams.filter(function(t){return t.enabled}).length, "of "+teams.length+" teams"]];
   }
   cards=cards.concat([
     ["Requests (30d)", fmt(req), "completed"],
     ["Total tokens", fmt(inT+outT), "in "+fmt(inT)+" / out "+fmt(outT)],
-    ["Estimated spend", "—", "pricing coming soon"],
+    ["Estimated cost", fmtCost(cost), pricedReqs?(pricedReqs+" priced requests"):"configure route prices"],
     ["Error rate", errRate+"%", "30d"]
   ]);
   var grid=el("div","grid");
@@ -339,8 +342,17 @@ async function renderDashboard(c){
 
   var p=el("div","panel");
   p.appendChild(el("h3",null,"Tokens by model — last 30 days"));
-  if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage yet. Requests flow here once the router is live."));
+  if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage yet. Create a route, create an API key, and send one request."));
   c.appendChild(p);
+
+  if(mode==="admin" && sum && sum.by_model.length){
+    c.appendChild(groupPanel("Top models", ["Model","Requests","Tokens","Cost","Errors"],
+      sum.by_model.map(function(r){return [r.model, fmt(r.requests), fmt(r.input_tokens+r.output_tokens), fmtCost(r.estimated_cost_usd), fmt(r.errors)];})));
+  }
+  if(mode==="admin" && sum && sum.by_team.length){
+    c.appendChild(groupPanel("Top teams", ["Team","Requests","Tokens","Errors"],
+      sum.by_team.map(function(r){return [r.team_name, fmt(r.requests), fmt(r.input_tokens+r.output_tokens), fmt(r.errors)];})));
+  }
 
   var p2=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Recent requests"));

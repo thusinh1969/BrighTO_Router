@@ -1972,6 +1972,10 @@ struct TotalsRow {
     error_rate_pct: f64,
     p95_ttfb_ms: f64,
     p95_total_ms: f64,
+    /// Ước lượng cost tổng (USD) chỉ từ những route có đủ cả 2 giá. None khi không có route giá.
+    estimated_cost_usd: Option<f64>,
+    /// Số request có cost tính được (route có đủ input+output price).
+    cost_known_requests: i64,
 }
 
 #[derive(Serialize)]
@@ -1981,6 +1985,7 @@ struct GroupRow {
     input_tokens: i64,
     output_tokens: i64,
     errors: i64,
+    estimated_cost_usd: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -2112,6 +2117,19 @@ async fn get_summary(
     let status = normalize_status(params.status.as_deref())?;
     let to = params.to;
 
+    // Giá route (cả input + output) cho phép tính cost ước lượng per model.
+    let snap = state.runtime.cfg.load_full();
+    let prices: HashMap<String, (f64, f64)> = snap
+        .routes
+        .iter()
+        .filter_map(|(name, r)| {
+            Some((
+                name.clone(),
+                (r.price_input_per_mtok_usd?, r.price_output_per_mtok_usd?),
+            ))
+        })
+        .collect();
+
     let mut tb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT COUNT(*) AS requests, \
          CAST(COALESCE(SUM(input_tokens),0) AS BIGINT) AS input_tokens, \
@@ -2178,12 +2196,21 @@ async fn get_summary(
     let mrows = mb.build().fetch_all(pool).await?;
     let by_model: Vec<GroupRow> = mrows
         .iter()
-        .map(|r| GroupRow {
-            model: r.try_get("model").unwrap_or_default(),
-            requests: r.try_get("requests").unwrap_or(0),
-            input_tokens: r.try_get("input_tokens").unwrap_or(0),
-            output_tokens: r.try_get("output_tokens").unwrap_or(0),
-            errors: r.try_get("errors").unwrap_or(0),
+        .map(|r| {
+            let model: String = r.try_get("model").unwrap_or_default();
+            let input_tokens: i64 = r.try_get("input_tokens").unwrap_or(0);
+            let output_tokens: i64 = r.try_get("output_tokens").unwrap_or(0);
+            let estimated_cost_usd = prices.get(&model).map(|(pi, po)| {
+                (input_tokens as f64 * pi + output_tokens as f64 * po) / 1_000_000.0
+            });
+            GroupRow {
+                model,
+                requests: r.try_get("requests").unwrap_or(0),
+                input_tokens,
+                output_tokens,
+                errors: r.try_get("errors").unwrap_or(0),
+                estimated_cost_usd,
+            }
         })
         .collect();
 
@@ -2251,6 +2278,13 @@ async fn get_summary(
         })
         .collect();
 
+    let estimated_cost_usd: f64 = by_model.iter().filter_map(|g| g.estimated_cost_usd).sum();
+    let cost_known_requests: i64 = by_model
+        .iter()
+        .filter(|g| g.estimated_cost_usd.is_some())
+        .map(|g| g.requests)
+        .sum();
+
     Ok(Json(SummaryResponse {
         totals: TotalsRow {
             requests,
@@ -2260,6 +2294,8 @@ async fn get_summary(
             error_rate_pct,
             p95_ttfb_ms: p95_ttfb_ms.unwrap_or(0.0),
             p95_total_ms: p95_total_ms.unwrap_or(0.0),
+            estimated_cost_usd: Some(estimated_cost_usd),
+            cost_known_requests,
         },
         by_model,
         by_team,
