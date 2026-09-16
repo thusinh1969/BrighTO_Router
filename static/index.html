@@ -538,8 +538,15 @@ function openRouteModal(route){
 
   var fp=el("div","field"); fp.appendChild(el("label",null,"Provider API protocol"));
   var pcol=el("select");
-  [["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];pcol.appendChild(o);});
-  if(route.protocol) pcol.value=route.protocol; else if(route.auth_mode==="anthropic") pcol.value="anthropic_messages";
+  function populateProtocols(){
+    var b=backends.find(function(x){return x.id===Number(ps.value);});
+    pcol.innerHTML="";
+    protocolsForBackend(b).forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];pcol.appendChild(o);});
+    if(route.protocol && pcol.querySelector('option[value="'+route.protocol+'"]')) pcol.value=route.protocol;
+    else if(route.auth_mode==="anthropic") pcol.value="anthropic_messages";
+    else pcol.value=pcol.firstChild?pcol.firstChild.value:"openai_chat";
+  }
+  populateProtocols();
   fp.appendChild(pcol); m.appendChild(fp);
 
   var fa=el("div","field"); fa.appendChild(el("label",null,"Authentication"));
@@ -557,12 +564,14 @@ function openRouteModal(route){
     }
     am.onchange();
   };
+  ps.onchange=function(){ populateProtocols(); if(!route.model_name) pcol.onchange(); };
 
-  var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model — load then pick one"));
+  var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model — load or type manually"));
   var row=el("div","row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
-  var ms=el("select"); ms.style.flex="1";
-  var mopt=el("option",null, route.provider_model_name || "Click Load models"); mopt.value=route.provider_model_name||""; ms.appendChild(mopt);
-  row.appendChild(ms);
+  var ms=el("input"); ms.style.flex="1"; ms.placeholder="Load models or type a provider model name"; ms.setAttribute("list","route-model-options");
+  ms.value=route.provider_model_name||"";
+  var dl=el("datalist"); dl.id="route-model-options";
+  row.appendChild(ms); row.appendChild(dl);
   var loadBtn=el("button","btn sm","Load models");
   loadBtn.onclick=async function(){
     loadBtn.disabled=true; loadBtn.textContent="Loading…";
@@ -570,10 +579,10 @@ function openRouteModal(route){
       var b=backends.find(function(x){return x.id===Number(ps.value);});
       var fmt=pcol.value==="anthropic_messages"?"anthropic":"openai";
       var data=await api("/admin/routes/preview-models","POST",{base_url:b.base_url,protocol:fmt,auth_mode:am.value,provider_key:pk.value});
-      ms.innerHTML="";
-      if(!data.models.length){ var eo=el("option",null,"No models returned"); eo.value=""; ms.appendChild(eo); return; }
-      data.models.forEach(function(md){ var o=el("option",null,md); o.value=md; ms.appendChild(o); });
-      if(route.provider_model_name){ ms.value=route.provider_model_name; } else { ms.value=data.models[0]; }
+      dl.innerHTML="";
+      if(!data.models.length){ toast("No models returned — type the provider model name manually"); return; }
+      data.models.forEach(function(md){ var o=el("option",null,md); o.value=md; dl.appendChild(o); });
+      if(!ms.value) ms.value=data.models[0];
       if(!mi.value) mi.value=ms.value;
     }catch(e){ toast("Load models: "+e.message,"err"); }
     finally{ loadBtn.disabled=false; loadBtn.textContent="Load models"; }
@@ -583,7 +592,7 @@ function openRouteModal(route){
 
   var f=el("div","field"); f.appendChild(el("label",null,"Public model name (shown to clients)"));
   var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi); m.appendChild(f);
-  ms.onchange=function(){ if(ms.value && !mi.value) mi.value=ms.value; };
+  ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; };
 
   var f5=el("div","field"); f5.appendChild(el("label",null,"Context window (tokens, optional)")); var ct=el("input"); ct.type="number"; ct.value=route.context_tokens||""; f5.appendChild(ct); m.appendChild(f5);
   var f6=el("div","field"); f6.appendChild(el("label",null,"Max output tokens (optional)")); var mo=el("input"); mo.type="number"; mo.value=route.max_output_tokens||""; f6.appendChild(mo); m.appendChild(f6);
@@ -898,6 +907,8 @@ function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(functi
 function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
 function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
+var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]];
+function protocolsForBackend(b){ if(b && b.format==="anthropic") return [["anthropic_messages","Anthropic Messages"]]; if(b && (b.name||"").toLowerCase().indexOf("anthropic")>=0) return [["anthropic_messages","Anthropic Messages"]]; return PROTOCOLS.filter(function(p){return p[0]!=="anthropic_messages";}); }
 function logsTable(rows){
   var w=el("div","table-wrap"); var t=el("table");
   var admin=mode==="admin";
