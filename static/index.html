@@ -314,7 +314,6 @@ async function renderDashboard(c){
   var outT=sum?sum.totals.output_tokens:stats.reduce(function(a,s){return a+s.output_tokens},0);
   var req=sum?sum.totals.requests:stats.reduce(function(a,s){return a+s.requests},0);
   var errRate=sum?Math.round(sum.totals.error_rate_pct*10)/10:0;
-  var p95=sum?Math.round(sum.totals.p95_ttfb_ms):0;
 
   var cards=[];
   if(mode==="admin"){
@@ -324,11 +323,9 @@ async function renderDashboard(c){
   }
   cards=cards.concat([
     ["Requests (30d)", fmt(req), "completed"],
-    ["Input tokens", fmt(inT), "total"],
-    ["Output tokens", fmt(outT), "total"],
+    ["Total tokens", fmt(inT+outT), "in "+fmt(inT)+" / out "+fmt(outT)],
     ["Estimated spend", "—", "pricing coming soon"],
-    ["Error rate", errRate+"%", "30d"],
-    ["P95 first byte", p95+"ms", "30d"]
+    ["Error rate", errRate+"%", "30d"]
   ]);
   var grid=el("div","grid");
   cards.forEach(function(cd){
@@ -741,7 +738,7 @@ async function renderUsage(c){
 
   if(sum){
     var grid=el("div","grid");
-    var cards=[["Requests",fmt(sum.totals.requests)],["Input tokens",fmt(sum.totals.input_tokens)],["Output tokens",fmt(sum.totals.output_tokens)],["Errors",fmt(sum.totals.errors)+" ("+Math.round(sum.totals.error_rate_pct*10)/10+"%)"],["P95 first byte",Math.round(sum.totals.p95_ttfb_ms)+"ms"],["P95 total",Math.round(sum.totals.p95_total_ms)+"ms"]];
+    var cards=[["Requests",fmt(sum.totals.requests)],["Total tokens",fmt(sum.totals.input_tokens+sum.totals.output_tokens)],["Input / Output",fmt(sum.totals.input_tokens)+" / "+fmt(sum.totals.output_tokens)],["Error rate",Math.round(sum.totals.error_rate_pct*10)/10+"% ("+fmt(sum.totals.errors)+")"]];
     cards.forEach(function(cd){ var x=el("div","card"); x.appendChild(el("div","label",cd[0])); x.appendChild(el("div","big",cd[1])); grid.appendChild(x); });
     c.appendChild(grid);
   }
@@ -813,23 +810,31 @@ function chartBars(stats){
 function fmtNum(v){ if(v>=1000000000)return(v/1000000000).toFixed(1)+"B"; if(v>=1000000)return(v/1000000).toFixed(1)+"M"; if(v>=1000)return(v/1000).toFixed(1)+"k"; return String(Math.round(v)); }
 
 /* ===== Logs table ===== */
+function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
+function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
 function logsTable(rows){
   var w=el("div","table-wrap"); var t=el("table");
-  t.appendChild(thead(["Time","Team","Key","Model","Status","Input","Output","TTFB","Total","Request ID"]));
+  var admin=mode==="admin";
+  t.appendChild(thead(admin
+    ? ["Time","Team","Key","Model","Status","In / Out","Tok/s","Cost","Router","Duration","Error"]
+    : ["Time","Model","Status","In / Out","Tok/s","Cost","Duration","Error"]));
   var tb=el("tbody");
   if(!rows.length){ w.appendChild(emptyBox("No requests logged yet.")); return w; }
   rows.slice(0,200).forEach(function(r){
     var tr=el("tr");
     tr.appendChild(el("td","mono",fmtTs(r.ts)));
-    tr.appendChild(el("td",null,String(r.team_id)));
-    tr.appendChild(el("td","mono",keys.find(function(k){return k.id===r.key_id})?keys.find(function(k){return k.id===r.key_id}).prefix:""+r.key_id));
+    if(admin){
+      tr.appendChild(el("td",null,String(r.team_id)));
+      tr.appendChild(el("td","mono",keyPrefix(r.key_id)));
+    }
     tr.appendChild(el("td",null,r.model));
     var st=el("td"); st.appendChild(pill(String(r.status),r.status===200?"on":(r.status>=500?"off":"warn"))); tr.appendChild(st);
-    tr.appendChild(el("td","num",fmt(r.input_tokens)));
-    tr.appendChild(el("td","num",fmt(r.output_tokens)));
-    tr.appendChild(el("td","num",r.ttfb_ms+"ms"));
-    tr.appendChild(el("td","num",r.total_ms+"ms"));
-    tr.appendChild(el("td","mono",r.request_id));
+    tr.appendChild(el("td","num",fmt(r.input_tokens)+" / "+fmt(r.output_tokens)));
+    tr.appendChild(el("td","num",r.total_tokens_per_second!=null?Math.round(r.total_tokens_per_second):"—"));
+    tr.appendChild(el("td","num",fmtCost(r.estimated_cost_usd)));
+    if(admin) tr.appendChild(el("td","num",r.router_overhead_display));
+    tr.appendChild(el("td","num",r.duration_display));
+    if(admin) tr.appendChild(el("td",null,r.error_class||""));
     tb.appendChild(tr);
   });
   t.appendChild(tb); w.appendChild(t); return w;

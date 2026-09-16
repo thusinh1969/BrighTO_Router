@@ -2,6 +2,7 @@
 //! Auth: master key từ env + IP allowlist. Admin có thể xem lại client key qua /admin/keys/{id}/reveal.
 
 use std::{
+    collections::HashMap,
     fmt::Write as _,
     io::Read,
     net::{IpAddr, SocketAddr},
@@ -24,7 +25,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 
 use crate::auth;
 use crate::config::{DbConfigLoader, resolve_backend_key};
-use crate::contract::{ApiKey, AppState, Budget, KeyHash};
+use crate::contract::{ApiKey, AppState, Budget, KeyHash, ModelRoute};
 
 // ===== Admin state =====
 
@@ -463,6 +464,16 @@ struct UsageRow {
     stream: bool,
     client_aborted: bool,
     error_class: Option<String>,
+    // Computed (CODEX call-log: token throughput + cost + friendly durations + prompt bucket).
+    total_tokens: i64,
+    total_tokens_per_second: Option<f64>,
+    input_tokens_per_second_to_first_byte: Option<f64>,
+    output_tokens_per_second: Option<f64>,
+    prompt_size_bucket: String,
+    estimated_cost_usd: Option<f64>,
+    cost_known: bool,
+    duration_display: String,
+    router_overhead_display: String,
 }
 
 #[derive(Serialize)]
@@ -1447,9 +1458,60 @@ async fn disable_key(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Prompt-size bucket theo input tokens (CODEX): tránh 200k prompt làm nhiễu latency thường.
+fn prompt_size_bucket(input_tokens: i64) -> &'static str {
+    if input_tokens < 2_000 {
+        "<2k"
+    } else if input_tokens < 32_000 {
+        "2k-32k"
+    } else if input_tokens < 128_000 {
+        "32k-128k"
+    } else {
+        "128k+"
+    }
+}
+
+/// Friendly duration: 123 ms / 1.8 s / 3m 48s (không in raw ms khổng lồ).
+fn format_duration(ms: i64) -> String {
+    if ms < 0 {
+        return "—".to_string();
+    }
+    if ms < 1_000 {
+        return format!("{ms} ms");
+    }
+    let s = ms / 1_000;
+    if s < 60 {
+        return format!("{s}.{} s", (ms % 1_000) / 100);
+    }
+    let m = s / 60;
+    let rem = s % 60;
+    format!("{m}m {rem}s")
+}
+
+/// tokens/giây quan sát được; None khi không tính nổi (ms <= 0).
+fn tokens_per_second(tokens: i64, ms: i64) -> Option<f64> {
+    if ms <= 0 {
+        return None;
+    }
+    Some(tokens as f64 / (ms as f64 / 1_000.0))
+}
+
+/// Ước lượng cost từ route prices (per 1M tokens). None khi chưa cấu hình cả 2 giá.
+fn estimated_cost_usd(
+    input_tokens: i64,
+    output_tokens: i64,
+    route: Option<&ModelRoute>,
+) -> Option<f64> {
+    let r = route?;
+    let pi = r.price_input_per_mtok_usd?;
+    let po = r.price_output_per_mtok_usd?;
+    Some((input_tokens as f64 * pi + output_tokens as f64 * po) / 1_000_000.0)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn query_usage_rows(
     pool: &PgPool,
+    routes: &HashMap<String, ModelRoute>,
     team: Option<i64>,
     key: Option<i64>,
     backend: Option<i64>,
@@ -1481,23 +1543,44 @@ async fn query_usage_rows(
 
     let mut result = Vec::with_capacity(rows.len());
     for row in rows {
+        let model: String = row.try_get("model")?;
+        let input_tokens: i64 = row.try_get("input_tokens")?;
+        let output_tokens: i64 = row.try_get("output_tokens")?;
+        let ttfb_ms: i64 = row.try_get("ttfb_ms")?;
+        let total_ms: i64 = row.try_get("total_ms")?;
+        let router_overhead_ms: i64 = row.try_get("router_overhead_ms")?;
+        let total_tokens = input_tokens + output_tokens;
+        let cost = estimated_cost_usd(input_tokens, output_tokens, routes.get(&model));
         result.push(UsageRow {
             ts: row.try_get("ts")?,
             request_id: row.try_get("request_id")?,
             key_id: row.try_get("key_id")?,
             team_id: row.try_get("team_id")?,
-            model: row.try_get("model")?,
+            model,
             backend_id: row.try_get("backend_id")?,
             status: row.try_get("status")?,
-            input_tokens: row.try_get("input_tokens")?,
-            output_tokens: row.try_get("output_tokens")?,
+            input_tokens,
+            output_tokens,
             estimated: row.try_get("estimated")?,
-            ttfb_ms: row.try_get("ttfb_ms")?,
-            total_ms: row.try_get("total_ms")?,
-            router_overhead_ms: row.try_get("router_overhead_ms")?,
+            ttfb_ms,
+            total_ms,
+            router_overhead_ms,
             stream: row.try_get("stream")?,
             client_aborted: row.try_get("client_aborted")?,
             error_class: row.try_get("error_class")?,
+            total_tokens,
+            total_tokens_per_second: tokens_per_second(total_tokens, total_ms),
+            input_tokens_per_second_to_first_byte: tokens_per_second(input_tokens, ttfb_ms),
+            output_tokens_per_second: if total_ms > ttfb_ms {
+                tokens_per_second(output_tokens, total_ms - ttfb_ms)
+            } else {
+                None
+            },
+            prompt_size_bucket: prompt_size_bucket(input_tokens).to_string(),
+            estimated_cost_usd: cost,
+            cost_known: cost.is_some(),
+            duration_display: format_duration(total_ms),
+            router_overhead_display: format_duration(router_overhead_ms),
         });
     }
     Ok(result)
@@ -1511,9 +1594,11 @@ async fn get_usage(
 ) -> Result<Json<Vec<UsageRow>>, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
+    let snap = state.runtime.cfg.load_full();
     Ok(Json(
         query_usage_rows(
             pool,
+            &snap.routes,
             params.team,
             params.key,
             params.backend,
@@ -1709,9 +1794,11 @@ async fn me_usage(
 ) -> Result<Json<Vec<UsageRow>>, ApiError> {
     let key = authorize_user_key(&state, &headers)?;
     let pool = state.pool().await?;
+    let snap = state.runtime.cfg.load_full();
     Ok(Json(
         query_usage_rows(
             pool,
+            &snap.routes,
             None,
             Some(key.id),
             None,
@@ -2223,6 +2310,31 @@ mod tests {
         // whitespace-only phải bị chặn (footgun: key trông có vẻ set nhưng thực ra rỗng).
         let r = std::panic::catch_unwind(|| validate_master_key("   ".into()));
         assert!(r.is_err(), "empty/whitespace master key must panic");
+    }
+
+    #[test]
+    fn prompt_bucket_and_duration_formatting() {
+        assert_eq!(prompt_size_bucket(0), "<2k");
+        assert_eq!(prompt_size_bucket(1_999), "<2k");
+        assert_eq!(prompt_size_bucket(2_000), "2k-32k");
+        assert_eq!(prompt_size_bucket(127_999), "32k-128k");
+        assert_eq!(prompt_size_bucket(128_000), "128k+");
+        assert_eq!(prompt_size_bucket(200_058), "128k+");
+
+        assert_eq!(format_duration(123), "123 ms");
+        assert_eq!(format_duration(1_800), "1.8 s");
+        assert_eq!(format_duration(228_453), "3m 48s");
+        assert_eq!(format_duration(228_000), "3m 48s");
+        assert_eq!(format_duration(-1), "—");
+    }
+
+    #[test]
+    fn token_throughput_calculation() {
+        // 200066 tokens in 228453ms ~ 875.8 tok/s (CODEX call-log ví dụ).
+        let t = tokens_per_second(200_066, 228_453).unwrap();
+        assert!((t - 875.8).abs() < 0.5, "got {t}");
+        assert_eq!(tokens_per_second(100, 0), None);
+        assert_eq!(tokens_per_second(100, -5), None);
     }
 
     #[test]
