@@ -169,3 +169,22 @@ number of flows passed/failed
 artifact folder path
 any root-cause fixes required from DeepSeek
 ```
+
+## User reaffirmation: real browser, all steps/windows/clicks
+
+User instruction on 2026-09-17: when DeepSeek says Portal is done, Codex must audit with Playwright against the running app, not by reading HTML only. The audit must execute real browser interactions:
+
+- Open the real Portal URL.
+- Log in with the configured admin credential.
+- Click every visible navigation item/window/panel.
+- Exercise Provider creation/edit/test/load-model actions.
+- Exercise Model Route creation path: provider selection, API key entry, model loading/selecting one model, max token/context fields, price per 1M input/output, save.
+- Exercise Team creation/edit including finite and unlimited budget.
+- Exercise API key creation/reveal/copy/disable including the user override that Admin may see client API keys again.
+- Exercise Usage/Dashboard filters by provider, model, team, key, and full system where implemented.
+- Exercise Settings and logout/login again.
+- Repeat layout checks for desktop and mobile viewports.
+- Capture screenshots, browser console errors, failed network requests, and a concise pass/fail summary under `swarm/out/playwright/<timestamp>/`.
+
+Pass condition: every main user journey must work by clicking the UI. A green HTTP smoke test alone is not enough for Portal acceptance.
+
