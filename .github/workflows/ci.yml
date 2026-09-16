@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: brighto_router
+          POSTGRES_USER: brighto_router
+          POSTGRES_PASSWORD: brighto_router_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U brighto_router -d brighto_router"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      TEST_DATABASE_URL: postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router
+      DATABASE_URL: postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router
+      ADMIN_MASTER_KEY: ci-admin-key
+      CARGO_INCREMENTAL: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+          components: rustfmt, clippy
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Python syntax
+        run: python3 -m py_compile scripts/bench_real.py benchmarks/make_payloads.py scripts/hotpath_guard.py
+
+      - name: Shell syntax
+        run: bash -n start.sh scripts/test_postgres.sh benchmarks/gate.sh
+
+      - name: Hot-path guard
+        run: python3 scripts/hotpath_guard.py
+
+      - name: Rust format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Tests
+        run: ./scripts/test_postgres.sh
