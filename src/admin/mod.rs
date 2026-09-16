@@ -263,6 +263,7 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/backends/{id}", patch(update_backend))
         .route("/backends/{id}/models", get(fetch_backend_models))
         .route("/routes", get(list_routes).post(upsert_route))
+        .route("/routes/{model_name}", delete(delete_route))
         .route("/teams/{id}", patch(update_team))
         .route("/keys/{id}", delete(disable_key))
         .route("/keys/{id}/reveal", get(reveal_key))
@@ -962,6 +963,26 @@ async fn upsert_route(
         price_output_per_mtok_usd: payload.price_output_per_mtok_usd,
         enabled,
     }))
+}
+
+/// Xoá model route theo public model name, rồi reload ngay.
+async fn delete_route(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(model_name): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    let result = sqlx::query::<sqlx::Postgres>("DELETE FROM model_routes WHERE model_name = $1")
+        .bind(&model_name)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("route not found"));
+    }
+    state.reload_now().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn create_team(

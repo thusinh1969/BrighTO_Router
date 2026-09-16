@@ -79,6 +79,9 @@ pub struct Team {
 pub struct Budget {
     pub period: String, // "day" | "month"
     pub max_tokens: u64,
+    /// Money budget (USD cents). Optional; khi có -> dùng cho dashboard/đơn vị tiền.
+    #[serde(default)]
+    pub max_usd_cents: Option<u64>,
     #[serde(default)]
     pub per_model: HashMap<String, u64>,
 }

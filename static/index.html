@@ -451,7 +451,7 @@ function renderModels(c){
       tr.appendChild(el("td",null,r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ")));
       tr.appendChild(el("td",null,r.fallback_backend_id===null?"—":String(r.fallback_backend_id)));
       tr.appendChild(el("td",null,r.first_byte_timeout+"s"));
-      var td=el("td"); var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openRouteModal(r);}; td.appendChild(b); tr.appendChild(td);
+      var td=el("td"); var row=el("div","row"); row.style.gap="6px"; var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openRouteModal(r);}; var d=el("button","btn sm danger","Delete"); d.onclick=function(){deleteRoute(r);}; row.appendChild(b); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
     t.appendChild(tb); w.appendChild(t); p.appendChild(w);
@@ -498,6 +498,12 @@ function openRouteModal(route){
   ov.appendChild(m); ov.classList.remove("hidden");
 }
 
+async function deleteRoute(r){
+  if(!confirm("Delete route "+r.model_name+"?")) return;
+  try{ await api("/admin/routes/"+encodeURIComponent(r.model_name),"DELETE"); toast("Route deleted"); routes=await api("/admin/routes","GET"); renderModels($("content")); }
+  catch(e){ toast(e.message,"err"); }
+}
+
 /* ===== Teams ===== */
 function renderTeams(c){
   var p=el("div","panel");
@@ -530,14 +536,30 @@ function openTeamModal(tm){
   var m=el("div","modal");
   m.appendChild(el("h3",null,tm.id?"Edit team":"Create team"));
   var f=el("div","field"); f.appendChild(el("label",null,"Team name")); var ni=el("input"); ni.value=tm.name||""; f.appendChild(ni); m.appendChild(f);
-  var f2=el("div","field"); f2.appendChild(el("label",null,"Budget (JSON, optional — empty = unlimited)"));
-  var bi=el("textarea"); bi.value=tm.budget?JSON.stringify(tm.budget):""; bi.placeholder='{"period":"month","max_tokens":1000000}'; f2.appendChild(bi); m.appendChild(f2);
+  var f2=el("div","field"); f2.appendChild(el("label",null,"Budget type"));
+  var bt=el("select"); var o1=el("option",null,"Unlimited"); o1.value="unlimited"; bt.appendChild(o1); var o2=el("option",null,"Token budget"); o2.value="token"; bt.appendChild(o2);
+  if(tm.budget && tm.budget.max_tokens>0) bt.value="token"; else bt.value="unlimited";
+  f2.appendChild(bt); m.appendChild(f2);
+  var f2p=el("div","field"); f2p.appendChild(el("label",null,"Period"));
+  var bp=el("select"); var p1=el("option",null,"Daily"); p1.value="day"; bp.appendChild(p1); var p2=el("option",null,"Monthly"); p2.value="month"; bp.appendChild(p2);
+  if(tm.budget&&tm.budget.period) bp.value=tm.budget.period;
+  f2p.appendChild(bp); m.appendChild(f2p);
+  var f2a=el("div","field"); f2a.appendChild(el("label",null,"Token amount"));
+  var ba=el("input"); ba.type="number"; ba.placeholder="e.g. 1000000";
+  if(tm.budget&&tm.budget.max_tokens>0) ba.value=tm.budget.max_tokens;
+  f2a.appendChild(ba); m.appendChild(f2a);
+  var f2d=el("div","field");
+  var advBtn=el("button","linkbtn","Advanced JSON (money budget, per-model caps)");
+  var bi=el("textarea"); bi.style.display="none"; bi.value=tm.budget?JSON.stringify(tm.budget):""; bi.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}';
+  advBtn.onclick=function(){bi.style.display = bi.style.display==="none"?"block":"none";};
+  f2d.appendChild(advBtn); f2d.appendChild(bi); m.appendChild(f2d);
   var f3=el("div","field"); var lab=el("label","chip"+(tm.enabled===false?"":" selected")); var cb=el("input"); cb.type="checkbox"; cb.checked=tm.enabled!==false; lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); f3.appendChild(lab); m.appendChild(f3);
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary",tm.id?"Save":"Create");
   save.onclick=async function(){
-    var payload={name:ni.value.trim(),enabled:cb.checked}; var bt=bi.value.trim();
-    if(bt){ try{payload.budget=JSON.parse(bt);}catch(e){toast("Invalid budget JSON: "+e.message,"err");return;} }
+    var payload={name:ni.value.trim(),enabled:cb.checked};
+    if(bi.value.trim()){ try{payload.budget=JSON.parse(bi.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
+    else if(bt.value==="token"){ var amt=Number(ba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;} payload.budget={period:bp.value,max_tokens:amt,per_model:{}}; }
     try{ if(tm.id){await api("/admin/teams/"+tm.id,"PATCH",payload);} else {await api("/admin/teams","POST",payload);}
       closeModal(); toast("Team saved"); teams=await api("/admin/teams","GET"); renderTeams($("content")); }
     catch(e){ toast("Save failed: "+e.message,"err"); }

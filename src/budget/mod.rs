@@ -544,6 +544,7 @@ mod tests {
         let budget = Budget {
             period: "day".into(),
             max_tokens: 10_000,
+            max_usd_cents: None,
             per_model: HashMap::new(),
         };
         let key = make_key(Some(budget), None);
@@ -567,6 +568,7 @@ mod tests {
         let budget = Budget {
             period: "day".into(),
             max_tokens: 1000,
+            max_usd_cents: None,
             per_model: HashMap::from([("model-a".to_string(), 50)]),
         };
         let key = make_key(Some(budget), None);
@@ -585,6 +587,7 @@ mod tests {
         let budget = Budget {
             period: "day".into(),
             max_tokens: 1000,
+            max_usd_cents: None,
             per_model: HashMap::new(),
         };
         let key = make_key(Some(budget), None);
@@ -606,6 +609,7 @@ mod tests {
         let budget = Budget {
             period: "day".into(),
             max_tokens: 100,
+            max_usd_cents: None,
             per_model: HashMap::new(),
         };
         let key = make_key(Some(budget), None);
