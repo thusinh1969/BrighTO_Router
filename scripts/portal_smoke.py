@@ -148,11 +148,28 @@ def main():
               and js[0]["input_tokens"] == 100 and js[0]["output_tokens"] == 10)
         check("GET /portal/me/stats aggregates own usage", ok)
 
-        # Security
+        # Security: reveal is admin-only; list endpoint does not leak plaintext.
         r = requests.get(base + "/portal/me", headers={"Authorization": "Bearer bad-key"})
         check("bad key -> 401", r.status_code == 401)
         r = requests.get(base + "/admin/keys", headers=admin)
         check("admin /keys never returns plaintext", all("key" not in row for row in r.json()))
+
+        # Negative reveal cases (user override: admin may reveal, nobody else may).
+        r = requests.get(base + "/admin/keys/%d/reveal" % key_id, headers={"x-admin-key": "wrong"})
+        check("bad admin key reveal -> 401", r.status_code == 401)
+        r = requests.get(base + "/admin/keys/%d/reveal" % key_id,
+                         headers={"Authorization": "Bearer " + key})
+        check("client API key cannot reveal -> 401", r.status_code == 401)
+        # Legacy key (key_secret IS NULL) -> 410 with clear message.
+        legacy = sh("psql", "-h", "127.0.0.1", "-p", str(pg_port), "-U", "llm_router",
+                    "-d", "llm_router", "-q", "-tA", "-c",
+                    "INSERT INTO api_keys (key_hash, key_prefix, team_id, owner, allowed_models, budget, "
+                    "rpm_limit, concurrency_limit, expires_at, enabled) "
+                    "VALUES ('legacyhash', 'legacy-00', 1, 'legacy', '[]', NULL, NULL, NULL, NULL, TRUE) RETURNING id;",
+                    env=dict(os.environ, PGPASSWORD="llm_router_dev"))
+        legacy_id = int(legacy.stdout.strip())
+        r = requests.get(base + "/admin/keys/%d/reveal" % legacy_id, headers=admin)
+        check("legacy key reveal -> 410", r.status_code == 410)
 
         fails = [n for n, ok in checks if not ok]
         print("RESULT " + ("PASS" if not fails else "FAIL: " + ", ".join(fails)))
