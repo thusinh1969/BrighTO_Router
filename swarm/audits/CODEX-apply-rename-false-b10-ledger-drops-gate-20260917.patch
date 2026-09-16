@@ -1,0 +1,23 @@
+--- a/scripts/bench_real.py
++++ b/scripts/bench_real.py
+@@ -281,8 +281,6 @@
+         return "ttfb_delta_ms"
+     if gid == "B6":
+         return "non200" if gate.get("threshold") == B6_MAX_NON200 else "rps"
+-    if gid == "B10":
+-        return "ledger_drops"
+     return "value"
+ 
+ 
+@@ -580,9 +578,9 @@
+             ledger_drops = prometheus_counter_total(metrics_text, "router_ledger_dropped_total")
+             ok_ledger = ledger_drops == 0
+             any_fail |= not ok_ledger
+-            gates.append({"id": "B10", "payload": "all", "conc": "all", "metric": "ledger_drops", "value": ledger_drops,
++            gates.append({"id": "INTERNAL_LEDGER_DROPS", "payload": "all", "conc": "all", "metric": "ledger_drops", "value": ledger_drops,
+                           "threshold": 0, "pass": ok_ledger, "runs": [ledger_drops],
+-                          "note": "router_ledger_dropped_total from /metrics; 0 if metric absent and no drops observed"})
++                          "note": "internal guard: router_ledger_dropped_total from /metrics; this is not BENCHMARK.md B10 ledger_lag"})
+ 
+             baseline = check_baseline(gates, outdir, host)
+             any_fail |= not baseline["pass"]

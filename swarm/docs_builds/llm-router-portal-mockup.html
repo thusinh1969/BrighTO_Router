@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM Router — Quản trị</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EDF0F3; --panel:#FFFFFF; --line:#D5DCE3; --line-soft:#E7ECF0;
+    --ink:#182129; --ink-2:#4E5D6A; --ink-3:#8593A0;
+    --act:#0E6F70; --act-ink:#FFFFFF; --act-soft:#DCEFEE;
+    --ok:#2C7A4B; --ok-soft:#DFF1E5;
+    --warn:#A8690F; --warn-soft:#FBEBD0;
+    --bad:#B02A22; --bad-soft:#F8DEDB;
+    --rail:#1B2A33; --rail-ink:#C9D3DB; --rail-act:#FFFFFF;
+    --r:5px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:14px;line-height:1.45;color:var(--ink);background:var(--bg);
+    font-feature-settings:"tnum" 1;
+  }
+  a{color:var(--act)}
+  button{font:inherit;cursor:pointer}
+  :focus-visible{outline:2px solid var(--act);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+  /* ---------- shell ---------- */
+  .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+  .rail{background:var(--rail);color:var(--rail-ink);padding:18px 14px;display:flex;flex-direction:column;gap:6px}
+  .brand{color:#fff;font-weight:600;font-size:15px;padding:6px 10px 14px;border-bottom:1px solid #2C3D48;margin-bottom:8px}
+  .brand small{display:block;font-weight:400;color:var(--rail-ink);font-size:12px;margin-top:2px}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav button{
+    background:none;border:0;color:var(--rail-ink);text-align:left;padding:8px 10px;border-radius:var(--r);
+    display:flex;justify-content:space-between;align-items:center;gap:8px
+  }
+  .nav button:hover{background:#25363F;color:#fff}
+  .nav button[aria-current="page"]{background:#2F4450;color:var(--rail-act)}
+  .nav .badge{font-size:11px;padding:1px 7px;border-radius:10px;background:var(--bad);color:#fff}
+  .rail .foot{margin-top:auto;font-size:12px;color:#8FA0AC;padding:10px}
+  .rail .foot b{color:#C9D3DB;font-weight:500}
+
+  main{padding:26px 34px 60px;max-width:1280px}
+  .screen{display:none}
+  .screen.on{display:block}
+  h1{font-size:22px;font-weight:600;margin:0 0 4px}
+  .lede{color:var(--ink-2);margin:0 0 22px;max-width:70ch}
+  h2{font-size:15px;font-weight:600;margin:28px 0 10px}
+  h2 .n{color:var(--ink-3);font-weight:400;margin-left:6px}
+
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .bar .grow{flex:1}
+  .btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:7px 12px;border-radius:var(--r)}
+  .btn:hover{border-color:#B9C4CE}
+  .btn.primary{background:var(--act);border-color:var(--act);color:var(--act-ink)}
+  .btn.primary:hover{background:#0B5C5D}
+  .btn.danger{color:var(--bad)}
+  .btn.sm{padding:4px 9px;font-size:13px}
+  .btn.link{border:0;background:none;color:var(--act);padding:2px 4px}
+  input,select{
+    font:inherit;color:var(--ink);padding:7px 10px;border:1px solid var(--line);border-radius:var(--r);background:#fff;min-width:0
+  }
+  input:focus,select:focus{border-color:var(--act)}
+  .search{width:280px}
+  label{display:block;font-size:13px;color:var(--ink-2);margin-bottom:4px}
+  .field{margin-bottom:14px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+  /* ---------- panels & tables ---------- */
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px}
+  .panel .ph{padding:12px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:10px}
+  .panel .ph h2{margin:0}
+  table{width:100%;border-collapse:collapse}
+  th{font-weight:500;color:var(--ink-2);text-align:left;padding:9px 14px;border-bottom:1px solid var(--line);font-size:13px;white-space:nowrap}
+  td{padding:10px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#F7F9FB}
+  td.num,th.num{text-align:right}
+  td.dim{color:var(--ink-3)}
+  code{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:#F2F5F7;padding:1px 5px;border-radius:3px}
+  .st{display:inline-flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap}
+  .st::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ink-3)}
+  .st.ok::before{background:var(--ok)} .st.warn::before{background:var(--warn)} .st.bad::before{background:var(--bad)}
+  .tag{font-size:12px;padding:2px 8px;border-radius:10px;background:#EEF2F5;color:var(--ink-2);white-space:nowrap}
+  .tag.ok{background:var(--ok-soft);color:var(--ok)} .tag.warn{background:var(--warn-soft);color:var(--warn)} .tag.bad{background:var(--bad-soft);color:var(--bad)}
+  .tag.act{background:var(--act-soft);color:var(--act)}
+
+  /* ---------- the meter (backend load) ---------- */
+  .meters{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .meter{background:#fff;padding:14px 16px}
+  .meter .t{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
+  .meter .t b{font-weight:600}
+  .meter .m{color:var(--ink-3);font-size:12.5px;margin-bottom:10px}
+  .meter .track{height:22px;background:#EEF2F5;border-radius:3px;position:relative;overflow:hidden}
+  .meter .fill{position:absolute;inset:0 auto 0 0;background:var(--act);border-radius:3px}
+  .meter .fill.warn{background:var(--warn)} .meter .fill.bad{background:var(--bad)}
+  .meter .ticks{position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 1px),rgba(24,33,41,.10) calc(10% - 1px) 10%)}
+  .meter .v{position:absolute;right:8px;top:0;line-height:22px;font-size:12.5px;color:var(--ink)}
+  .meter .f{display:flex;justify-content:space-between;color:var(--ink-2);font-size:12.5px;margin-top:8px}
+
+  /* ---------- budget bars ---------- */
+  .bud{display:flex;align-items:center;gap:10px;min-width:220px}
+  .bud .track{flex:1;height:8px;background:#EEF2F5;border-radius:4px;overflow:hidden}
+  .bud .fill{height:100%;background:var(--act)}
+  .bud .fill.warn{background:var(--warn)} .bud .fill.bad{background:var(--bad)}
+  .bud span{width:42px;text-align:right;font-size:13px;color:var(--ink-2)}
+
+  /* ---------- alerts ---------- */
+  .alerts{display:flex;flex-direction:column;gap:6px}
+  .alert{display:flex;gap:12px;align-items:center;padding:10px 14px;border:1px solid var(--line);border-left:4px solid var(--warn);background:#fff;border-radius:var(--r)}
+  .alert.bad{border-left-color:var(--bad)}
+  .alert .what{flex:1}
+  .alert small{color:var(--ink-3);display:block}
+
+  /* ---------- chart ---------- */
+  .chart{padding:14px 16px 8px}
+  .chart svg{width:100%;height:170px;display:block}
+  .legend{display:flex;gap:16px;color:var(--ink-2);font-size:12.5px;padding:0 16px 12px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+
+  /* ---------- modal ---------- */
+  .scrim{position:fixed;inset:0;background:rgba(24,33,41,.45);display:none;align-items:center;justify-content:center;padding:20px}
+  .scrim.on{display:flex}
+  .modal{background:#fff;border-radius:8px;width:min(560px,100%);padding:22px 24px;border:1px solid var(--line)}
+  .modal h3{margin:0 0 4px;font-size:17px}
+  .modal .sub{color:var(--ink-2);margin:0 0 18px}
+  .modal .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+  .keybox{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:#F7F9FB;display:flex;align-items:center;gap:10px;margin:8px 0 14px}
+  .keybox code{font-size:14px;background:none;padding:0;flex:1;word-break:break-all}
+  .notice{border:1px solid var(--warn);background:var(--warn-soft);color:#6A4308;padding:10px 12px;border-radius:var(--r)}
+  .chk{display:flex;flex-wrap:wrap;gap:6px 14px}
+  .chk label{display:inline-flex;align-items:center;gap:6px;margin:0;color:var(--ink)}
+
+  .kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;font-size:13.5px}
+  .kv dt{color:var(--ink-2)} .kv dd{margin:0}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:var(--r);display:none}
+  .toast.on{display:block}
+
+  @media (max-width:900px){
+    .shell{grid-template-columns:1fr}
+    .rail{flex-direction:row;flex-wrap:wrap;align-items:center;padding:10px}
+    .brand{border:0;margin:0;padding:6px 10px}
+    .nav{flex-direction:row;flex-wrap:wrap}
+    .rail .foot{display:none}
+    main{padding:18px 16px 50px}
+    .row2{grid-template-columns:1fr}
+    .search{width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div class="brand">LLM Router<small>GORIC · quản trị</small></div>
+    <nav class="nav" aria-label="Màn hình">
+      <button data-go="overview" aria-current="page">Tổng quan <span class="badge">3</span></button>
+      <button data-go="teams">Teams &amp; ngân sách</button>
+      <button data-go="keys">API keys</button>
+      <button data-go="backends">Backend &amp; tuyến model</button>
+      <button data-go="ledger">Sổ cái usage</button>
+    </nav>
+    <div class="foot">Router <b>v0.3.1</b> · 2 instance<br>Config cập nhật 4 giây trước</div>
+  </aside>
+
+  <main>
+
+  <!-- ================= 1. TỔNG QUAN ================= -->
+  <section class="screen on" id="s-overview">
+    <h1>Tổng quan</h1>
+    <p class="lede">Tình trạng backend, cảnh báo cần xử lý, và team nào đang tiêu nhiều nhất hôm nay. Số liệu tự làm mới mỗi 5 giây.</p>
+
+    <div class="alerts" id="alerts"></div>
+
+    <h2>Backend đang chạy <span class="n">tải = request đang xử lý / mức tối đa</span></h2>
+    <div class="meters" id="meters"></div>
+
+    <h2>Hôm nay theo team</h2>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th>Team</th><th class="num">Request</th><th class="num">Token vào</th><th class="num">Token ra</th><th class="num">Bị chặn (429)</th><th>Ngân sách tháng</th>
+        </tr></thead>
+        <tbody id="ov-teams"></tbody>
+      </table>
+    </div>
+
+    <h2>Router tốn bao nhiêu <span class="n">p99 thời gian xử lý của router, không tính chờ backend</span></h2>
+    <div class="panel">
+      <div class="chart"><svg id="ovh" viewBox="0 0 900 170" preserveAspectRatio="none" aria-label="Overhead p99 theo kích thước prompt"></svg></div>
+      <div class="legend"><span><i style="background:var(--act)"></i>1K token</span><span><i style="background:#5FA8A9"></i>50K token</span><span><i style="background:#A9D3D3"></i>200K token</span><span style="margin-left:auto">Mục tiêu &lt; 2 ms ở mọi kích thước</span></div>
+    </div>
+  </section>
+
+  <!-- ================= 2. TEAMS ================= -->
+  <section class="screen" id="s-teams">
+    <h1>Teams &amp; ngân sách</h1>
+    <p class="lede">Mỗi team có ngân sách token theo tháng, có thể chia riêng theo model. Key của team thừa hưởng giới hạn này; key có thể siết thêm nhưng không nới hơn team.</p>
+    <div class="bar">
+      <input class="search" type="search" placeholder="Tìm team">
+      <span class="grow"></span>
+      <button class="btn primary" onclick="openModal('m-team')">Tạo team</button>
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th>Team</th><th>Chủ quản</th><th class="num">Keys</th><th>Ngân sách tháng</th><th class="num">Đã dùng</th><th>Theo model</th><th></th>
+        </tr></thead>
+        <tbody id="teams"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= 3. API KEYS ================= -->
+  <section class="screen" id="s-keys">
+    <h1>API keys</h1>
+    <p class="lede">Mỗi key gắn với một team và một người/agent chịu trách nhiệm (FRT_E_ID). Key chỉ hiện đầy đủ một lần lúc tạo; sau đó chỉ còn 8 ký tự đầu để nhận diện.</p>
+    <div class="bar">
+      <input class="search" type="search" placeholder="Tìm theo prefix, tên, FRT_E_ID">
+      <select><option>Mọi team</option><option>Hermes Dược sĩ</option><option>MedLC Audit</option><option>Deep Research</option><option>Intent Finder</option></select>
+      <select><option>Đang bật</option><option>Đã tắt</option><option>Tất cả</option></select>
+      <span class="grow"></span>
+      <button class="btn primary" onclick="openModal('m-key')">Tạo key</button>
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th>Key</th><th>Tên</th><th>Team</th><th>Chủ key</th><th>Model được gọi</th><th class="num">Giới hạn</th><th>Hôm nay</th><th>Trạng thái</th><th></th>
+        </tr></thead>
+        <tbody id="keys"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= 4. BACKENDS ================= -->
+  <section class="screen" id="s-backends">
+    <h1>Backend &amp; tuyến model</h1>
+    <p class="lede">Backend là một máy chủ inference. Tuyến model quy định tên model client gọi sẽ đi tới backend nào, theo thứ tự ưu tiên. Router chọn backend khoẻ và ít việc nhất trong danh sách.</p>
+
+    <div class="bar">
+      <h2 style="margin:0">Backend</h2>
+      <span class="grow"></span>
+      <button class="btn" onclick="openModal('m-backend')">Thêm backend</button>
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th>Tên</th><th>Địa chỉ</th><th>Định dạng</th><th>Model phục vụ</th><th class="num">Trọng số</th><th class="num">Đang chạy / tối đa</th><th class="num">TTFB p50</th><th>Sức khoẻ</th><th></th>
+        </tr></thead>
+        <tbody id="backends"></tbody>
+      </table>
+    </div>
+
+    <div class="bar" style="margin-top:28px">
+      <h2 style="margin:0">Tuyến model</h2>
+      <span class="grow"></span>
+      <button class="btn" onclick="openModal('m-route')">Thêm tuyến</button>
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th>Tên model client gọi</th><th>Đi tới (theo ưu tiên)</th><th>Dự phòng</th><th class="num">Ký tự / token</th><th class="num">Chờ byte đầu tối đa</th><th></th>
+        </tr></thead>
+        <tbody id="routes"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= 5. SỔ CÁI ================= -->
+  <section class="screen" id="s-ledger">
+    <h1>Sổ cái usage</h1>
+    <p class="lede">Mỗi dòng là một request đã kết thúc, không sửa được. Số token lấy từ backend trả về; dòng đánh dấu "ước lượng" là backend không báo usage và router tự tính theo độ dài.</p>
+    <div class="bar">
+      <select><option>7 ngày qua</option><option>Hôm nay</option><option>30 ngày</option><option>Tuỳ chọn</option></select>
+      <select><option>Mọi team</option><option>Hermes Dược sĩ</option><option>MedLC Audit</option><option>Deep Research</option></select>
+      <select><option>Mọi model</option><option>qwen3.8-27b</option><option>qwen3.8-flash-next</option><option>medgemma-3-27b</option><option>claude-backup</option></select>
+      <select><option>Mọi trạng thái</option><option>Thành công</option><option>Bị chặn 429</option><option>Lỗi backend</option><option>Client ngắt</option></select>
+      <span class="grow"></span>
+      <button class="btn">Tải CSV</button>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><h2>Token theo ngày</h2><span class="n" style="color:var(--ink-3)">7 ngày, mọi team</span></div>
+      <div class="chart"><svg id="daily" viewBox="0 0 900 170" preserveAspectRatio="none" aria-label="Token theo ngày"></svg></div>
+      <div class="legend"><span><i style="background:var(--act)"></i>Token vào</span><span><i style="background:#A9D3D3"></i>Token ra</span></div>
+    </div>
+
+    <h2>Request gần nhất <span class="n">2.418 dòng khớp bộ lọc</span></h2>
+    <div class="panel">
+      <table>
+        <thead><tr>
+          <th>Thời điểm</th><th>Request</th><th>Team / key</th><th>Model</th><th>Backend</th><th class="num">Vào</th><th class="num">Ra</th><th class="num">Byte đầu</th><th class="num">Tổng</th><th class="num">Router</th><th>Kết quả</th>
+        </tr></thead>
+        <tbody id="ledger"></tbody>
+      </table>
+    </div>
+  </section>
+
+  </main>
+</div>
+
+<!-- ================= MODALS ================= -->
+<div class="scrim" id="m-key" role="dialog" aria-modal="true" aria-labelledby="mk-t">
+  <div class="modal">
+    <div id="mk-step1">
+      <h3 id="mk-t">Tạo API key</h3>
+      <p class="sub">Key nhận giới hạn của team; anh có thể siết thêm ở đây.</p>
+      <div class="row2">
+        <div class="field"><label>Tên key</label><input value="hermes-pharmacist-prod-03"></div>
+        <div class="field"><label>Team</label><select><option>Hermes Dược sĩ</option><option>MedLC Audit</option><option>Deep Research</option><option>Intent Finder</option></select></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Chủ key (FRT_E_ID)</label><input value="FRT-0091837"></div>
+        <div class="field"><label>Hết hạn</label><input type="date" value="2026-12-31"></div>
+      </div>
+      <div class="field"><label>Model được gọi</label>
+        <div class="chk">
+          <label><input type="checkbox" checked> qwen3.8-27b</label>
+          <label><input type="checkbox" checked> qwen3.8-flash-next</label>
+          <label><input type="checkbox"> medgemma-3-27b</label>
+          <label><input type="checkbox"> gemma-4-31b</label>
+          <label><input type="checkbox"> claude-backup</label>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Token / tháng (trống = theo team)</label><input placeholder="theo team: 40M"></div>
+        <div class="field"><label>Request / phút</label><input value="120"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Request chạy đồng thời tối đa</label><input value="8"></div>
+        <div class="field"></div>
+      </div>
+      <div class="foot"><button class="btn" onclick="closeModal('m-key')">Huỷ</button><button class="btn primary" onclick="showKey()">Tạo key</button></div>
+    </div>
+    <div id="mk-step2" style="display:none">
+      <h3>Key đã tạo</h3>
+      <p class="sub">Sao chép ngay. Router chỉ lưu bản băm, không thể hiện lại key này.</p>
+      <div class="keybox"><code>lc-9f3a2b7c1d8e4f6a0b5c7d9e2f1a3b4c5d6e7f8a</code><button class="btn sm" onclick="toast('Đã sao chép')">Sao chép</button></div>
+      <div class="notice">Nếu mất key, tạo key mới và tắt key này. Không có cách khôi phục.</div>
+      <div class="foot"><button class="btn primary" onclick="closeModal('m-key');resetKeyModal()">Xong</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="m-team" role="dialog" aria-modal="true">
+  <div class="modal">
+    <h3>Tạo team</h3>
+    <p class="sub">Ngân sách tính theo tháng dương lịch, đặt lại ngày 1.</p>
+    <div class="row2">
+      <div class="field"><label>Tên team</label><input placeholder="Ví dụ: Demand Forecast"></div>
+      <div class="field"><label>Chủ quản (FRT_E_ID)</label><input placeholder="FRT-…"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Token / tháng</label><input value="20000000"></div>
+      <div class="field"><label>Cảnh báo khi dùng đến</label><select><option>80%</option><option>90%</option><option>Không</option></select></div>
+    </div>
+    <div class="field"><label>Giới hạn riêng theo model (tuỳ chọn)</label>
+      <div class="row2"><select><option>claude-backup</option><option>qwen3.8-27b</option></select><input placeholder="token / tháng"></div>
+    </div>
+    <div class="foot"><button class="btn" onclick="closeModal('m-team')">Huỷ</button><button class="btn primary" onclick="closeModal('m-team');toast('Đã tạo team')">Tạo team</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="m-backend" role="dialog" aria-modal="true">
+  <div class="modal">
+    <h3>Thêm backend</h3>
+    <p class="sub">API key của backend đọc từ biến môi trường trên máy chạy router, không lưu vào cơ sở dữ liệu.</p>
+    <div class="row2">
+      <div class="field"><label>Tên</label><input placeholder="b300-3"></div>
+      <div class="field"><label>Định dạng</label><select><option>OpenAI-compatible (vLLM, llama-server)</option><option>Anthropic</option></select></div>
+    </div>
+    <div class="field"><label>Địa chỉ</label><input placeholder="http://10.20.0.13:8000"></div>
+    <div class="row2">
+      <div class="field"><label>Biến môi trường chứa key</label><input value="BACKEND_KEY_B300_3"></div>
+      <div class="field"><label>Model phục vụ</label><input placeholder="qwen3.8-27b"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Trọng số</label><input value="1.0"></div>
+      <div class="field"><label>Request đồng thời tối đa</label><input value="64"></div>
+    </div>
+    <div class="foot"><button class="btn" onclick="closeModal('m-backend')">Huỷ</button><button class="btn primary" onclick="closeModal('m-backend');toast('Đã thêm backend, đang kiểm tra sức khoẻ')">Thêm và kiểm tra</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="m-route" role="dialog" aria-modal="true">
+  <div class="modal">
+    <h3>Thêm tuyến model</h3>
+    <p class="sub">Tên model client gọi có thể khác tên model thật trên backend.</p>
+    <div class="field"><label>Tên model client gọi</label><input placeholder="qwen3.8-27b"></div>
+    <div class="field"><label>Backend theo thứ tự ưu tiên</label><input placeholder="gx10, b300-1, b300-2"></div>
+    <div class="row2">
+      <div class="field"><label>Dự phòng khi tất cả chết</label><select><option>Không</option><option>anthropic (claude-backup)</option></select></div>
+      <div class="field"><label>Ký tự / token (để ước lượng)</label><input value="3.5"></div>
+    </div>
+    <div class="field"><label>Chờ byte đầu tối đa (giây)</label><input value="180"></div>
+    <div class="foot"><button class="btn" onclick="closeModal('m-route')">Huỷ</button><button class="btn primary" onclick="closeModal('m-route');toast('Đã thêm tuyến')">Thêm tuyến</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- mock data ---------- */
+const backends = [
+  {id:'gx10',    url:'http://10.20.0.10:8000', fmt:'OpenAI', models:['qwen3.8-27b'],            w:1.5, inflight:22, max:48,  ttfb:410,  health:'ok'},
+  {id:'b300-1',  url:'http://10.20.0.11:8000', fmt:'OpenAI', models:['qwen3.8-27b','gemma-4-31b'], w:1.0, inflight:57, max:64, ttfb:620, health:'ok'},
+  {id:'b300-2',  url:'http://10.20.0.12:8000', fmt:'OpenAI', models:['qwen3.8-27b','medgemma-3-27b'], w:1.0, inflight:61, max:64, ttfb:2_140, health:'warn'},
+  {id:'a6000',   url:'http://118.69.81.93:8005', fmt:'OpenAI', models:['qwen3.8-flash-next'],  w:0.7, inflight:6,  max:16,  ttfb:530,  health:'ok'},
+  {id:'rtx3090', url:'http://10.20.0.30:8080', fmt:'OpenAI', models:['gemma-4-31b'],            w:0.5, inflight:0,  max:12,  ttfb:null, health:'bad'},
+  {id:'anthropic', url:'https://api.anthropic.com', fmt:'Anthropic', models:['claude-backup'],  w:1.0, inflight:1,  max:20,  ttfb:890,  health:'ok'},
+];
+const routes = [
+  {m:'qwen3.8-27b',        to:['gx10','b300-1','b300-2'], fb:'—',              cpt:3.5, fb_s:180},
+  {m:'qwen3.8-flash-next', to:['a6000'],                  fb:'—',              cpt:3.5, fb_s:120},
+  {m:'medgemma-3-27b',     to:['b300-2'],                 fb:'—',              cpt:3.6, fb_s:120},
+  {m:'gemma-4-31b',        to:['b300-1','rtx3090'],       fb:'—',              cpt:3.6, fb_s:120},
+  {m:'claude-backup',      to:['anthropic'],              fb:'—',              cpt:3.8, fb_s:60},
+];
+const teams = [
+  {id:'t1', name:'Hermes Dược sĩ',  owner:'FRT-0091837', keys:6, budget:40e6, used:31.2e6, per:{'claude-backup':2e6}, today:{req:18_420, tin:9.8e6, tout:1.1e6, blocked:0}},
+  {id:'t2', name:'MedLC Audit',     owner:'FRT-0077210', keys:3, budget:25e6, used:23.9e6, per:{},                    today:{req:6_310,  tin:5.2e6, tout:0.6e6, blocked:14}},
+  {id:'t3', name:'Deep Research',   owner:'FRT-0102455', keys:4, budget:60e6, used:22.4e6, per:{'claude-backup':10e6},today:{req:1_204,  tin:7.9e6, tout:1.9e6, blocked:0}},
+  {id:'t4', name:'Intent Finder',   owner:'FRT-0088901', keys:2, budget:10e6, used:3.1e6,  per:{},                    today:{req:9_870,  tin:1.4e6, tout:0.2e6, blocked:0}},
+  {id:'t5', name:'Demand Forecast', owner:'FRT-0064422', keys:1, budget:5e6,  used:0.4e6,  per:{},                    today:{req:88,     tin:0.1e6, tout:0.02e6, blocked:0}},
+];
+const keys = [
+  {p:'lc-9f3a2b7c', name:'hermes-pharmacist-prod-01', team:'Hermes Dược sĩ', owner:'FRT-0091837', models:['qwen3.8-27b','qwen3.8-flash-next'], lim:'120/phút · 8 đồng thời', today:'6.1M token', on:true},
+  {p:'lc-1c8e44a0', name:'hermes-pharmacist-prod-02', team:'Hermes Dược sĩ', owner:'FRT-0091837', models:['qwen3.8-27b','qwen3.8-flash-next'], lim:'120/phút · 8 đồng thời', today:'5.8M token', on:true},
+  {p:'lc-77bd02e9', name:'medlc-auditor',             team:'MedLC Audit',    owner:'FRT-0077210', models:['medgemma-3-27b'],               lim:'60/phút · 16 đồng thời', today:'5.2M token', on:true, warn:'sắp hết ngân sách team'},
+  {p:'lc-d02f61bb', name:'deep-research-mcp',         team:'Deep Research',  owner:'FRT-0102455', models:['qwen3.8-27b','claude-backup'],  lim:'30/phút · 4 đồng thời', today:'9.6M token', on:true},
+  {p:'lc-3e9a10c4', name:'intent-finder-cs',          team:'Intent Finder',  owner:'FRT-0088901', models:['qwen3.8-flash-next'],           lim:'300/phút · 32 đồng thời', today:'1.6M token', on:true},
+  {p:'lc-b41f7a22', name:'nam-dev-test',              team:'Hermes Dược sĩ', owner:'FRT-0051200', models:['qwen3.8-27b'],                  lim:'20/phút · 2 đồng thời', today:'0', on:false},
+];
+const ledger = [
+  ['14:02:11','req_7Qx3…','Deep Research / lc-d02f61bb','qwen3.8-27b','b300-1','184.2K','2.1K','9.8 s','41.2 s','1.6 ms','ok'],
+  ['14:02:09','req_7Qx1…','Hermes Dược sĩ / lc-9f3a2b7c','qwen3.8-flash-next','a6000','3.1K','412','0.5 s','2.9 s','0.4 ms','ok'],
+  ['14:02:08','req_7Qw9…','MedLC Audit / lc-77bd02e9','medgemma-3-27b','b300-2','12.4K','880','2.3 s','7.1 s','0.6 ms','429'],
+  ['14:02:05','req_7Qw4…','Intent Finder / lc-3e9a10c4','qwen3.8-flash-next','a6000','1.2K','64','0.4 s','0.9 s','0.3 ms','ok'],
+  ['14:01:58','req_7Qv8…','Hermes Dược sĩ / lc-1c8e44a0','qwen3.8-27b','gx10','48.9K','1.4K','3.1 s','19.6 s','0.9 ms','ok'],
+  ['14:01:51','req_7Qv2…','Deep Research / lc-d02f61bb','claude-backup','anthropic','22.0K','3.3K','0.9 s','28.4 s','0.5 ms','ok'],
+  ['14:01:44','req_7Qu7…','Hermes Dược sĩ / lc-9f3a2b7c','qwen3.8-27b','b300-2','61.7K','—','—','60.0 s','0.8 ms','timeout'],
+  ['14:01:40','req_7Qu1…','MedLC Audit / lc-77bd02e9','medgemma-3-27b','b300-2','9.9K','~710','1.8 s','5.5 s','0.6 ms','est'],
+  ['14:01:33','req_7Qt5…','Hermes Dược sĩ / lc-1c8e44a0','qwen3.8-27b','gx10','5.4K','230','0.6 s','3.0 s','0.4 ms','abort'],
+];
+
+/* ---------- helpers ---------- */
+const fmtM = n => n>=1e6 ? (n/1e6).toFixed(1)+'M' : n>=1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
+const fmtN = n => n.toLocaleString('vi-VN');
+const pct = (a,b)=> Math.round(a/b*100);
+const lvl = p => p>=95?'bad':p>=80?'warn':'';
+const $ = s => document.querySelector(s);
+const st = {ok:'Khoẻ', warn:'Chậm', bad:'Ngắt (circuit mở)'};
+
+function bud(used,total){const p=pct(used,total);return `<div class="bud"><div class="track"><div class="fill ${lvl(p)}" style="width:${Math.min(p,100)}%"></div></div><span>${p}%</span></div>`}
+
+/* ---------- render ---------- */
+$('#alerts').innerHTML = [
+  {c:'bad', t:'rtx3090 không phản hồi 3 lần liên tiếp, đã ngắt 30 giây rồi thử lại', s:'gemma-4-31b hiện chỉ còn b300-1 phục vụ', a:'Xem backend', go:'backends'},
+  {c:'', t:'MedLC Audit đã dùng 96% ngân sách tháng, 14 request bị chặn hôm nay', s:'Còn 1,1M token đến hết tháng', a:'Nới ngân sách', go:'teams'},
+  {c:'', t:'b300-2 chờ byte đầu p50 = 2,1 giây, gấp 3 lần bình thường', s:'61/64 request đang chạy — có thể là một agent gửi context quá dài', a:'Xem sổ cái', go:'ledger'},
+].map(a=>`<div class="alert ${a.c}"><div class="what">${a.t}<small>${a.s}</small></div><button class="btn sm" onclick="go('${a.go}')">${a.a}</button></div>`).join('');
+
+$('#meters').innerHTML = backends.map(b=>{
+  const p = pct(b.inflight,b.max);
+  return `<div class="meter">
+    <div class="t"><b>${b.id}</b><span class="st ${b.health}">${st[b.health]}</span></div>
+    <div class="m">${b.models.join(', ')}</div>
+    <div class="track"><div class="ticks"></div><div class="fill ${b.health==='bad'?'bad':lvl(p)}" style="width:${p}%"></div><span class="v">${b.inflight} / ${b.max}</span></div>
+    <div class="f"><span>Byte đầu p50 ${b.ttfb==null?'—':(b.ttfb/1000).toFixed(2)+' s'}</span><span>trọng số ${b.w}</span></div>
+  </div>`}).join('');
+
+$('#ov-teams').innerHTML = teams.map(t=>`<tr>
+  <td>${t.name}</td><td class="num">${fmtN(t.today.req)}</td><td class="num">${fmtM(t.today.tin)}</td><td class="num">${fmtM(t.today.tout)}</td>
+  <td class="num ${t.today.blocked?'':'dim'}">${t.today.blocked||'0'}</td><td>${bud(t.used,t.budget)}</td></tr>`).join('');
+
+$('#teams').innerHTML = teams.map(t=>`<tr>
+  <td>${t.name}</td><td class="dim">${t.owner}</td><td class="num">${t.keys}</td>
+  <td class="num">${fmtM(t.budget)} token</td><td>${bud(t.used,t.budget)}</td>
+  <td>${Object.keys(t.per).length?Object.entries(t.per).map(([m,v])=>`<span class="tag">${m} ≤ ${fmtM(v)}</span>`).join(' '):'<span class="dim">—</span>'}</td>
+  <td class="num"><button class="btn link" onclick="toast('Mở sửa ngân sách')">Sửa</button></td></tr>`).join('');
+
+$('#keys').innerHTML = keys.map(k=>`<tr>
+  <td><code>${k.p}…</code></td><td>${k.name}</td><td>${k.team}</td><td class="dim">${k.owner}</td>
+  <td>${k.models.map(m=>`<span class="tag">${m}</span>`).join(' ')}</td>
+  <td class="num dim">${k.lim}</td><td>${k.today}</td>
+  <td>${k.on?(k.warn?`<span class="tag warn">${k.warn}</span>`:'<span class="tag ok">Đang bật</span>'):'<span class="tag">Đã tắt</span>'}</td>
+  <td class="num"><button class="btn link" onclick="toast('${k.on?'Đã tắt':'Đã bật'} ${k.name}')">${k.on?'Tắt':'Bật'}</button></td></tr>`).join('');
+
+$('#backends').innerHTML = backends.map(b=>`<tr>
+  <td>${b.id}</td><td class="dim"><code>${b.url}</code></td><td>${b.fmt}</td>
+  <td>${b.models.map(m=>`<span class="tag">${m}</span>`).join(' ')}</td>
+  <td class="num">${b.w}</td><td class="num">${b.inflight} / ${b.max}</td>
+  <td class="num">${b.ttfb==null?'—':(b.ttfb/1000).toFixed(2)+' s'}</td>
+  <td><span class="st ${b.health}">${st[b.health]}</span></td>
+  <td class="num"><button class="btn link" onclick="toast('Rút ${b.id} khỏi tuyến, request đang chạy được giữ')">Rút tạm</button></td></tr>`).join('');
+
+$('#routes').innerHTML = routes.map(r=>`<tr>
+  <td><code>${r.m}</code></td>
+  <td>${r.to.map((b,i)=>`<span class="tag ${i===0?'act':''}">${b}</span>`).join(' ')}</td>
+  <td class="dim">${r.fb}</td><td class="num">${r.cpt}</td><td class="num">${r.fb_s} s</td>
+  <td class="num"><button class="btn link" onclick="toast('Mở sửa tuyến')">Sửa</button></td></tr>`).join('');
+
+const rs = {ok:'<span class="tag ok">Thành công</span>',429:'<span class="tag warn">Chặn 429</span>',timeout:'<span class="tag bad">Backend không phản hồi</span>',est:'<span class="tag ok">Thành công</span> <span class="tag warn">ước lượng</span>',abort:'<span class="tag">Client ngắt</span>'};
+$('#ledger').innerHTML = ledger.map(r=>`<tr>${r.slice(0,10).map((c,i)=>`<td class="${i>=5?'num':''} ${i===1?'dim':''}">${c}</td>`).join('')}<td>${rs[r[10]]}</td></tr>`).join('');
+
+/* ---------- charts (plain SVG) ---------- */
+function bars(svgId, series, labels, colors){
+  const svg=$(svgId), W=900,H=170, padL=40,padB=22,padT=8;
+  const max=Math.max(...series.flat())*1.1;
+  const n=labels.length, gw=(W-padL)/n, bw=(gw*0.7)/series.length;
+  let out='';
+  [0,0.5,1].forEach(f=>{const y=padT+(H-padT-padB)*(1-f);out+=`<line x1="${padL}" x2="${W}" y1="${y}" y2="${y}" stroke="#E7ECF0"/><text x="${padL-6}" y="${y+4}" font-size="11" fill="#8593A0" text-anchor="end">${(max*f).toFixed(max<10?1:0)}</text>`});
+  labels.forEach((l,i)=>{
+    series.forEach((s,k)=>{const h=(H-padT-padB)*(s[i]/max);const x=padL+i*gw+gw*0.15+k*bw;out+=`<rect x="${x}" y="${H-padB-h}" width="${bw-2}" height="${h}" fill="${colors[k]}" rx="2"/>`});
+    out+=`<text x="${padL+i*gw+gw/2}" y="${H-6}" font-size="11" fill="#4E5D6A" text-anchor="middle">${l}</text>`;
+  });
+  svg.innerHTML=out;
+}
+bars('#ovh',[[0.5,0.6,0.5,0.7,0.6,0.5,0.6],[0.9,1.0,0.9,1.1,1.0,0.9,1.0],[1.4,1.5,1.6,1.7,1.5,1.4,1.6]],['09/09','10/09','11/09','12/09','13/09','14/09','Hôm nay'],['#0E6F70','#5FA8A9','#A9D3D3']);
+bars('#daily',[[22,25,19,31,28,9,24],[3.1,3.4,2.6,4.0,3.7,1.2,3.3]],['09/09','10/09','11/09','12/09','13/09','14/09','Hôm nay'],['#0E6F70','#A9D3D3']);
+
+/* ---------- nav & modal ---------- */
+function go(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id==='s-'+id));
+  document.querySelectorAll('.nav button').forEach(b=>b.getAttribute('data-go')===id?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));
+function openModal(id){$('#'+id).classList.add('on');$('#'+id+' input,#'+id+' select')?.focus()}
+function closeModal(id){$('#'+id).classList.remove('on')}
+document.querySelectorAll('.scrim').forEach(s=>s.addEventListener('click',e=>{if(e.target===s)s.classList.remove('on')}));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.scrim.on').forEach(s=>s.classList.remove('on'))});
+function showKey(){$('#mk-step1').style.display='none';$('#mk-step2').style.display='block'}
+function resetKeyModal(){$('#mk-step1').style.display='block';$('#mk-step2').style.display='none'}
+let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2200)}
+</script>
+</body>
+</html>

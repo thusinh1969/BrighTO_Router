@@ -1,0 +1,63 @@
+--- a/benchmarks/BENCHMARK.md
++++ b/benchmarks/BENCHMARK.md
+@@ -1,6 +1,6 @@
+ # BENCHMARK.md — Bộ cổng (gate) BrighTO Router bắt buộc pass trước mọi release
+ 
+-Mọi thứ trong file này chạy bằng một lệnh, kết quả là JSON, và **exit code khác 0 = không được merge/release**. Không có "gần đạt". Số ngưỡng ghi trong `bench/thresholds.toml`; muốn đổi ngưỡng phải sửa file đó qua PR có lý do.
++Mọi thứ trong file này chạy bằng một lệnh, kết quả là JSON, và **exit code khác 0 = không được merge/release**. Không có "gần đạt". Số ngưỡng ghi trong `benchmarks/thresholds.toml`; muốn đổi ngưỡng phải sửa file đó qua PR có lý do.
+ 
+ Phạm vi v1 (team / user / key / budget / logging). Tính năng thêm sau này thêm gate của nó, không được làm gate cũ đỏ.
+ 
+@@ -10,14 +10,14 @@
+ 
+ 1. **Đo hiệu số, không đo số tuyệt đối.** Overhead = router − direct, cùng payload, cùng upstream, cùng lúc. Số tuyệt đối phụ thuộc máy; hiệu số thì không.
+ 2. **Cô lập trước, thực tế sau.** Tầng A–B dùng **mock upstream** (`llm-router-mock`, Rust, trả lời trong ~0 ms) để không có gì che overhead. Tầng C–D dùng vLLM/llama-server thật và cloud thật để chứng minh delta không biến mất ngoài đời.
+-3. **Open-loop.** Load generator bắn theo tốc độ cố định (`oha -q`), không đợi response mới bắn tiếp. Closed-loop giấu tail latency (coordinated omission).
++3. **Load shape phải explicit trong artifact.** `conc=1` đo latency floor bằng closed-loop một kết nối. `conc=50/200` dùng target offered-rate (`oha -q`) để tránh coordinated omission nhưng không flood máy đo. B6 dùng target-rate trên `conc=200`, không dùng saturation run không giới hạn để claim pass/fail.
+ 4. **Một cấu hình duy nhất cho mọi gate**: auth bật, budget bật, ledger ghi thật vào Postgres, log JSON bật, Prometheus bật. Không được tắt tính năng để đo cho đẹp.
+ 
+ ---
+ 
+ ## 1. Ma trận payload
+ 
+-Sinh bằng `bench/make_payloads.py` (đã có). Kích thước tính theo ~4 ký tự/token; số token thật lấy từ `usage` upstream trả về.
++Sinh bằng `benchmarks/make_payloads.py` (đã có). Kích thước tính theo ~4 ký tự/token; số token thật lấy từ `usage` upstream trả về.
+ 
+ | Tên | Token vào | Body | Stream | Dùng cho |
+ |---|---|---|---|---|
+@@ -25,7 +25,7 @@
+ | `50k` | ~50.000 | ~200 KB | on/off | RAG/agent điển hình |
+ | `200k` | ~200.000 | ~800 KB | on/off | deep research, trường hợp xấu nhất |
+ 
+-Concurrency: 1 / 50 / 200. Thời lượng mỗi điểm đo: warm-up 15 s bỏ, đo 60 s, lặp 3 lần, lấy **median**. Kết quả xấu nhất trong 3 lần không được vượt ngưỡng quá 25% (chống flaky).
++Harness canonical đo latency ở concurrency 1 / 50 / 200 để có đủ raw evidence. Release gates B1/B2/B3 trong bảng dưới áp ngưỡng ở `conc=50`; `conc=1` và `conc=200` vẫn phải nằm trong `summary.json`/raw JSON để audit regression và phát hiện saturation artifact. Thời lượng mỗi điểm đo: warm-up 15 s bỏ, đo 60 s, lặp 3 lần, lấy **median**. Kết quả xấu nhất trong 3 lần không được vượt ngưỡng quá 25% (chống flaky).
+ 
+ ---
+ 
+@@ -105,7 +105,7 @@
+ 
+ ## 3. Tầng B — Hiệu năng (mock upstream, gate số)
+ 
+-Máy tham chiếu: gateway pin 4 core (`taskset`), load generator 4 core khác, mock 2 core khác, cùng máy, loopback. Governor `performance`. Ghi rõ CPU model trong kết quả. Ngưỡng dưới là **tuyệt đối**; ngoài ra mỗi số không được xấu hơn baseline của release trước quá **10%** (regression gate, baseline = `bench/baseline.json`).
++Máy tham chiếu: gateway pin 4 core (`taskset`), load generator 4 core khác, mock 2 core khác, cùng máy, loopback. Governor `performance`. Ghi rõ CPU model và benchmark knobs trong kết quả. Ngưỡng dưới là **tuyệt đối**; ngoài ra mỗi số không được xấu hơn baseline của release trước quá **10%** (regression gate, baseline = `bench/baseline.json`).
+ 
+ | Gate | Payload | Conc. | Ngưỡng |
+ |---|---|---|---|
+@@ -114,7 +114,7 @@
+ | `B3 overhead_flat` | 200k vs 1k | 50 | p50(200k) − p50(1k) ≤ 0,8 ms — overhead **không được tỷ lệ với payload** |
+ | `B4 ttfb_delta` | 1k / 50k / 200k, stream | 50 | ≤ 1 / 2 / **3 ms** |
+ | `B5 chunk_gap_added` | 200k, stream, mock 64 chunk | 50 | p99 gap thêm ≤ 0,5 ms/chunk |
+-| `B6 throughput` | 1k non-stream | bão hoà | ≥ **8.000 rps trên 4 core**, non-200 = 0 |
++| `B6 throughput` | 1k non-stream | target-rate, conc 200 | đạt target ≥ **8.000 rps trên 4 core**, non-200 = 0 |
+ | `B7 stream_fanout` | 50k stream | **1.000** stream mở đồng thời | không lỗi, RSS ≤ 64 MB + 1,5 × Σ body đang chạy |
+ | `B8 memory_stable` | 50k stream, 10 phút, conc 200 | — | RSS phút 10 ≤ RSS phút 2 + 5% |
+ | `B9 cpu_per_request` | 50k non-stream | 50 | ≤ 150 µs CPU / request (pidstat) |
+@@ -179,7 +179,7 @@
+ make gate-cloud      # D, cần ANTHROPIC_API_KEY (tốn < $1)
+ ```
+ 
+-Kết quả: `bench/results/<git-sha>-<timestamp>/gate.json`, schema:
++Kết quả canonical: `bench/results/<timestamp>/gate.json` + `summary.json` + raw direct/router `oha` JSON + `mock.log` + `router.log` + `router-metrics.txt`. `benchmarks/gate.sh` chỉ là wrapper gọi `scripts/bench_real.py`; không duy trì benchmark logic thứ hai. Schema `gate.json`:
+ 
+ ```json
+ { "sha": "...", "host": {"cpu": "...", "cores_router": 4, "kernel": "..."},

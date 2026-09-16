@@ -1,0 +1,82 @@
+--- a/scripts/bench_real.py
++++ b/scripts/bench_real.py
+@@ -41,8 +41,10 @@
+ # Ngưỡng tầng B — mirror benchmarks/thresholds.toml (đơn vị ms trừ B6).
+ B1_P50 = {"1k": 0.3, "50k": 0.6, "200k": 1.0}
+ B2_P99 = {"1k": 0.8, "50k": 1.5, "200k": 2.0}
++B3_FLAT_P50_DELTA_MS = 0.8
+ B4_TTFB = {"1k": 1.0, "50k": 2.0, "200k": 3.0}
+ B6_MIN_RPS = 8000
++WORST_RUN_TOLERANCE = 1.25
+ B6_MAX_NON200 = 0
+ B6_TARGET_RPS = int(os.environ.get("B6_TARGET_RPS", str(B6_MIN_RPS + 500)))
+ RUN_B6 = os.environ.get("BENCH_B6", "1") != "0"
+@@ -84,6 +86,23 @@
+ 
+ def median(xs):
+     return round(statistics.median(xs), 3)
++
++
++def percentile_gate(gid, payload, conc, val, thr, runs):
++    worst = max(runs) if runs else val
++    worst_threshold = round(thr * WORST_RUN_TOLERANCE, 3)
++    ok = val <= thr and worst <= worst_threshold
++    return {
++        "id": gid,
++        "payload": payload,
++        "conc": conc,
++        "value": val,
++        "threshold": thr,
++        "pass": ok,
++        "runs": [round(x, 3) for x in runs],
++        "worst": round(worst, 3),
++        "worst_threshold": worst_threshold,
++    }
+ 
+ 
+ def latency_rate(payload, conc):
+@@ -337,12 +356,38 @@
+                                          "runs_p99": [round(x, 3) for x in d99s]}
+                     print("%s c=%s overhead p50 %+.3fms p99 %+.3fms" % (p, conc, ov50, ov99))
+                     if conc == "50":
+-                        for gid, val, thr in (("B1", ov50, B1_P50[p]), ("B2", ov99, B2_P99[p])):
+-                            ok = val <= thr
+-                            any_fail |= not ok
+-                            gates.append({"id": gid, "payload": p, "conc": 50, "value": val,
+-                                          "threshold": thr, "pass": ok,
+-                                          "runs": [round(x, 3) for x in (d50s if gid == "B1" else d99s)]})
++                        for gid, val, thr, runs in (
++                            ("B1", ov50, B1_P50[p], d50s),
++                            ("B2", ov99, B2_P99[p], d99s),
++                        ):
++                            gate = percentile_gate(gid, p, 50, val, thr, runs)
++                            any_fail |= not gate["pass"]
++                            gates.append(gate)
++
++            # B3: p50 overhead must stay flat from 1k to 200k at canonical conc=50.
++            if all(payload in overhead and "50" in overhead[payload] for payload in ("1k", "200k")):
++                one = overhead["1k"]["50"]
++                large = overhead["200k"]["50"]
++                flat_delta = round(large["p50_median_ms"] - one["p50_median_ms"], 3)
++                flat_runs = [
++                    round(b - a, 3)
++                    for a, b in zip(one["runs_p50"], large["runs_p50"])
++                ]
++                worst = max(flat_runs) if flat_runs else flat_delta
++                worst_threshold = round(B3_FLAT_P50_DELTA_MS * WORST_RUN_TOLERANCE, 3)
++                ok = flat_delta <= B3_FLAT_P50_DELTA_MS and worst <= worst_threshold
++                any_fail |= not ok
++                gates.append({
++                    "id": "B3",
++                    "payload": "200k_vs_1k",
++                    "conc": 50,
++                    "value": flat_delta,
++                    "threshold": B3_FLAT_P50_DELTA_MS,
++                    "pass": ok,
++                    "runs": flat_runs,
++                    "worst": worst,
++                    "worst_threshold": worst_threshold,
++                })
+ 
+             # B4: delta TTFB streaming (median 30 mẫu).
+             ttfb_delta = {}

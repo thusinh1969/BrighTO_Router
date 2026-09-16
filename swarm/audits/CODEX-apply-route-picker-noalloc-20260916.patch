@@ -1,0 +1,279 @@
+diff --git a/src/route/mod.rs b/src/route/mod.rs
+--- a/src/route/mod.rs
++++ b/src/route/mod.rs
+@@ -1,7 +1,7 @@
+ //! Chọn backend least-load (inflight/weight, hoà -> random), circuit breaker, health.
+ //! acquire() trả BackendLease (RAII): pick + inc inflight trong một guard, Drop -> dec inflight.
+ 
+-use std::collections::{HashMap, HashSet};
++use std::collections::HashMap;
+ use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
+ use std::sync::{Arc, RwLock};
+ use std::time::Duration;
+@@ -21,6 +21,44 @@
+     backend_id: i64,
+     score: f64,
+     half_open: bool,
++}
++
++const INLINE_EXCLUSIONS: usize = 8;
++
++/// Stack-backed retry/exclusion set for the hot route-pick path.
++/// Common case (one backend, no retry) performs no heap allocation.
++pub struct BackendExclusions {
++    inline: [i64; INLINE_EXCLUSIONS],
++    len: usize,
++    overflow: Vec<i64>,
++}
++
++impl BackendExclusions {
++    pub fn insert(&mut self, backend_id: i64) {
++        if self.contains(backend_id) {
++            return;
++        }
++        if self.len < INLINE_EXCLUSIONS {
++            self.inline[self.len] = backend_id;
++            self.len += 1;
++        } else {
++            self.overflow.push(backend_id);
++        }
++    }
++
++    fn contains(&self, backend_id: i64) -> bool {
++        self.inline[..self.len].contains(&backend_id) || self.overflow.contains(&backend_id)
++    }
++}
++
++impl Default for BackendExclusions {
++    fn default() -> Self {
++        Self {
++            inline: [0; INLINE_EXCLUSIONS],
++            len: 0,
++            overflow: Vec::new(),
++        }
++    }
+ }
+ 
+ /// Lease một backend đang chạy. Drop -> giải phóng 1 slot inflight.
+@@ -129,40 +167,33 @@
+ 
+     /// Chọn backend khoẻ, ít việc nhất và giữ 1 slot inflight (RAII). None = không còn backend.
+     pub fn acquire(self: &Arc<Self>, route: &ModelRoute) -> Option<BackendLease> {
+-        self.acquire_excluding(route, &HashSet::new())
++        let mut excluded = BackendExclusions::default();
++        self.acquire_excluding(route, &mut excluded)
+     }
+ 
+     /// Primary least-load trước; hết primary mới thử fallback_backend_id (nếu có, chưa thử).
+     pub fn acquire_excluding(
+         self: &Arc<Self>,
+         route: &ModelRoute,
+-        initial_excluded: &HashSet<i64>,
++        excluded: &mut BackendExclusions,
+     ) -> Option<BackendLease> {
+-        let mut excluded = initial_excluded.clone();
+-        if let Some(lease) = self.acquire_primary(route, &mut excluded) {
++        if let Some(lease) = self.acquire_primary(&route.backend_ids, excluded) {
+             return Some(lease);
+         }
+         let fallback = route.fallback_backend_id?;
+-        if excluded.contains(&fallback) {
++        if excluded.contains(fallback) {
+             return None;
+         }
+-        let fallback_route = ModelRoute {
+-            model_name: route.model_name.clone(),
+-            backend_ids: vec![fallback],
+-            fallback_backend_id: None,
+-            chars_per_token: route.chars_per_token,
+-            first_byte_timeout: route.first_byte_timeout,
+-        };
+-        self.acquire_primary(&fallback_route, &mut HashSet::new())
++        self.acquire_primary(std::slice::from_ref(&fallback), excluded)
+     }
+ 
+     fn acquire_primary(
+         self: &Arc<Self>,
+-        route: &ModelRoute,
+-        excluded: &mut HashSet<i64>,
++        backend_ids: &[i64],
++        excluded: &mut BackendExclusions,
+     ) -> Option<BackendLease> {
+         loop {
+-            let candidate = self.choose_candidate(route, excluded)?;
++            let candidate = self.choose_candidate(backend_ids, excluded)?;
+             let Some(state) = self.states.get(&candidate.backend_id) else {
+                 excluded.insert(candidate.backend_id);
+                 continue;
+@@ -199,12 +230,17 @@
+     }
+ 
+     /// Chọn candidate least-load (chưa giữ slot; circuit-aware). None = không còn ứng viên.
+-    fn choose_candidate(&self, route: &ModelRoute, excluded: &HashSet<i64>) -> Option<Candidate> {
++    fn choose_candidate(
++        &self,
++        backend_ids: &[i64],
++        excluded: &BackendExclusions,
++    ) -> Option<Candidate> {
+         let now = tokio::time::Instant::now();
+-        let mut candidates: Vec<Candidate> = Vec::new();
+-
+-        for &backend_id in &route.backend_ids {
+-            if excluded.contains(&backend_id) {
++        let mut best: Option<Candidate> = None;
++        let mut ties = 0usize;
++
++        for &backend_id in backend_ids {
++            if excluded.contains(backend_id) {
+                 continue;
+             }
+             let Some(state) = self.states.get(&backend_id) else {
+@@ -257,32 +293,32 @@
+             }
+ 
+             let weight = state.weight.load(Ordering::Relaxed).max(1) as f64;
+-            candidates.push(Candidate {
++            let candidate = Candidate {
+                 backend_id,
+                 score: inflight as f64 / weight,
+                 half_open,
+-            });
+-        }
+-
+-        if candidates.is_empty() {
+-            return None;
+-        }
+-
+-        let min_score = candidates
+-            .iter()
+-            .map(|c| c.score)
+-            .fold(f64::INFINITY, f64::min);
+-        let mut tied: Vec<Candidate> = candidates
+-            .into_iter()
+-            .filter(|c| c.score == min_score)
+-            .collect();
+-
+-        if tied.len() == 1 {
+-            tied.pop()
+-        } else {
+-            let idx = rand::rng().random_range(0..tied.len());
+-            Some(tied[idx])
+-        }
++            };
++
++            match best {
++                None => {
++                    best = Some(candidate);
++                    ties = 1;
++                }
++                Some(current) if candidate.score < current.score => {
++                    best = Some(candidate);
++                    ties = 1;
++                }
++                Some(current) if candidate.score == current.score => {
++                    ties += 1;
++                    if rand::rng().random_range(0..ties) == 0 {
++                        best = Some(candidate);
++                    }
++                }
++                Some(_) => {}
++            }
++        }
++
++        best
+     }
+ 
+     /// Ghi nhận kết quả 1 request tới backend: ok = success, false = connect fail/5xx/429 trước byte đầu.
+@@ -581,9 +617,10 @@
+         pool.upsert_backend(backend(1, 1, 100, true));
+         pool.upsert_backend(backend(2, 1, 100, true));
+ 
+-        let excluded: HashSet<i64> = [1].into_iter().collect();
++        let mut excluded = BackendExclusions::default();
++        excluded.insert(1);
+         let lease = pool
+-            .acquire_excluding(&route(vec![1, 2]), &excluded)
++            .acquire_excluding(&route(vec![1, 2]), &mut excluded)
+             .unwrap();
+         assert_eq!(lease.backend_id(), 2);
+     }
+@@ -594,9 +631,10 @@
+         pool.upsert_backend(backend(1, 1, 100, false)); // primary disabled
+         pool.upsert_backend(backend(2, 1, 100, true)); // fallback
+ 
+-        let excluded: HashSet<i64> = [2].into_iter().collect();
++        let mut excluded = BackendExclusions::default();
++        excluded.insert(2);
+         assert!(
+-            pool.acquire_excluding(&route_with_fallback(vec![1], 2), &excluded)
++            pool.acquire_excluding(&route_with_fallback(vec![1], 2), &mut excluded)
+                 .is_none()
+         );
+     }
+diff --git a/src/proxy/mod.rs b/src/proxy/mod.rs
+--- a/src/proxy/mod.rs
++++ b/src/proxy/mod.rs
+@@ -2,7 +2,6 @@
+ //! Một nơi duy nhất forward: handler chỉ lo auth/budget/route, proxy lo mọi thứ phía backend.
+ //! Stream thật (Body::from_stream), splice usage, ledger/budget/metrics finalize từ stream reporter.
+ 
+-use std::collections::HashSet;
+ use std::sync::Arc;
+ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+ 
+@@ -16,7 +15,7 @@
+ 
+ use crate::budget::{BudgetReservation, ConcurrencyGuard};
+ use crate::contract::{ApiKey, AppState, Backend, BackendFormat, ModelRoute, UsageEvent};
+-use crate::route::BackendLease;
++use crate::route::{BackendExclusions, BackendLease};
+ 
+ /// Quick check trước khi parse — tránh parse cả body 1MB. memchr, không cấp phát.
+ pub fn chunk_may_have_usage(chunk: &[u8]) -> bool {
+@@ -611,8 +610,8 @@
+     let reservation = ctx.reservation.take();
+     let concurrency = ctx.concurrency.take();
+ 
+-    let mut tried: HashSet<i64> = HashSet::new();
+-    let mut lease = state.backends.acquire_excluding(&ctx.route, &tried);
++    let mut tried = BackendExclusions::default();
++    let mut lease = state.backends.acquire_excluding(&ctx.route, &mut tried);
+ 
+     loop {
+         let Some(l) = lease else {
+@@ -669,7 +668,7 @@
+             state.backends.note_result(backend_id, false);
+             drop(l);
+             request_total_for(&ctx, &backend.name, 502);
+-            match state.backends.acquire_excluding(&ctx.route, &tried) {
++            match state.backends.acquire_excluding(&ctx.route, &mut tried) {
+                 Some(next) => {
+                     lease = Some(next);
+                     continue;
+@@ -699,7 +698,7 @@
+                 let status = resp.status().as_u16();
+                 if is_retryable_status(status) {
+                     state.backends.note_result(backend_id, false);
+-                    if let Some(next) = state.backends.acquire_excluding(&ctx.route, &tried) {
++                    if let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried) {
+                         drop(l);
+                         lease = Some(next);
+                         continue;
+@@ -732,7 +731,7 @@
+                 state.backends.note_result(backend_id, false);
+                 drop(l);
+                 request_total_for(&ctx, &backend.name, 502);
+-                match state.backends.acquire_excluding(&ctx.route, &tried) {
++                match state.backends.acquire_excluding(&ctx.route, &mut tried) {
+                     Some(next) => {
+                         lease = Some(next);
+                         continue;
+@@ -755,7 +754,7 @@
+                 state.backends.note_result(backend_id, false);
+                 drop(l);
+                 request_total_for(&ctx, &backend.name, 504);
+-                match state.backends.acquire_excluding(&ctx.route, &tried) {
++                match state.backends.acquire_excluding(&ctx.route, &mut tried) {
+                     Some(next) => {
+                         lease = Some(next);
+                         continue;

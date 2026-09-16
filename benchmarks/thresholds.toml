@@ -1,0 +1,49 @@
+# Ngưỡng cho tầng B/C của BENCHMARK.md. Đổi = PR riêng, có lý do. Đơn vị ms trừ khi ghi khác.
+
+[B1]
+overhead_p50 = { "1k" = 0.3, "50k" = 0.6, "200k" = 1.0 }
+
+[B2]
+overhead_p99 = { "1k" = 0.8, "50k" = 1.5, "200k" = 2.0 }
+
+[B3]
+max_delta_200k_vs_1k = 0.8          # overhead không được tỷ lệ với payload
+
+[B4]
+ttfb_delta = { "1k" = 1.0, "50k" = 2.0, "200k" = 3.0 }
+
+[B5]
+p99_added_gap_ms = 0.5
+
+[B6]
+min_rps_4core = 8000
+max_non200 = 0
+
+[B7]
+concurrent_streams = 1000
+rss_base_mb = 64
+rss_factor = 1.5
+
+[B8]
+max_growth_pct = 5
+
+[B9]
+max_cpu_us_per_request = 150
+
+[B10]
+ledger_lag_p99_s = 2
+
+[B11]
+max_p99_increase_pct = 10
+
+[C1]
+ttfb_delta_real_ms = 3.0
+
+[C2]
+total_delta_real_pct = 1.0
+
+[self_report]
+max_mismatch_pct = 30               # x-router-overhead-ms so với đo ngoài
+
+[regression]
+max_worse_than_baseline_pct = 10

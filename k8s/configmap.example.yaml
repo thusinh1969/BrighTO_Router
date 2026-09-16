@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: brighto-router-config
+data:
+  LISTEN_ADDR: "0.0.0.0:8080"
+  ADMIN_ALLOW_CIDR: "10.0.0.0/8,127.0.0.1/32"
+  MAX_BODY_BYTES: "67108864"
+  CONFIG_POLL_SECS: "5"
+  LEDGER_FALLBACK_FILE: "/var/lib/brighto-router/ledger-fallback.jsonl"
+  RUST_LOG: "brighto_router=info,tower_http=warn"

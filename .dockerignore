@@ -1,0 +1,26 @@
+.git/
+target/
+.env
+.env.*
+!.env.example
+
+# Build/audit history is not part of the production image.
+swarm/
+bench/
+benchmarks/results/
+benchmarks/payloads/
+k8s/
+tests/
+*.tar.gz
+
+# local/generated files
+.deepseek_key
+ledger_fallback.jsonl
+.ipynb_checkpoints/
+.probe/
+.wtest
+__pycache__/
+*.pyc
+*.key
+*.pem
+*.p12

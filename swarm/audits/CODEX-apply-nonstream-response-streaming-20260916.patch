@@ -1,0 +1,222 @@
+diff --git a/src/proxy/mod.rs b/src/proxy/mod.rs
+--- a/src/proxy/mod.rs
++++ b/src/proxy/mod.rs
+@@ -532,33 +532,70 @@
+             Body::from_stream(rx),
+         )
+     } else {
+-        match response.bytes().await {
+-            Ok(body_bytes) => {
+-                let acc = parse_usage_from_body(&body_bytes, format);
+-                let estimated = !acc.seen_usage;
+-                reporter.finish(
+-                    status.as_u16(),
+-                    acc.input_tokens,
+-                    acc.output_tokens,
+-                    estimated,
+-                    false,
+-                    None,
+-                );
+-                build_response(
+-                    StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
+-                    headers,
+-                    Body::from(body_bytes),
+-                )
+-            }
+-            Err(e) => {
+-                reporter.finish(status.as_u16(), 0, 0, true, false, Some(e.to_string()));
+-                build_response(
+-                    StatusCode::BAD_GATEWAY,
+-                    reqwest::header::HeaderMap::new(),
+-                    Body::from("backend read failed"),
+-                )
+-            }
+-        }
++        const NONSTREAM_USAGE_BUFFER_LIMIT: usize = 1024 * 1024;
++
++        let (mut tx, rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(1);
++        let mut stream = response.bytes_stream();
++
++        tokio::spawn(async move {
++            let mut body_buf = Vec::new();
++            let mut can_parse_usage = true;
++            let mut client_aborted = false;
++            let mut error_class: Option<String> = None;
++
++            loop {
++                let next = tokio::time::timeout(Duration::from_secs(60), stream.next()).await;
++                match next {
++                    Ok(Some(Ok(bytes))) => {
++                        if can_parse_usage {
++                            if body_buf.len().saturating_add(bytes.len())
++                                <= NONSTREAM_USAGE_BUFFER_LIMIT
++                            {
++                                body_buf.extend_from_slice(&bytes);
++                            } else {
++                                can_parse_usage = false;
++                                body_buf.clear();
++                            }
++                        }
++                        if tx.send(Ok(bytes)).await.is_err() {
++                            client_aborted = true;
++                            break;
++                        }
++                    }
++                    Ok(Some(Err(e))) => {
++                        error_class = Some(e.to_string());
++                        break;
++                    }
++                    Ok(None) => break,
++                    Err(_) => {
++                        error_class = Some("idle timeout".to_string());
++                        break;
++                    }
++                }
++            }
++
++            let acc = if can_parse_usage {
++                parse_usage_from_body(&body_buf, format)
++            } else {
++                UsageAccumulator::default()
++            };
++            let estimated = !acc.seen_usage;
++            reporter.finish(
++                status.as_u16(),
++                acc.input_tokens,
++                acc.output_tokens,
++                estimated,
++                client_aborted,
++                error_class,
++            );
++            drop(tx);
++        });
++
++        build_response(
++            StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
++            headers,
++            Body::from_stream(rx),
++        )
+     }
+ }
+ 
+diff --git a/tests/streaming_integration.rs b/tests/streaming_integration.rs
+--- a/tests/streaming_integration.rs
++++ b/tests/streaming_integration.rs
+@@ -2,11 +2,12 @@
+ //! với mock backend SSE + Postgres thật (qua #[sqlx::test]). Chứng minh streaming thật + tap usage + header verify.
+ 
+ use std::sync::Arc;
+-use std::time::Duration;
++use std::time::{Duration, Instant};
+ 
+ use arc_swap::ArcSwap;
+-use axum::body::{Body, to_bytes};
++use axum::body::{Body, Bytes, to_bytes};
+ use axum::http::Request;
++use futures::StreamExt;
+ use sqlx::postgres::PgPool;
+ use tower::ServiceExt;
+ 
+@@ -213,3 +214,102 @@
+     assert!(ev.input_tokens > 0, "estimate must be non-zero: {ev:?}");
+     assert_eq!(ev.output_tokens, 0);
+ }
++
++/// Mock backend returns a non-stream JSON body in two chunks, with delayed EOF.
++async fn spawn_delayed_nonstream_backend() -> String {
++    let app = axum::Router::new().route(
++        "/v1/chat/completions",
++        axum::routing::post(|| async move {
++            let body = futures::stream::unfold(0u8, |state| async move {
++                match state {
++                    0 => Some((
++                        Ok::<Bytes, std::convert::Infallible>(Bytes::from_static(
++                            br#"{"id":"cmpl-test","choices":[{"message":{"content":"hi"}}],"#,
++                        )),
++                        1,
++                    )),
++                    1 => {
++                        tokio::time::sleep(Duration::from_millis(800)).await;
++                        Some((
++                            Ok::<Bytes, std::convert::Infallible>(Bytes::from_static(
++                                br#""usage":{"prompt_tokens":11,"completion_tokens":7}}"#,
++                            )),
++                            2,
++                        ))
++                    }
++                    _ => None,
++                }
++            });
++            axum::response::Response::builder()
++                .status(200)
++                .header("content-type", "application/json")
++                .body(Body::from_stream(body))
++                .unwrap()
++        }),
++    );
++    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let addr = listener.local_addr().unwrap();
++    tokio::spawn(async move {
++        let _ = axum::serve(listener, app).await;
++    });
++    format!("http://{addr}")
++}
++
++#[sqlx::test(migrations = "./migrations")]
++async fn nonstream_response_starts_before_upstream_eof(pool: PgPool) {
++    let backend_base = spawn_delayed_nonstream_backend().await;
++    let (state, mut ledger_rx) = build_state(pool, backend_base).await;
++
++    let app = brigto_router::handlers::router(state);
++    let req = Request::builder()
++        .method("POST")
++        .uri("/v1/chat/completions")
++        .header("authorization", "Bearer test-key")
++        .header("content-type", "application/json")
++        .body(Body::from(
++            r#"{"model":"test-model","stream":false,"messages":[{"role":"user","content":"hi"}]}"#,
++        ))
++        .unwrap();
++
++    let start = Instant::now();
++    let resp = app.oneshot(req).await.unwrap();
++    assert_eq!(resp.status().as_u16(), 200);
++    assert!(
++        start.elapsed() < Duration::from_millis(400),
++        "router buffered non-stream response before returning headers/body: {:?}",
++        start.elapsed()
++    );
++
++    let mut body_stream = resp.into_body().into_data_stream();
++    let first = tokio::time::timeout(Duration::from_millis(400), body_stream.next())
++        .await
++        .expect("first non-stream chunk before upstream EOF")
++        .expect("first chunk item")
++        .expect("first chunk bytes");
++    assert!(
++        first.starts_with(br#"{"id":"cmpl-test""#),
++        "unexpected first chunk: {:?}",
++        first
++    );
++
++    let mut body = first.to_vec();
++    while let Some(chunk) = tokio::time::timeout(Duration::from_secs(2), body_stream.next())
++        .await
++        .expect("next body chunk")
++    {
++        body.extend_from_slice(&chunk.expect("body chunk bytes"));
++    }
++    let text = String::from_utf8_lossy(&body);
++    assert!(text.contains(r#""usage":{"prompt_tokens":11,"completion_tokens":7}"#));
++
++    let ev = tokio::time::timeout(Duration::from_secs(2), ledger_rx.recv())
++        .await
++        .expect("ledger event within 2s")
++        .expect("ledger event present");
++    assert_eq!(ev.input_tokens, 11);
++    assert_eq!(ev.output_tokens, 7);
++    assert!(!ev.estimated);
++    assert_eq!(ev.status, 200);
++    assert!(!ev.stream);
++    assert!(!ev.client_aborted);
++}
