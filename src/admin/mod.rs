@@ -1,5 +1,5 @@
 //! B3 — Admin API + portal 1 trang HTML tĩnh.
-//! Auth: master key từ env + IP allowlist. Key plaintext trả đúng 1 lần.
+//! Auth: master key từ env + IP allowlist. Admin có thể xem lại client key qua /admin/keys/{id}/reveal.
 
 use std::{
     fmt::Write as _,
@@ -390,6 +390,13 @@ struct UpsertRoute {
     fallback_backend_id: Option<i64>,
     chars_per_token: Option<f64>,
     first_byte_timeout: Option<u64>,
+    #[serde(default)]
+    provider_model_name: Option<String>,
+    context_tokens: Option<i64>,
+    max_output_tokens: Option<i64>,
+    price_input_per_mtok_usd: Option<f64>,
+    price_output_per_mtok_usd: Option<f64>,
+    enabled: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -399,6 +406,12 @@ struct RouteResponse {
     fallback_backend_id: Option<i64>,
     chars_per_token: f64,
     first_byte_timeout: u64,
+    provider_model_name: String,
+    context_tokens: Option<i64>,
+    max_output_tokens: Option<i64>,
+    price_input_per_mtok_usd: Option<f64>,
+    price_output_per_mtok_usd: Option<f64>,
+    enabled: bool,
 }
 
 #[derive(Deserialize)]
@@ -567,7 +580,9 @@ fn parse_backend_ids(value: &str) -> Result<Vec<i64>, ApiError> {
 
 async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiError> {
     let rows = sqlx::query::<sqlx::Postgres>(
-        "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout \
+        "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
+         provider_model_name, context_tokens, max_output_tokens, \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled \
          FROM model_routes ORDER BY model_name",
     )
     .fetch_all(pool)
@@ -582,6 +597,12 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
             fallback_backend_id: row.try_get("fallback_backend_id")?,
             chars_per_token: row.try_get("chars_per_token")?,
             first_byte_timeout: row.try_get::<i64, _>("first_byte_timeout")? as u64,
+            provider_model_name: row.try_get("provider_model_name")?,
+            context_tokens: row.try_get("context_tokens")?,
+            max_output_tokens: row.try_get("max_output_tokens")?,
+            price_input_per_mtok_usd: row.try_get("price_input_per_mtok_usd")?,
+            price_output_per_mtok_usd: row.try_get("price_output_per_mtok_usd")?,
+            enabled: row.try_get("enabled")?,
         });
     }
     Ok(out)
@@ -876,21 +897,54 @@ async fn upsert_route(
             "first_byte_timeout must be greater than zero",
         ));
     }
+    if let Some(p) = payload.price_input_per_mtok_usd
+        && (p < 0.0 || !p.is_finite())
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "price_input_per_mtok_usd must be zero or positive",
+        ));
+    }
+    if let Some(p) = payload.price_output_per_mtok_usd
+        && (p < 0.0 || !p.is_finite())
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "price_output_per_mtok_usd must be zero or positive",
+        ));
+    }
+    let provider_model_name = payload
+        .provider_model_name
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| model_name.clone());
+    let enabled = payload.enabled.unwrap_or(true);
     let backend_ids_json = serde_json::to_string(&payload.backend_ids)?;
     let pool = state.pool().await?;
 
     sqlx::query::<sqlx::Postgres>(
-        "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout) \
-         VALUES ($1, $2, $3, $4, $5) \
+        "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
+         provider_model_name, context_tokens, max_output_tokens, \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
          ON CONFLICT (model_name) DO UPDATE SET \
          backend_ids = EXCLUDED.backend_ids, fallback_backend_id = EXCLUDED.fallback_backend_id, \
-         chars_per_token = EXCLUDED.chars_per_token, first_byte_timeout = EXCLUDED.first_byte_timeout",
+         chars_per_token = EXCLUDED.chars_per_token, first_byte_timeout = EXCLUDED.first_byte_timeout, \
+         provider_model_name = EXCLUDED.provider_model_name, context_tokens = EXCLUDED.context_tokens, \
+         max_output_tokens = EXCLUDED.max_output_tokens, \
+         price_input_per_mtok_usd = EXCLUDED.price_input_per_mtok_usd, \
+         price_output_per_mtok_usd = EXCLUDED.price_output_per_mtok_usd, enabled = EXCLUDED.enabled",
     )
     .bind(&model_name)
     .bind(&backend_ids_json)
     .bind(payload.fallback_backend_id)
     .bind(chars_per_token)
     .bind(first_byte_timeout as i64)
+    .bind(&provider_model_name)
+    .bind(payload.context_tokens)
+    .bind(payload.max_output_tokens)
+    .bind(payload.price_input_per_mtok_usd)
+    .bind(payload.price_output_per_mtok_usd)
+    .bind(enabled)
     .execute(pool)
     .await?;
 
@@ -901,6 +955,12 @@ async fn upsert_route(
         fallback_backend_id: payload.fallback_backend_id,
         chars_per_token,
         first_byte_timeout,
+        provider_model_name,
+        context_tokens: payload.context_tokens,
+        max_output_tokens: payload.max_output_tokens,
+        price_input_per_mtok_usd: payload.price_input_per_mtok_usd,
+        price_output_per_mtok_usd: payload.price_output_per_mtok_usd,
+        enabled,
     }))
 }
 
