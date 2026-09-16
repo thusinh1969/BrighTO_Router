@@ -439,12 +439,13 @@ function renderModels(c){
   if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table");
-    t.appendChild(thead(["Public model","Backends","Fallback","Timeout",""]));
+    t.appendChild(thead(["Public model","Backends","Protocol","Fallback","Timeout",""]));
     var tb=el("tbody");
     routes.forEach(function(r){
       var tr=el("tr");
       tr.appendChild(el("td","mono",r.model_name));
       tr.appendChild(el("td",null,r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ")));
+      tr.appendChild(el("td",null,protoLabel(r.protocol)));
       tr.appendChild(el("td",null,r.fallback_backend_id===null?"—":String(r.fallback_backend_id)));
       tr.appendChild(el("td",null,r.first_byte_timeout+"s"));
       var td=el("td"); var row=el("div","row"); row.style.gap="6px"; var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openRouteModal(r);}; var d=el("button","btn sm danger","Delete"); d.onclick=function(){deleteRoute(r);}; row.appendChild(b); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
@@ -466,6 +467,12 @@ function openRouteModal(route){
   if(route.backend_ids && route.backend_ids.length) ps.value=route.backend_ids[0];
   f0.appendChild(ps); m.appendChild(f0);
 
+  var fp=el("div","field"); fp.appendChild(el("label",null,"Provider API protocol"));
+  var pcol=el("select");
+  [["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];pcol.appendChild(o);});
+  if(route.protocol) pcol.value=route.protocol; else if(route.auth_mode==="anthropic") pcol.value="anthropic_messages";
+  fp.appendChild(pcol); m.appendChild(fp);
+
   var fa=el("div","field"); fa.appendChild(el("label",null,"Authentication"));
   var am=el("select");
   [["bearer","Bearer API key (OpenAI-compatible)"],["anthropic","Anthropic x-api-key"],["none","No API key (local llama.cpp/vLLM)"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];am.appendChild(o);});
@@ -475,6 +482,12 @@ function openRouteModal(route){
   var pk=el("input"); pk.type="password"; pk.placeholder="sk-..."; fk.appendChild(pk); m.appendChild(fk);
   am.onchange=function(){ fk.style.display = am.value==="none"?"none":""; };
   if(am.value==="none") fk.style.display="none";
+  pcol.onchange=function(){
+    if(!route.model_name){
+      am.value = pcol.value==="anthropic_messages"?"anthropic":(pcol.value==="local_openai_chat"?"none":"bearer");
+    }
+    am.onchange();
+  };
 
   var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model — load then pick one"));
   var row=el("div","row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
@@ -486,7 +499,8 @@ function openRouteModal(route){
     loadBtn.disabled=true; loadBtn.textContent="Loading…";
     try{
       var b=backends.find(function(x){return x.id===Number(ps.value);});
-      var data=await api("/admin/routes/preview-models","POST",{base_url:b.base_url,protocol:b.format,auth_mode:am.value,provider_key:pk.value});
+      var fmt=pcol.value==="anthropic_messages"?"anthropic":"openai";
+      var data=await api("/admin/routes/preview-models","POST",{base_url:b.base_url,protocol:fmt,auth_mode:am.value,provider_key:pk.value});
       ms.innerHTML="";
       if(!data.models.length){ var eo=el("option",null,"No models returned"); eo.value=""; ms.appendChild(eo); return; }
       data.models.forEach(function(md){ var o=el("option",null,md); o.value=md; ms.appendChild(o); });
@@ -518,6 +532,7 @@ function openRouteModal(route){
     if(!modelSel){toast("Load models and pick a provider model","err");return;}
     var payload={model_name:name,backend_ids:[Number(ps.value)],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel};
     payload.auth_mode=am.value;
+    payload.protocol=pcol.value;
     if(pk.value.trim()) payload.provider_key=pk.value.trim();
     if(ct.value) payload.context_tokens=Number(ct.value);
     if(mo.value) payload.max_output_tokens=Number(mo.value);
@@ -812,6 +827,7 @@ function fmtNum(v){ if(v>=1000000000)return(v/1000000000).toFixed(1)+"B"; if(v>=
 /* ===== Logs table ===== */
 function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
 function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
+function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
 function logsTable(rows){
   var w=el("div","table-wrap"); var t=el("table");
   var admin=mode==="admin";

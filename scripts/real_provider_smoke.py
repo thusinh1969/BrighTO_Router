@@ -126,6 +126,12 @@ def main():
         ok = r.status_code == 200 and "choices" in r.json()
         check("local llama.cpp chat", ok, r.status_code if not ok else "")
 
+        # Protocol endpoint guard: chat route phải từ chối /v1/embeddings (không forward shape sai).
+        r = requests.post(base + "/v1/embeddings", headers=uh, json={
+            "model": "qwen-local", "input": "hello"}, timeout=30)
+        ok = r.status_code == 400 and "OpenAI Chat Completions" in (r.text or "")
+        check("endpoint guard: chat route rejects embeddings", ok, r.status_code)
+
         # ---- DeepSeek V4 Pro (route-level credential) ----
         r = requests.post(base + "/admin/backends", headers=admin, json={
             "name": "DeepSeek V4 Pro", "base_url": DEEPSEEK_BASE,

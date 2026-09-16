@@ -17,7 +17,7 @@ use serde::Deserialize;
 use serde_json::value::RawValue;
 
 use crate::auth;
-use crate::contract::{ApiKey, AppState, BudgetError, ModelRoute};
+use crate::contract::{ApiKey, AppState, BudgetError, ModelRoute, ProviderProtocol};
 use crate::proxy::{self, ProxyContext, ProxyRequestBody};
 
 /// Chỉ parse field top-level, bỏ qua toàn bộ phần còn lại (không cấp phát cho skipped fields).
@@ -346,16 +346,16 @@ async fn chat_completions(
     State(state): State<Arc<AppState>>,
     req: Request<Body>,
 ) -> Response<Body> {
-    handle_generate(state, req).await
+    handle_generate(state, req, "/v1/chat/completions").await
 }
 async fn completions(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
-    handle_generate(state, req).await
+    handle_generate(state, req, "/v1/completions").await
 }
 async fn embeddings(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
-    handle_generate(state, req).await
+    handle_generate(state, req, "/v1/embeddings").await
 }
 async fn messages(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
-    handle_generate(state, req).await
+    handle_generate(state, req, "/v1/messages").await
 }
 
 async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -418,7 +418,11 @@ async fn portal(_: State<Arc<AppState>>) -> impl IntoResponse {
     )
 }
 
-async fn handle_generate(state: Arc<AppState>, req: Request<Body>) -> Response<Body> {
+async fn handle_generate(
+    state: Arc<AppState>,
+    req: Request<Body>,
+    incoming_path: &'static str,
+) -> Response<Body> {
     let started = Instant::now();
     let request_id = generate_request_id();
 
@@ -485,6 +489,21 @@ async fn handle_generate(state: Arc<AppState>, req: Request<Body>) -> Response<B
     };
     if !route.enabled {
         return build_error(&request_id, StatusCode::NOT_FOUND, "model is disabled");
+    }
+
+    // Protocol endpoint guard (CODEX provider-protocol taxonomy): route chỉ chấp nhận endpoint
+    // đã khai báo. Gọi sai endpoint -> 400 rõ ràng, KHÔNG forward shape sai lên provider.
+    let protocol = ProviderProtocol::parse(&route.protocol);
+    if protocol.incoming_path() != incoming_path {
+        return build_error(
+            &request_id,
+            StatusCode::BAD_REQUEST,
+            &format!(
+                "model '{model}' is a {} route (call {})",
+                protocol.label(),
+                protocol.incoming_path()
+            ),
+        );
     }
 
     // 5. Budget reserve + concurrency (RAII: nếu mọi đường return sau đây, tự rollback/release).
@@ -749,6 +768,7 @@ mod tests {
             enabled: true,
             provider_key_ref: None,
             auth_mode: "bearer".to_string(),
+            protocol: "openai_chat".to_string(),
             provider_key: None,
         };
         let body = Bytes::from_static(b"hello world");

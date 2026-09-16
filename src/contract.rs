@@ -27,6 +27,67 @@ pub enum BackendFormat {
     Anthropic,
 }
 
+/// Route-level provider protocol (CODEX provider-protocol taxonomy). Xác định endpoint client
+/// gọi + shape upstream, tách khỏi auth_mode. Không overload BackendFormat thành protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderProtocol {
+    OpenAiChat,
+    OpenAiCompletions,
+    OpenAiEmbeddings,
+    AnthropicMessages,
+    LocalOpenAiChat,
+    CustomOpenAiChat,
+}
+
+impl ProviderProtocol {
+    /// Parse giá trị lưu trong DB; unknown/empty -> OpenAiChat (backward-compat).
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "openai_completions" | "completions" => ProviderProtocol::OpenAiCompletions,
+            "openai_embeddings" | "embeddings" => ProviderProtocol::OpenAiEmbeddings,
+            "anthropic_messages" | "messages" => ProviderProtocol::AnthropicMessages,
+            "local_openai_chat" => ProviderProtocol::LocalOpenAiChat,
+            "custom_openai_chat" => ProviderProtocol::CustomOpenAiChat,
+            _ => ProviderProtocol::OpenAiChat,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ProviderProtocol::OpenAiChat => "openai_chat",
+            ProviderProtocol::OpenAiCompletions => "openai_completions",
+            ProviderProtocol::OpenAiEmbeddings => "openai_embeddings",
+            ProviderProtocol::AnthropicMessages => "anthropic_messages",
+            ProviderProtocol::LocalOpenAiChat => "local_openai_chat",
+            ProviderProtocol::CustomOpenAiChat => "custom_openai_chat",
+        }
+    }
+
+    /// Endpoint client phải gọi để route này chấp nhận (protocol endpoint guard).
+    pub fn incoming_path(self) -> &'static str {
+        match self {
+            ProviderProtocol::OpenAiChat
+            | ProviderProtocol::LocalOpenAiChat
+            | ProviderProtocol::CustomOpenAiChat => "/v1/chat/completions",
+            ProviderProtocol::OpenAiCompletions => "/v1/completions",
+            ProviderProtocol::OpenAiEmbeddings => "/v1/embeddings",
+            ProviderProtocol::AnthropicMessages => "/v1/messages",
+        }
+    }
+
+    /// Nhãn hiển thị cho wizard + lỗi endpoint guard.
+    pub fn label(self) -> &'static str {
+        match self {
+            ProviderProtocol::OpenAiChat => "OpenAI Chat Completions",
+            ProviderProtocol::OpenAiCompletions => "OpenAI Completions",
+            ProviderProtocol::OpenAiEmbeddings => "OpenAI Embeddings",
+            ProviderProtocol::AnthropicMessages => "Anthropic Messages",
+            ProviderProtocol::LocalOpenAiChat => "Local OpenAI-compatible Chat",
+            ProviderProtocol::CustomOpenAiChat => "Custom OpenAI-compatible",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Backend {
     pub id: i64,
@@ -76,6 +137,8 @@ pub struct ModelRoute {
     pub provider_key_ref: Option<String>,
     /// bearer | anthropic | none.
     pub auth_mode: String,
+    /// Route-level provider protocol (xem ProviderProtocol). Mặc định "openai_chat".
+    pub protocol: String,
     /// Key đã resolve lúc load (runtime-only). None khi auth_mode = none.
     pub provider_key: Option<String>,
 }
@@ -191,4 +254,71 @@ pub struct AppState {
     pub config_err_at: Arc<AtomicU64>,
     /// /readyz: nếu lần reload thành công cuối quá cũ (reload treo / DB chết) -> 503, dù chưa có err.
     pub readiness_max_stale_ms: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProviderProtocol;
+
+    #[test]
+    fn protocol_parse_and_endpoint_mapping() {
+        assert_eq!(
+            ProviderProtocol::parse("openai_chat"),
+            ProviderProtocol::OpenAiChat
+        );
+        assert_eq!(
+            ProviderProtocol::parse("OPENAI_COMPLETIONS"),
+            ProviderProtocol::OpenAiCompletions
+        );
+        assert_eq!(
+            ProviderProtocol::parse("openai_embeddings"),
+            ProviderProtocol::OpenAiEmbeddings
+        );
+        assert_eq!(
+            ProviderProtocol::parse("anthropic_messages"),
+            ProviderProtocol::AnthropicMessages
+        );
+        assert_eq!(
+            ProviderProtocol::parse("local_openai_chat"),
+            ProviderProtocol::LocalOpenAiChat
+        );
+        // unknown/empty -> openai_chat (backward-compat)
+        assert_eq!(ProviderProtocol::parse(""), ProviderProtocol::OpenAiChat);
+        assert_eq!(
+            ProviderProtocol::parse("garbage"),
+            ProviderProtocol::OpenAiChat
+        );
+    }
+
+    #[test]
+    fn protocol_incoming_path_and_label() {
+        assert_eq!(
+            ProviderProtocol::OpenAiChat.incoming_path(),
+            "/v1/chat/completions"
+        );
+        assert_eq!(
+            ProviderProtocol::LocalOpenAiChat.incoming_path(),
+            "/v1/chat/completions"
+        );
+        assert_eq!(
+            ProviderProtocol::OpenAiCompletions.incoming_path(),
+            "/v1/completions"
+        );
+        assert_eq!(
+            ProviderProtocol::OpenAiEmbeddings.incoming_path(),
+            "/v1/embeddings"
+        );
+        assert_eq!(
+            ProviderProtocol::AnthropicMessages.incoming_path(),
+            "/v1/messages"
+        );
+        assert_eq!(
+            ProviderProtocol::OpenAiChat.label(),
+            "OpenAI Chat Completions"
+        );
+        assert_eq!(
+            ProviderProtocol::AnthropicMessages.label(),
+            "Anthropic Messages"
+        );
+    }
 }
