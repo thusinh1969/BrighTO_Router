@@ -170,3 +170,34 @@ ssl/
 ```
 
 Provider keys and TLS private keys are different secrets. Neither should appear in command-line args, git commits, terminal logs, or audit files.
+
+
+## Helper command requirement
+
+Docs now include a copy-paste OpenSSL helper for users who do not have a real certificate yet:
+
+```bash
+SERVER_IP=$(hostname -I | awk '{print $1}')
+mkdir -p ssl
+openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+  -keyout ssl/privkey.pem \
+  -out ssl/fullchain.pem \
+  -subj "/CN=${SERVER_IP}" \
+  -addext "subjectAltName=IP:${SERVER_IP},IP:127.0.0.1,DNS:localhost,DNS:brighto-router"
+chmod 600 ssl/privkey.pem
+chmod 644 ssl/fullchain.pem
+```
+
+DeepSeek should also add a real helper command to `start.sh` so users can run:
+
+```bash
+./start.sh make-self-signed-cert --host 118.69.81.92
+```
+
+or:
+
+```bash
+./start.sh make-self-signed-cert
+```
+
+Default behavior can use the first `hostname -I` address and print the detected value before writing files. This keeps install friendly without adding dependencies.
