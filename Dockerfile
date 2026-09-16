@@ -1,12 +1,13 @@
 # syntax=docker/dockerfile:1.7
 # ---------------------------------------------------------------------------
-# Multi-stage. Ảnh cuối ~35 MB, chỉ có binary + CA certs, chạy non-root.
-# Build đa kiến trúc (x86_64 build box + GX10 aarch64):
+# Multi-stage image. The runtime image contains only the binary, CA certs,
+# timezone data, and a non-root user.
+# Multi-architecture build example:
 #   docker buildx build --platform linux/amd64,linux/arm64 -t <registry>/brighto-router:0.1.0 --push .
 # ---------------------------------------------------------------------------
 ARG RUST_VERSION=1.98.1
 
-# ---------- 1. chef: cache dependency riêng khỏi source, đổi 1 dòng code không build lại 300 crate ----------
+# ---------- 1. chef: cache dependencies separately from application source ----------
 FROM rust:${RUST_VERSION}-bookworm AS chef
 RUN apt-get update && apt-get install -y --no-install-recommends cmake clang libclang-dev \
  && rm -rf /var/lib/apt/lists/* \
@@ -20,7 +21,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ---------- 2. builder ----------
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
-# chỉ dependency — layer này cache cho tới khi Cargo.toml/Cargo.lock đổi
+# Dependency layer stays cached until Cargo.toml or Cargo.lock changes.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     cargo chef cook --release --recipe-path recipe.json

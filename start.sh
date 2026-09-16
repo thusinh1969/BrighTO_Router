@@ -42,6 +42,34 @@ path.write_text("\n".join(out) + "\n")
 PY
 }
 
+get_env_var() {
+  local key="$1"
+  local default_value="${2:-}"
+  KEY="$key" DEFAULT_VALUE="$default_value" ENV_FILE="$ENV_FILE" python3 - <<'PY'
+import os
+from pathlib import Path
+key = os.environ["KEY"]
+default = os.environ.get("DEFAULT_VALUE", "")
+path = Path(os.environ["ENV_FILE"])
+if not path.exists():
+    print(default)
+    raise SystemExit
+for raw in path.read_text().splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    name, value = line.split("=", 1)
+    if name.strip() != key:
+        continue
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        value = value[1:-1]
+    print(value)
+    raise SystemExit
+print(default)
+PY
+}
+
 ensure_env_defaults() {
   [[ -f "$ENV_FILE" ]] || return 0
   if grep -q '^ADMIN_MASTER_KEY=brighto-admin-dev$' "$ENV_FILE"; then
@@ -79,20 +107,17 @@ MSG
 
 load_env() {
   ensure_env
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
-  DATABASE_URL_EFFECTIVE="${DATABASE_URL:-$DEFAULT_URL}"
-  DB_HOST="${DB_HOST:-127.0.0.1}"
-  DB_PORT="${DB_PORT:-55432}"
-  DB_NAME="${DB_NAME:-brighto_router}"
-  DB_USER="${DB_USER:-brighto_router}"
-  DB_PASS="${DB_PASS:-brighto_router_dev}"
-  LISTEN_ADDR_EFFECTIVE="${LISTEN_ADDR:-$DEFAULT_LISTEN_ADDR}"
-  HEALTH_HOST="${HEALTH_HOST:-127.0.0.1}"
+  DATABASE_URL_EFFECTIVE="$(get_env_var DATABASE_URL "$DEFAULT_URL")"
+  DB_HOST="$(get_env_var DB_HOST "127.0.0.1")"
+  DB_PORT="$(get_env_var DB_PORT "55432")"
+  DB_NAME="$(get_env_var DB_NAME "brighto_router")"
+  DB_USER="$(get_env_var DB_USER "brighto_router")"
+  DB_PASS="$(get_env_var DB_PASS "brighto_router_dev")"
+  ADMIN_MASTER_KEY="$(get_env_var ADMIN_MASTER_KEY "")"
+  LISTEN_ADDR_EFFECTIVE="$(get_env_var LISTEN_ADDR "$DEFAULT_LISTEN_ADDR")"
+  HEALTH_HOST="$(get_env_var HEALTH_HOST "127.0.0.1")"
   HEALTH_PORT="${LISTEN_ADDR_EFFECTIVE##*:}"
-  BASE_URL="${BASE_URL:-http://${HEALTH_HOST}:${HEALTH_PORT}}"
+  BASE_URL="$(get_env_var BASE_URL "http://${HEALTH_HOST}:${HEALTH_PORT}")"
 }
 
 compose() {

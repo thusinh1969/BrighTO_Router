@@ -106,3 +106,33 @@ release thresholds pass: True (not enforced in smoke)
 - Run the full release gate after this commit because the Git SHA changed.
 - Run the full 500k and 1M stress proof on the intended dual-Xeon server before publishing claims for those sizes.
 - Do not claim “fastest in the world” until same-machine comparisons against named routers exist.
+
+## Follow-up hardening — safe env parsing and isolated test DB
+
+Additional audit after publishing found two more first-run risks:
+
+1. `start.sh` sourced `.env` directly. That is unsafe for API-key files because shell metacharacters could be executed. Fixed by replacing shell sourcing with a tiny key-value parser that reads only the variables the script needs.
+2. `scripts/test_postgres.sh` still had the old default URL on port `5432`, and `make test` could use a running local development DB exported from `.env`. Fixed by moving the default to `55432` and making default tests always use a temporary PostgreSQL container. A real DB is used only when `DATABASE_URL` or `TEST_DATABASE_URL` is set to a non-default URL explicitly.
+
+Follow-up evidence:
+
+```bash
+bash -n start.sh scripts/test_postgres.sh benchmarks/gate.sh
+python3 scripts/hotpath_guard.py
+./start.sh status
+make test
+DATABASE_URL=postgres://bad:bad@127.0.0.1:1/bad ./scripts/test_postgres.sh
+docker compose config
+```
+
+Observed:
+
+```text
+dotenv_safe_parser_ok=true
+make test started temporary Postgres: brighto_test_pg_3065631
+51 unit tests passed
+4 integration tests passed
+bad external DATABASE_URL failed as expected
+healthz: ok
+readyz: ready
+```
