@@ -321,6 +321,25 @@ curl -sS http://127.0.0.1:8080/v1/models \
   -H "authorization: Bearer $BRIGHTO_API_KEY" | jq
 ```
 
+## Model and media support
+
+BrighTO-Router is multi-model for configured model aliases. A team can expose names such as `qwen3.8-flash`, `llama-70b`, `claude-backup`, or `embed-small`, and map each name to one or more backends. Each API key can be allowed to use all models or only a selected model list.
+
+Current API path support:
+
+| API path | Status |
+|---|---|
+| `/v1/chat/completions` | Supported for OpenAI-compatible chat payloads. |
+| `/v1/completions` | Supported for OpenAI-compatible completion payloads. |
+| `/v1/embeddings` | Supported for OpenAI-compatible embedding payloads. |
+| `/v1/models` | Supported. Lists configured model aliases. |
+| `/v1/messages` | Supported for Anthropic-compatible messages payloads. |
+| `/v1/images/*` | Not implemented as a dedicated route. |
+| `/v1/audio/*` | Not implemented as a dedicated route. |
+| `/v1/video/*` | Not implemented as a dedicated route. |
+
+Chat-style image inputs can pass through `/v1/chat/completions` when the backend accepts the same JSON format and the body stays under `MAX_BODY_BYTES`. There is no separate image/audio/video benchmark gate yet, so those should not be advertised as production-supported media features.
+
 ## Health, readiness, and metrics
 
 ```bash
@@ -335,41 +354,23 @@ Prometheus metrics include request counts, token counts, TTFB, router overhead, 
 
 ## Benchmark truth
 
-The project is benchmark-first. The full benchmark strategy lives in [benchmarks/STRATEGY.md](benchmarks/STRATEGY.md); the release contract lives in [benchmarks/BENCHMARK.md](benchmarks/BENCHMARK.md); thresholds live in [benchmarks/thresholds.toml](benchmarks/thresholds.toml). The canonical local performance harness is `scripts/bench_real.py` and the compatibility shell entrypoint is `benchmarks/gate.sh`.
+Start with [benchmarks/README.md](benchmarks/README.md). It contains the plain-language table for 1k, 50k, 200k, 500k, and 1M token-class pass-through tests, including what is measured at concurrency 1, 50, and 200.
 
-The local benchmark uses a deterministic Rust mock upstream, `brighto-router-mock`, so router overhead is not hidden behind model latency. The benchmark generates 1k, 50k, and 200k-token-class payloads, measures direct-to-mock versus router-to-mock, and records raw `oha` JSON for audit.
+The short version:
 
-Latest verified local artifact in this workspace:
+| Payload | Why it exists | Release status |
+|---|---|---|
+| `1k` | Normal small application traffic | Hard latency and throughput gate |
+| `50k` | Common retrieval and agent traffic | Hard latency gate |
+| `200k` | Large-context research traffic | Hard latency and flatness gate |
+| `500k` | Extreme pass-through stress | Measurement-first until reviewed baseline exists |
+| `1m` | Extreme memory and stability stress | Measurement-first until reviewed baseline exists |
 
-```text
-bench/results/20260917-000839
-```
+The release contract is [benchmarks/BENCHMARK.md](benchmarks/BENCHMARK.md). The measurement rationale is [benchmarks/STRATEGY.md](benchmarks/STRATEGY.md). Thresholds live in [benchmarks/thresholds.toml](benchmarks/thresholds.toml). The canonical harness is [scripts/bench_real.py](scripts/bench_real.py).
 
-Run settings:
+Current measured status is intentionally conservative. The long local mock artifact before B10/baseline additions measured `1k`, `50k`, and `200k` at concurrency 50 with sub-millisecond overhead. The current harness adds 500k/1M payloads, RSS memory sampling, baseline regression checks, and true B10 ledger-lag measurement. The next official release proof is a full `BASELINE_BOOTSTRAP=1 ./start.sh gate` run, then review and commit of `bench/baseline.json`.
 
-```text
-DUR=60s
-WARM=15s
-RUNS=3
-CONCS=1,50,200
-BENCH_B6=1
-```
-
-Observed local mock gate numbers:
-
-```text
-1k   c=50 overhead p50 +0.288ms p99 +0.512ms
-50k  c=50 overhead p50 +0.503ms p99 +0.734ms
-200k c=50 overhead p50 +0.785ms p99 +0.813ms
-B4 1k   TTFB delta +0.004ms
-B4 50k  TTFB delta +0.041ms
-B4 200k TTFB delta -0.017ms
-B6 target throughput 8499.48 rps, non-200 0
-```
-
-The artifact passed the long local harness before the B10 ledger-lag, RSS memory, 500k/1M stress, and baseline-regression additions. The current harness now records B3 flatness, worst-run fields, router RSS memory samples, true B10 ledger lag with an isolated benchmark model, and baseline status. Rerun the full gate with `BASELINE_BOOTSTRAP=1` before treating the current tree as proof of every row in `BENCHMARK.md`.
-
-Run a short smoke test:
+Run a short smoke test. It verifies orchestration, payload generation, router startup, PostgreSQL ledger writes, and the B10 ledger-lag measurement at a reduced request rate. A smoke run can print `release thresholds pass: False`; that only means the 1-second smoke was not used as release evidence:
 
 ```bash
 ./start.sh smoke
@@ -388,7 +389,7 @@ BASELINE_BOOTSTRAP=1 ./start.sh gate
 cp bench/results/<timestamp>/baseline_candidate.json bench/baseline.json
 ```
 
-Run a large prompt stress proof for 500k and 1M token-class pass-through behavior:
+Run the 500k and 1M stress proof:
 
 ```bash
 BENCH_PAYLOADS=500k,1m \
@@ -403,9 +404,7 @@ REQUIRE_PASS=0 \
 python3 scripts/bench_real.py
 ```
 
-This stress proof records router memory through RSS, which means resident set size reported by Linux. The stress proof is measurement-first until a reviewed baseline exists; it should not fail on made-up speed targets.
-
-For public claims such as “fastest LLM router”, compare BrighTO-Router against named routers on the same hardware, same payloads, same backend, same TLS/proxy settings, and same offered-rate shape. The repository keeps raw artifacts so these claims can be audited rather than inferred.
+For public claims such as “fastest LLM router”, compare BrighTO-Router against named routers on the same hardware, same payloads, same backend, same Transport Layer Security settings, same proxy settings, and same load shape. Keep raw artifacts with every claim.
 
 ## Testing
 

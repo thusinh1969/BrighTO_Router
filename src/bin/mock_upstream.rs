@@ -12,7 +12,7 @@
 use axum::{
     Router,
     body::Bytes,
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::{HeaderMap, StatusCode},
     response::{
         IntoResponse, Json, Response,
@@ -49,6 +49,10 @@ async fn main() {
         .unwrap_or("0.0.0.0:9000".into())
         .parse()
         .unwrap();
+    let max_body_bytes = std::env::var("MOCK_MAX_BODY_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(64 * 1024 * 1024);
     let st: S = Arc::new(Stats::default());
     let app = Router::new()
         .route("/v1/chat/completions", post(openai))
@@ -60,9 +64,10 @@ async fn main() {
                 "prompt_tokens_total": s.prompt.load(Ordering::Relaxed),
                 "completion_tokens_total": s.completion.load(Ordering::Relaxed)}))
         }))
+        .layer(DefaultBodyLimit::max(max_body_bytes))
         .with_state(st);
     let l = tokio::net::TcpListener::bind(addr).await.unwrap();
-    eprintln!("brighto-router-mock listening on {addr}");
+    eprintln!("brighto-router-mock listening on {addr} max_body_bytes={max_body_bytes}");
     axum::serve(l, app).await.unwrap();
 }
 

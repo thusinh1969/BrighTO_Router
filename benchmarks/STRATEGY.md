@@ -1,6 +1,6 @@
 # BrighTO-Router benchmark strategy
 
-This document defines how BrighTO-Router is measured. The goal is not to create numbers that look good. The goal is to prove that the router adds very little delay, does not buffer large prompts accidentally, keeps streaming responsive, records usage correctly, and stays stable under heavy load.
+This document defines how BrighTO-Router is measured. For the short table, read [benchmarks/README.md](README.md) first. The goal is not to create numbers that look good. The goal is to prove that the router adds very little delay, does not buffer large prompts accidentally, keeps streaming responsive, records usage correctly, and stays stable under heavy load.
 
 ## Legend
 
