@@ -262,3 +262,32 @@ DeepSeek must run these before declaring done:
 At the time of this audit, local working tree has DeepSeek product changes in `src/config/mod.rs` and `src/contract.rs`, while previous no-auth changes touched `src/admin/mod.rs` and `src/proxy/mod.rs`.
 
 Do not ship partial no-auth support as final. Partial state where some endpoints allow missing keys but provider still owns `api_key_ref` is still product-wrong.
+
+## Live review of DeepSeek partial patch
+
+Observed dirty diff after this audit:
+
+- `src/config/mod.rs` now loads `provider_model_name`, context, max output, prices, and enabled into runtime routes.
+- `src/contract.rs` extends `ModelRoute` with those fields.
+- `src/handlers.rs` rejects disabled routes and rewrites buffered JSON top-level `model` to `provider_model_name`.
+- Large streaming upload with public/provider mismatch returns a clear error.
+
+This is directionally correct for public-name mapping.
+
+However it does not fix the product blocker in this audit:
+
+- Provider/Backend still owns `api_key_ref`.
+- Provider screen still exposes `API key ref`.
+- `PUT /admin/backends/{id}/key` is still route-wrong as the primary flow.
+- Route wizard still does not own provider credential.
+- Same provider cannot cleanly support multiple route credentials without duplicating providers/backends.
+
+Do not mark done until route-level provider credential is implemented and UI removes secret handling from Provider.
+
+Minimum acceptable correction if DeepSeek wants to avoid a larger rename today:
+
+1. Keep DB table name `backends` only internally if needed, but make the UI call it route target, not Provider.
+2. Providers screen must become secret-free provider templates.
+3. Create/Edit Route must collect provider credential and store `provider_key_ref` on the route or route target owned by the route.
+4. Loading models in the route wizard must use the unsaved credential from the wizard, not a provider-level stored key.
+5. Existing provider-level key endpoint must disappear from portal UI.
