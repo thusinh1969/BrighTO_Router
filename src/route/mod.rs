@@ -437,11 +437,16 @@ impl RamBackendPool {
     }
 
     async fn health_check_all(&self, client: &reqwest::Client) {
-        let ids: Vec<i64> = self.states.iter().map(|entry| *entry.key()).collect();
-        for id in ids {
-            if let Some(state) = self.states.get(&id) {
+        // Không giữ DashMap entry guard qua .await (CODEX runtime-blocker): thu thập target
+        // trước, thả guard, rồi mới await network I/O — tránh chặn Tokio worker / hang /healthz.
+        let targets: Vec<(i64, String)> = self
+            .states
+            .iter()
+            .filter_map(|entry| {
+                let id = *entry.key();
+                let state = entry.value();
                 if !state.enabled.load(Ordering::Relaxed) {
-                    continue;
+                    return None;
                 }
                 let base = state
                     .base_url
@@ -450,11 +455,16 @@ impl RamBackendPool {
                     .and_then(|url| url.clone())
                     .unwrap_or_default();
                 if base.is_empty() {
-                    continue;
+                    None
+                } else {
+                    Some((id, base))
                 }
-                let ok = check_backend_health(client, &base).await;
-                self.note_result(id, ok);
-            }
+            })
+            .collect();
+
+        for (id, base) in targets {
+            let ok = check_backend_health(client, &base).await;
+            self.note_result(id, ok);
         }
     }
 }

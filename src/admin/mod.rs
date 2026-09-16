@@ -258,8 +258,8 @@ pub fn router(runtime: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/", get(portal))
-        .route("/teams", post(create_team))
-        .route("/keys", post(create_key))
+        .route("/teams", get(list_teams).post(create_team))
+        .route("/keys", get(list_keys).post(create_key))
         .route("/backends", get(list_backends).post(create_backend))
         .route(
             "/backends/{id}",
@@ -276,8 +276,6 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/teams/{id}", patch(update_team))
         .route("/keys/{id}", delete(disable_key))
         .route("/keys/{id}/reveal", get(reveal_key))
-        .route("/teams", get(list_teams))
-        .route("/keys", get(list_keys))
         .route("/stats", get(get_stats))
         .route("/summary", get(get_summary))
         .route("/usage", get(get_usage))
