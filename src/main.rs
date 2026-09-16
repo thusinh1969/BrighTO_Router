@@ -42,6 +42,18 @@ async fn main() -> anyhow::Result<()> {
 
     let db_url = std::env::var("DATABASE_URL").context("DATABASE_URL is required")?;
     let listen_addr = std::env::var("LISTEN_ADDR").unwrap_or_else(|_| DEFAULT_LISTEN.to_string());
+    // TLS (optional): cả 2 path phải set để bật HTTPS; chỉ set 1 -> fail fast (CODEX HTTPS audit).
+    let tls_cert_path = std::env::var("TLS_CERT_PATH")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let tls_key_path = std::env::var("TLS_KEY_PATH")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let tls = match (tls_cert_path, tls_key_path) {
+        (None, None) => None,
+        (Some(cert), Some(key)) => Some((cert, key)),
+        _ => bail!("TLS_CERT_PATH and TLS_KEY_PATH must both be set (or both unset)"),
+    };
     let max_body_bytes = std::env::var("MAX_BODY_BYTES")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -187,14 +199,35 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let app = handlers::router(app_state);
-    let listener = tokio::net::TcpListener::bind(&listen_addr).await?;
-    tracing::info!(addr = %listen_addr, "brighto-router listening");
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .with_graceful_shutdown(shutdown_signal())
-    .await?;
+    let addr: SocketAddr = listen_addr.parse().context("parse LISTEN_ADDR")?;
+    let handle = axum_server::Handle::new();
+    tokio::spawn({
+        let handle = handle.clone();
+        async move {
+            shutdown_signal().await;
+            handle.graceful_shutdown(Some(Duration::from_secs(60)));
+        }
+    });
+
+    match tls {
+        None => {
+            tracing::info!(addr = %listen_addr, protocol = "http", "brighto-router listening");
+            axum_server::bind(addr)
+                .handle(handle)
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+                .await?;
+        }
+        Some((cert, key)) => {
+            let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key)
+                .await
+                .context("load TLS cert/key")?;
+            tracing::info!(addr = %listen_addr, protocol = "https", "brighto-router listening");
+            axum_server::tls_rustls::bind_rustls(addr, config)
+                .handle(handle)
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+                .await?;
+        }
+    }
 
     Ok(())
 }
@@ -234,8 +267,17 @@ async fn shutdown_signal() {
 
 async fn healthcheck() -> anyhow::Result<()> {
     let addr = std::env::var("LISTEN_ADDR").unwrap_or_else(|_| DEFAULT_LISTEN.to_string());
-    let url = format!("http://{}/healthz", addr);
-    let resp = reqwest::get(&url).await?;
+    let tls = std::env::var("TLS_CERT_PATH")
+        .ok()
+        .is_some_and(|s| !s.trim().is_empty());
+    let scheme = if tls { "https" } else { "http" };
+    let url = format!("{scheme}://{addr}/healthz");
+    // Healthcheck riêng: chấp nhận self-signed cert local (KHÔNG áp dụng cho upstream provider calls).
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(tls)
+        .build()
+        .context("build healthcheck client")?;
+    let resp = client.get(&url).send().await?;
     if resp.status().is_success() {
         Ok(())
     } else {
