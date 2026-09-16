@@ -111,22 +111,25 @@ fn build_reqwest_request(
         req_headers.insert(name.clone(), value.clone());
     }
 
-    let key = backend
-        .api_key
-        .as_deref()
-        .ok_or_else(|| format!("backend {} key not resolved", backend.name))?;
+    // Key rỗng/None = provider không cần key (llama.cpp/vLLM/Ollama). Chỉ gắn auth khi key có giá trị.
+    let key = backend.api_key.as_deref().unwrap_or("");
     match backend.format {
         BackendFormat::OpenAi => {
-            let v = HeaderValue::from_str(&format!("Bearer {key}"))
-                .map_err(|e| format!("invalid backend key: {e}"))?;
-            req_headers.insert(reqwest::header::AUTHORIZATION, v);
+            if !key.is_empty() {
+                let v = HeaderValue::from_str(&format!("Bearer {key}"))
+                    .map_err(|e| format!("invalid backend key: {e}"))?;
+                req_headers.insert(reqwest::header::AUTHORIZATION, v);
+            }
         }
         BackendFormat::Anthropic => {
-            let v = HeaderValue::from_str(key).map_err(|e| format!("invalid backend key: {e}"))?;
-            req_headers.insert("x-api-key", v);
-            // Chỉ đặt default nếu client KHÔNG tự gửi anthropic-version (giữ nguyên version client pin).
-            if !req_headers.contains_key("anthropic-version") {
-                req_headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+            if !key.is_empty() {
+                let v =
+                    HeaderValue::from_str(key).map_err(|e| format!("invalid backend key: {e}"))?;
+                req_headers.insert("x-api-key", v);
+                // Chỉ đặt default nếu client KHÔNG tự gửi anthropic-version (giữ nguyên version client pin).
+                if !req_headers.contains_key("anthropic-version") {
+                    req_headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+                }
             }
         }
     }

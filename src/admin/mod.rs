@@ -14,7 +14,7 @@ use axum::{
     extract::{ConnectInfo, Extension, Path, Query},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -261,6 +261,7 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/keys", post(create_key))
         .route("/backends", get(list_backends).post(create_backend))
         .route("/backends/{id}", patch(update_backend))
+        .route("/backends/{id}/key", put(put_backend_key))
         .route("/backends/{id}/models", get(fetch_backend_models))
         .route("/routes", get(list_routes).post(upsert_route))
         .route("/routes/{model_name}", delete(delete_route))
@@ -690,6 +691,53 @@ async fn list_backends(
     Ok(Json(out))
 }
 
+#[derive(Deserialize)]
+struct PutBackendKey {
+    key: String,
+}
+
+/// Ghi provider key ra file secrets (write-only, KHÔNG trả plaintext). Cập nhật api_key_ref = file:...
+async fn put_backend_key(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(payload): Json<PutBackendKey>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let key = payload.key.trim().to_string();
+    if key.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "provider key must not be empty",
+        ));
+    }
+    let pool = state.pool().await?;
+    let exists = sqlx::query::<sqlx::Postgres>("SELECT 1 FROM backends WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .is_some();
+    if !exists {
+        return Err(ApiError::not_found("backend not found"));
+    }
+    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/llm-router".to_string());
+    let dir = std::path::Path::new(&data_dir).join("provider_keys");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| ApiError::internal(format!("create provider_keys dir: {e}")))?;
+    let path = dir.join(format!("{id}.key"));
+    std::fs::write(&path, key)
+        .map_err(|e| ApiError::internal(format!("write provider key: {e}")))?;
+    let file_ref = format!("file:{}", path.display());
+    sqlx::query::<sqlx::Postgres>("UPDATE backends SET api_key_ref = $1 WHERE id = $2")
+        .bind(&file_ref)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    state.reload_now().await?;
+    Ok(Json(json!({ "id": id, "key_resolved": true })))
+}
+
 async fn update_backend(
     Extension(state): Extension<Arc<AdminState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -805,11 +853,8 @@ async fn fetch_backend_models(
     let base_url: String = row.try_get("base_url")?;
     let api_key_ref: String = row.try_get("api_key_ref")?;
     let format: String = row.try_get("format")?;
-    let key = resolve_backend_key(&api_key_ref)
-        .filter(|v| !v.trim().is_empty())
-        .ok_or_else(|| {
-            ApiError::new(StatusCode::BAD_REQUEST, "backend API key is not configured")
-        })?;
+    // Cho phép key rỗng (local llama.cpp/vLLM không cần key). Chỉ gắn auth khi key có giá trị.
+    let key = resolve_backend_key(&api_key_ref).unwrap_or_default();
     let url = join_provider_url(&base_url, "/v1/models");
     let mut req = state
         .runtime
@@ -818,12 +863,16 @@ async fn fetch_backend_models(
         .timeout(Duration::from_secs(15));
     match normalize_backend_format(&format)? {
         "openai" => {
-            req = req.bearer_auth(key);
+            if !key.is_empty() {
+                req = req.bearer_auth(key);
+            }
         }
         "anthropic" => {
-            req = req
-                .header("x-api-key", key)
-                .header("anthropic-version", "2023-06-01");
+            if !key.is_empty() {
+                req = req
+                    .header("x-api-key", key)
+                    .header("anthropic-version", "2023-06-01");
+            }
         }
         _ => unreachable!(),
     }
