@@ -104,11 +104,11 @@ def main():
         r = requests.get(base + "/admin/summary?days=30", headers=admin)
         ok = (r.status_code == 200 and "totals" in r.json()
               and "by_model" in r.json() and "by_team" in r.json() and "by_key" in r.json()
-              and "by_bucket" in r.json()
+              and "by_bucket" in r.json() and "by_backend" in r.json()
               and "estimated_cost_usd" in r.json()["totals"]
               and "cost_known_requests" in r.json()["totals"]
               and "p95_router_overhead_ms" in r.json()["totals"])
-        check("admin /summary returns grouped stats + cost + buckets", ok)
+        check("admin /summary returns grouped stats + cost + buckets + health", ok)
 
         # Create a client key (plaintext returned once)
         r = requests.post(base + "/admin/keys", headers=admin,
