@@ -124,6 +124,9 @@ def main():
                           json={"name": "smoke-provider", "base_url": "https://example.com",
                                 "api_key_ref": "env:SMOKE_KEY", "format": "openai", "enabled": False})
         check("POST /admin/backends creates provider", r.status_code == 200 and r.json().get("id"))
+        bid = r.json()["id"]
+        r2 = requests.delete(base + "/admin/backends/%d" % bid, headers=admin)
+        check("DELETE /admin/backends removes unused provider", r2.status_code == 204)
 
         # Insert a real usage row for this key so stats/usage are non-trivial.
         now = int(time.time())
