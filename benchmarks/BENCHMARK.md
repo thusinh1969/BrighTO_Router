@@ -1,8 +1,8 @@
 # BrighTO-Router benchmark contract
 
-This file is the release contract. The full measurement strategy and term definitions are in `benchmarks/STRATEGY.md`.
+This file is the release contract. Read [benchmarks/README.md](README.md) first for the simple table, then [benchmarks/STRATEGY.md](STRATEGY.md) for the measurement rationale.
 
-Rule: a release gate with `REQUIRE_PASS=1` exits non-zero when a required check fails. A short smoke run proves the scripts work, but it is not release proof.
+Rule: a release gate with `REQUIRE_PASS=1` exits non-zero when a required check fails. A short smoke run proves the scripts work, but it is not release proof. In smoke artifacts, `command_pass` can be true while `release_pass` is false because release thresholds are not enforced.
 
 ## Required evidence for a release
 
@@ -33,7 +33,7 @@ The release gate measures these payloads at concurrency 1, 50, and 200. Hard pas
 | Payload name | Approximate input tokens | Approximate JSON body size | Purpose |
 |---|---:|---:|---|
 | `500k` | 500,000 | 2 MB | pass-through stress proof |
-| `1m` | 1,000,000 | 4 MB | extreme pass-through and memory proof |
+| `1m` | 1,000,000. The name means 1M. | 4 MB | extreme pass-through and memory proof |
 
 The 500k and 1M runs are measurement-first until a reviewed baseline exists. They must record correctness, router overhead, streaming time to first byte, ledger drops, and router memory. Do not add arbitrary speed thresholds for these payloads.
 

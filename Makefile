@@ -61,8 +61,8 @@ gate-smoke:        ## fast smoke gate; not release proof
 bench-gate:        ## full SOTA matrix -> bench/results/<ts>/
 	python3 scripts/bench_real.py
 
-bench-gate-smoke:  ## short benchmark smoke; does not enforce thresholds
-	DUR=5s WARM=1s RUNS=1 CONCS=50 REQUIRE_PASS=0 python3 scripts/bench_real.py
+bench-gate-smoke:  ## short benchmark smoke; does not enforce release thresholds
+	DUR=1s WARM=1s RUNS=1 CONCS=50 BENCH_B6=0 BENCH_B10=1 B10_TARGET_RPS=200 REQUIRE_PASS=0 python3 scripts/bench_real.py
 
 clean:             ## remove Rust build artifacts
 	cargo clean

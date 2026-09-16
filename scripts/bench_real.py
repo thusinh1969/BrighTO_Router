@@ -7,7 +7,7 @@ run (không ghi đè direct bằng router) + `gate.json` audit-friendly.
 
 Cách chạy:
     # smoke ngắn: chứng minh orchestration + artifact, KHÔNG phải số SOTA (không fail ngưỡng)
-    DUR=5s WARM=1s RUNS=1 CONCS=50 REQUIRE_PASS=0 python3 scripts/bench_real.py
+    DUR=1s WARM=1s RUNS=1 CONCS=50 BENCH_B6=0 BENCH_B10=1 B10_TARGET_RPS=200 REQUIRE_PASS=0 python3 scripts/bench_real.py
     # full release gate
     python3 scripts/bench_real.py
 
@@ -688,7 +688,7 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                     "min_rows": min_rows,
                     "raw": b10_out,
                 }
-                gates.append({"id": "B10", "payload": "1k", "conc": "2000rps", "metric": "ledger_lag_p99_s",
+                gates.append({"id": "B10", "payload": "1k", "conc": "%drps" % B10_TARGET_RPS, "metric": "ledger_lag_p99_s",
                               "value": lag_p99_s, "threshold": B10_MAX_LAG_SECONDS, "pass": ok_b10,
                               "runs": [lag_p99_s], "load": b10_run})
                 print("B10 ledger lag p99 %.6fs rows %d/%d rps %.2f non200 %d" % (lag_p99_s, count, expected_rows, b10_rps, b10_non200))
@@ -710,8 +710,14 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
             elif not baseline["pass"]:
                 print("baseline failed:", baseline)
 
+            release_pass = not any_fail
+            command_pass = release_pass or not REQUIRE_PASS
+
             summary = {
                 "sha": host["sha"], "host": {"cpu": host["cpu"], "kernel": host["kernel"]},
+                "require_pass": REQUIRE_PASS,
+                "release_pass": release_pass,
+                "command_pass": command_pass,
                 "knobs": {"DUR": DUR, "WARM": WARM, "RUNS": RUNS, "CONCS": CONCS,
                           "PAYLOADS": PAYLOADS, "STREAM_PAYLOADS": STREAM_PAYLOADS, "RUN_B6": RUN_B6, "RUN_B10": RUN_B10,
                           "ADMIN_MASTER_KEY_set": bool(ADMIN_KEY), "B6_TARGET_RPS": B6_TARGET_RPS,
@@ -737,12 +743,17 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                               "B6_TARGET_RPS": B6_TARGET_RPS, "B10_TARGET_RPS": B10_TARGET_RPS, "MODEL": MODEL, "B10_MODEL": B10_MODEL,
                               "BENCH_TARGET_RPS": BENCH_TARGET_RPS,
                               "MOCK_PORT": mock_port, "ROUTER_PORT": router_port},
-                    "gates": gates, "baseline": baseline, "pass": not any_fail}
+                    "gates": gates, "baseline": baseline, "require_pass": REQUIRE_PASS,
+                    "release_pass": release_pass, "command_pass": command_pass, "pass": command_pass}
             (outdir / "gate.json").write_text(json.dumps(gate, indent=2))
             print("artifacts:", outdir)
-            print("gate pass:", not any_fail)
+            if REQUIRE_PASS:
+                print("release gate pass:", release_pass)
+            else:
+                print("smoke command pass:", command_pass)
+                print("release thresholds pass:", release_pass, "(not enforced in smoke)")
 
-            if REQUIRE_PASS and any_fail:
+            if REQUIRE_PASS and not release_pass:
                 sys.exit(1)
         finally:
             router.terminate()
@@ -758,7 +769,7 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
             mock_log.close()
             router_log.close()
     finally:
-        subprocess.run(["docker", "rm", "-f", pg], capture_output=True)
+        subprocess.run(["docker", "stop", "-t", "5", pg], capture_output=True)
 
 
 if __name__ == "__main__":
