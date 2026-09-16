@@ -1,5 +1,7 @@
 # BrighTO-Router
 
+[![CI](https://github.com/thusinh1969/Brighto_AIRouter/actions/workflows/ci.yml/badge.svg)](https://github.com/thusinh1969/Brighto_AIRouter/actions/workflows/ci.yml)
+
 BrighTO-Router is a Rust LLM router for teams that want one fast, controlled internal endpoint for many model providers.
 
 An **LLM** is a Large Language Model. A **router** is the service between your application and model providers. BrighTO-Router receives OpenAI-style or Anthropic-style API requests, chooses the configured backend, forwards the request, streams the response, and records usage.
