@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Runtime HTTP smoke cho portal + self-service endpoints.
+
+Chung minh bang HTTP that (khong chi unit test):
+  - Admin: GET /admin/teams, /admin/keys, /admin/stats, POST /admin/keys.
+  - User: GET /portal/me, /portal/me/usage, /portal/me/stats (auth bang client API key).
+  - Bao mat: bad key -> 401; /admin/keys khong tra plaintext key.
+
+Run: python3 scripts/portal_smoke.py
+Can: docker, sqlx-cli, psql, va target/release/brighto-router da build.
+"""
+import os
+import pathlib
+import socket
+import subprocess
+import sys
+import time
+
+import requests
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+BIN = REPO / "target/release/brighto-router"
+ADMIN_KEY = "portal-smoke-admin"
+
+
+def free_port():
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    p = s.getsockname()[1]
+    s.close()
+    return p
+
+
+def sh(*a, **kw):
+    return subprocess.run(a, check=True, capture_output=True, text=True, **kw)
+
+
+def main():
+    pg = "brighto_portal_smoke_%d" % os.getpid()
+    pg_port = free_port()
+    router_port = free_port()
+    sh(
+        "docker", "run", "--rm", "-d", "--name", pg,
+        "-e", "POSTGRES_DB=llm_router",
+        "-e", "POSTGRES_USER=llm_router",
+        "-e", "POSTGRES_PASSWORD=llm_router_dev",
+        "-p", "127.0.0.1:%d:5432" % pg_port,
+        "postgres:16-alpine",
+    )
+    db = "postgres://llm_router:llm_router_dev@127.0.0.1:%d/llm_router" % pg_port
+    router = None
+    try:
+        for _ in range(60):
+            r = subprocess.run(
+                ["docker", "exec", pg, "pg_isready", "-U", "llm_router", "-d", "llm_router"],
+                capture_output=True,
+            )
+            if r.returncode == 0:
+                break
+            time.sleep(1)
+        sh("sqlx", "migrate", "run", "--source", str(REPO / "migrations"),
+           env=dict(os.environ, DATABASE_URL=db))
+        sh("psql", "-h", "127.0.0.1", "-p", str(pg_port), "-U", "llm_router",
+           "-d", "llm_router", "-q", "-c",
+           "INSERT INTO teams (id,name,budget,enabled) VALUES (1,'Smoke Team',NULL,TRUE);",
+           env=dict(os.environ, PGPASSWORD="llm_router_dev"))
+
+        router = subprocess.Popen(
+            [str(BIN)],
+            env=dict(
+                os.environ,
+                DATABASE_URL=db,
+                LISTEN_ADDR="127.0.0.1:%d" % router_port,
+                ADMIN_MASTER_KEY=ADMIN_KEY,
+                RUST_LOG="error",
+            ),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        base = "http://127.0.0.1:%d" % router_port
+        for _ in range(100):
+            try:
+                if requests.get(base + "/healthz", timeout=1).status_code == 200:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+
+        admin = {"x-admin-key": ADMIN_KEY, "Content-Type": "application/json"}
+        checks = []
+
+        def check(name, ok):
+            checks.append((name, ok))
+            print(("PASS " if ok else "FAIL ") + name)
+
+        # Admin list endpoints
+        r = requests.get(base + "/admin/teams", headers=admin)
+        check("admin /teams lists 1 team", r.status_code == 200 and len(r.json()) == 1)
+        r = requests.get(base + "/admin/keys", headers=admin)
+        check("admin /keys starts empty", r.status_code == 200 and r.json() == [])
+        r = requests.get(base + "/admin/stats?days=30", headers=admin)
+        check("admin /stats starts empty", r.status_code == 200 and r.json() == [])
+
+        # Create a client key (plaintext returned once)
+        r = requests.post(base + "/admin/keys", headers=admin,
+                          json={"team_id": 1, "owner": "smoke", "allowed_models": []})
+        body = r.json()
+        key = body.get("key", "")
+        key_id = body.get("id")
+        check("POST /admin/keys returns lc- key", r.status_code == 200 and key.startswith("lc-"))
+
+        # Insert a real usage row for this key so stats/usage are non-trivial.
+        now = int(time.time())
+        sh("psql", "-h", "127.0.0.1", "-p", str(pg_port), "-U", "llm_router",
+           "-d", "llm_router", "-q", "-c",
+           "INSERT INTO usage_ledger (ts, request_id, key_id, team_id, model, backend_id, status, "
+           "input_tokens, output_tokens, estimated, ttfb_ms, total_ms, router_overhead_ms, stream, client_aborted) "
+           "VALUES (%d, 'smoke-req-1', %d, 1, 'smoke-model', 1, 200, 100, 10, false, 0, 0, 0, false, false);"
+           % (now, key_id),
+           env=dict(os.environ, PGPASSWORD="llm_router_dev"))
+
+        user = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
+        r = requests.get(base + "/portal/me", headers=user)
+        ok = (r.status_code == 200 and r.json()["key"]["owner"] == "smoke"
+              and r.json()["team"]["name"] == "Smoke Team")
+        check("GET /portal/me returns own key + team", ok)
+
+        r = requests.get(base + "/portal/me/usage", headers=user)
+        ok = r.status_code == 200 and isinstance(r.json(), list) and len(r.json()) == 1
+        check("GET /portal/me/usage returns own row", ok)
+
+        r = requests.get(base + "/portal/me/stats?days=30", headers=user)
+        js = r.json()
+        ok = (r.status_code == 200 and len(js) == 1
+              and js[0]["model"] == "smoke-model"
+              and js[0]["input_tokens"] == 100 and js[0]["output_tokens"] == 10)
+        check("GET /portal/me/stats aggregates own usage", ok)
+
+        # Security
+        r = requests.get(base + "/portal/me", headers={"Authorization": "Bearer bad-key"})
+        check("bad key -> 401", r.status_code == 401)
+        r = requests.get(base + "/admin/keys", headers=admin)
+        check("admin /keys never returns plaintext", all("key" not in row for row in r.json()))
+
+        fails = [n for n, ok in checks if not ok]
+        print("RESULT " + ("PASS" if not fails else "FAIL: " + ", ".join(fails)))
+        sys.exit(0 if not fails else 1)
+    finally:
+        if router:
+            router.terminate()
+            try:
+                router.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                router.kill()
+        subprocess.run(["docker", "rm", "-f", pg], capture_output=True)
+
+
+if __name__ == "__main__":
+    main()

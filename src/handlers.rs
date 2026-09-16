@@ -338,6 +338,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/readyz", get(readyz))
         .route("/", get(portal))
         .nest_service("/admin", crate::admin::router(state.clone()))
+        .nest_service("/portal", crate::admin::user_router(state.clone()))
         .with_state(state)
 }
 

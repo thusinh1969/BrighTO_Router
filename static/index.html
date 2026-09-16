@@ -1,698 +1,823 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BrighTO-Router Portal</title>
-  <style>
-    :root {
-      color-scheme: light;
-      --bg: #f5f7fb;
-      --panel: #ffffff;
-      --ink: #142033;
-      --muted: #64748b;
-      --line: #d8e0ec;
-      --brand: #2957ff;
-      --brand-dark: #173bc2;
-      --good: #087f5b;
-      --warn: #b45309;
-      --bad: #b42318;
-      --soft: #eef3ff;
-      --shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background:
-        radial-gradient(circle at top left, rgba(41, 87, 255, 0.18), transparent 32rem),
-        linear-gradient(180deg, #f8fbff 0%, var(--bg) 45%, #eef2f7 100%);
-      color: var(--ink);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.5;
-    }
-
-    .shell { max-width: 1180px; margin: 0 auto; padding: 32px 20px 56px; }
-
-    .hero {
-      display: grid;
-      grid-template-columns: 1.45fr 0.85fr;
-      gap: 24px;
-      align-items: stretch;
-      margin-bottom: 22px;
-    }
-
-    .card {
-      background: rgba(255, 255, 255, 0.92);
-      border: 1px solid rgba(216, 224, 236, 0.9);
-      border-radius: 20px;
-      box-shadow: var(--shadow);
-    }
-
-    .hero-main { padding: 30px; }
-    .hero-side { padding: 22px; }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: var(--soft);
-      color: var(--brand-dark);
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-    }
-
-    h1 { margin: 16px 0 10px; font-size: clamp(32px, 5vw, 54px); line-height: 1.02; letter-spacing: -0.04em; }
-    h2 { margin: 0 0 6px; font-size: 20px; letter-spacing: -0.015em; }
-    h3 { margin: 0 0 10px; font-size: 16px; }
-    p { margin: 0; color: var(--muted); }
-
-    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
-
-    button {
-      appearance: none;
-      border: 0;
-      border-radius: 12px;
-      padding: 10px 14px;
-      background: var(--brand);
-      color: white;
-      font-weight: 700;
-      cursor: pointer;
-      transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
-      box-shadow: 0 10px 22px rgba(41, 87, 255, 0.18);
-    }
-
-    button:hover { background: var(--brand-dark); transform: translateY(-1px); }
-    button.secondary { background: #edf2f7; color: #1f2a44; box-shadow: none; }
-    button.secondary:hover { background: #dfe7f2; }
-    button.ghost { background: transparent; color: var(--brand-dark); box-shadow: none; padding: 6px 8px; }
-    button.danger { background: var(--bad); }
-
-    .status-grid { display: grid; gap: 10px; margin-top: 18px; }
-    .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      border-radius: 999px;
-      padding: 5px 9px;
-      background: #f1f5f9;
-      color: #334155;
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .pill.good { background: #dcfce7; color: var(--good); }
-    .pill.warn { background: #ffedd5; color: var(--warn); }
-    .pill.bad { background: #fee2e2; color: var(--bad); }
-
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
-    .wide { grid-column: 1 / -1; }
-    section.card { padding: 22px; }
-
-    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
-    .step { padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: #fbfdff; }
-    .step strong { display: block; margin-bottom: 4px; }
-    .step span { color: var(--muted); font-size: 13px; }
-
-    label { display: block; margin: 12px 0 6px; font-weight: 700; font-size: 13px; color: #263449; }
-    input, textarea, select {
-      width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 11px 12px;
-      background: white;
-      color: var(--ink);
-      font: inherit;
-      outline: none;
-    }
-    input:focus, textarea:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 4px rgba(41, 87, 255, 0.10); }
-    input[type="checkbox"] { width: auto; }
-    textarea { min-height: 86px; resize: vertical; }
-
-    .inline { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .checkline { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: 700; }
-    .help { margin-top: 8px; font-size: 13px; color: var(--muted); }
-    code { background: #edf2f7; color: #1f2a44; padding: 2px 5px; border-radius: 6px; }
-
-    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 14px; }
-    th, td { padding: 10px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-    th { color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
-    td.wrap { word-break: break-word; max-width: 280px; }
-    tr:hover td { background: #fbfdff; }
-
-    pre {
-      margin: 12px 0 0;
-      padding: 12px;
-      border-radius: 12px;
-      background: #0f172a;
-      color: #dbeafe;
-      overflow-x: auto;
-      min-height: 42px;
-      white-space: pre-wrap;
-    }
-
-    .notice {
-      margin-top: 12px;
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: #fff7ed;
-      color: #9a3412;
-      border: 1px solid #fed7aa;
-    }
-    .notice.good { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
-    .notice.bad { background: #fef2f2; color: #b42318; border-color: #fecaca; }
-    .hidden { display: none; }
-    .model-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    .model-chip { background: #eef3ff; color: var(--brand-dark); border: 1px solid #c7d2fe; box-shadow: none; }
-    .footer { margin-top: 24px; color: var(--muted); font-size: 13px; text-align: center; }
-
-    @media (max-width: 900px) {
-      .hero, .grid, .inline { grid-template-columns: 1fr; }
-      .steps { grid-template-columns: 1fr 1fr; }
-    }
-
-    @media (max-width: 560px) {
-      .shell { padding: 18px 12px 36px; }
-      .hero-main, .hero-side, section.card { padding: 18px; }
-      .steps { grid-template-columns: 1fr; }
-      table { display: block; overflow-x: auto; white-space: nowrap; }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrighTO Router</title>
+<style>
+:root{
+  --bg:#0e0e12; --bg2:#15151b; --panel:#1a1a21; --panel2:#20202a; --border:#2c2c38;
+  --text:#e7e7ee; --muted:#9a9ab0; --faint:#6b6b80;
+  --accent:#7c6cf0; --accent2:#a78bfa; --green:#34d399; --red:#f87171; --amber:#fbbf24; --cyan:#22d3ee;
+  --radius:12px; --shadow:0 8px 30px rgba(0,0,0,.45);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{background:radial-gradient(1200px 600px at 20% -10%,#1c1830 0%,var(--bg) 55%);color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--accent2);text-decoration:none}
+.hidden{display:none!important}
+code{font-family:var(--mono);background:var(--panel2);padding:1px 6px;border-radius:6px;font-size:12px;color:var(--accent2)}
+#login-view{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.login-card{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--border);border-radius:16px;
+  padding:36px 32px;box-shadow:var(--shadow)}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.brand .logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#fff;flex:0 0 auto}
+.brand h1{font-size:20px;margin:0;letter-spacing:-.02em}
+.subtitle{color:var(--muted);margin:2px 0 26px;font-size:13px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+input,select,textarea{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);
+  padding:10px 12px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+textarea{resize:vertical;min-height:70px}
+.seg{display:flex;gap:8px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:20px}
+.seg button{flex:1;border:none;background:transparent;color:var(--muted);padding:9px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600}
+.seg button.active{background:var(--accent);color:#fff}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);padding:10px 16px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;transition:.15s}
+.btn:hover{border-color:var(--accent);color:#fff}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#6b5ce0}
+.btn.danger{color:var(--red)}
+.btn.danger:hover{border-color:var(--red);color:var(--red)}
+.btn.sm{padding:6px 10px;font-size:12px}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-block{width:100%}
+#app-view{display:flex;min-height:100vh}
+.sidebar{width:232px;background:var(--panel);border-right:1px solid var(--border);padding:20px 14px;
+  display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;flex:0 0 auto}
+.sidebar .brand{padding:0 8px 18px;border-bottom:1px solid var(--border);margin-bottom:10px}
+.nav{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;color:var(--muted);
+  cursor:pointer;font-size:13.5px;font-weight:500;border:none;background:none;width:100%;text-align:left;transition:.12s}
+.nav:hover{background:var(--panel2);color:var(--text)}
+.nav.active{background:var(--panel2);color:var(--text);box-shadow:inset 0 0 0 1px var(--border)}
+.nav svg{width:17px;height:17px;flex:0 0 auto;opacity:.8}
+.nav .badge{margin-left:auto;background:var(--accent);color:#fff;font-size:10px;padding:1px 7px;border-radius:99px;font-weight:700}
+.sidebar .foot{margin-top:auto;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+.mode-pill{font-size:11px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:99px;
+  padding:4px 10px;text-align:center;text-transform:uppercase;letter-spacing:.05em}
+.main{flex:1;padding:28px 34px;max-width:1180px}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.topbar h2{font-size:22px;margin:0;letter-spacing:-.02em}
+.topbar .desc{color:var(--muted);font-size:13px;margin-top:2px}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.spacer{flex:1}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:22px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+.card h3{font-size:15px;margin:0 0 6px}
+.card .big{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.card .muted{color:var(--muted);font-size:12px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px}
+.panel h3{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px}
+.panel .hint{color:var(--muted);font-size:12px;margin:0 0 14px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap}
+.panel-head h3{margin:0}
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+th{background:var(--panel2);color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--bg2)}
+td.mono{font-family:var(--mono);font-size:12px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:99px}
+.pill .dot{width:6px;height:6px;border-radius:50%}
+.pill.on{background:rgba(52,211,153,.12);color:var(--green)} .pill.on .dot{background:var(--green)}
+.pill.off{background:rgba(248,113,113,.12);color:var(--red)} .pill.off .dot{background:var(--red)}
+.pill.warn{background:rgba(251,191,36,.12);color:var(--amber)} .pill.warn .dot{background:var(--amber)}
+.pill.info{background:rgba(34,211,238,.12);color:var(--cyan)} .pill.info .dot{background:var(--cyan)}
+#modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-start;justify-content:center;
+  padding:40px 20px;z-index:50;overflow-y:auto}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:16px;width:100%;max-width:560px;
+  padding:24px;box-shadow:var(--shadow)}
+.modal h3{margin:0 0 14px;font-size:17px}
+.modal .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:99px;
+  padding:5px 12px;font-size:12px;cursor:pointer;color:var(--text)}
+.chip.selected{border-color:var(--accent);background:rgba(124,108,240,.14);color:var(--accent2)}
+.chip input{margin:0;accent-color:var(--accent)}
+#toast{position:fixed;bottom:22px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:100}
+.toast{background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;
+  padding:12px 16px;font-size:13px;box-shadow:var(--shadow);max-width:360px;animation:slide .2s ease}
+.toast.ok{border-left-color:var(--green)} .toast.err{border-left-color:var(--red)}
+@keyframes slide{from{transform:translateX(20px);opacity:0}to{transform:none;opacity:1}}
+.chart-wrap{width:100%;overflow-x:auto}
+.chart-wrap svg{display:block}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px}
+.legend span{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.empty{color:var(--faint);text-align:center;padding:36px 16px;font-size:13px}
+.empty svg{width:34px;height:34px;margin-bottom:8px;opacity:.4}
+.key-reveal{background:var(--bg2);border:1px dashed var(--accent);border-radius:10px;padding:14px;margin:14px 0;
+  font-family:var(--mono);font-size:14px;word-break:break-all;color:var(--accent2)}
+.warn-note{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);color:var(--amber);border-radius:8px;
+  padding:10px 12px;font-size:12px;margin:10px 0}
+.hamburger{display:none}
+@media(max-width:820px){.hamburger{display:inline-flex}.sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s}
+  .sidebar.open{transform:none}.main{padding:20px}.topbar{flex-direction:column;align-items:flex-start}}
+</style>
 </head>
 <body>
-  <main class="shell">
-    <div class="hero">
-      <div class="card hero-main">
-        <div class="eyebrow">BrighTO-Router Portal</div>
-        <h1>One control page for teams, models, budgets, and usage.</h1>
-        <p>Set one admin key, connect provider backends, expose approved model routes, and create team API keys. The router keeps request routing fast; this Portal only manages control-plane settings.</p>
-        <div class="actions">
-          <button onclick="loadEverything()">Load dashboard</button>
-          <button class="secondary" onclick="checkRuntime()">Check runtime</button>
-        </div>
-        <div id="global-message" class="notice hidden"></div>
-      </div>
-
-      <div class="card hero-side">
-        <h2>Admin access</h2>
-        <p>Use the value of <code>ADMIN_MASTER_KEY</code> from <code>.env</code>.</p>
-        <label for="admin-key">Master key</label>
-        <input id="admin-key" type="password" placeholder="brightoIsGreat@2026" autocomplete="off">
-        <div class="pill-row">
-          <span id="health-pill" class="pill">health: unknown</span>
-          <span id="ready-pill" class="pill">ready: unknown</span>
-          <span id="provider-pill" class="pill">providers: not loaded</span>
-        </div>
-        <div class="notice">
-          Provider keys are set on the server with <code>./start.sh set-key provider api-key</code>. The Portal never displays plaintext provider keys.
-        </div>
-      </div>
+<div id="login-view">
+  <div class="login-card">
+    <div class="brand"><div class="logo">B</div><h1>BrighTO Router</h1></div>
+    <div class="subtitle">Manage providers, model routes, teams, keys and usage — all in one place.</div>
+    <div class="seg">
+      <button id="seg-admin" class="active" onclick="setMode('admin')">Admin</button>
+      <button id="seg-user" onclick="setMode('user')">User</button>
     </div>
-
-    <section class="card wide">
-      <h2>First-time setup path</h2>
-      <div class="steps">
-        <div class="step"><strong>1. Load providers</strong><span>Verify seeded OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, and Custom.</span></div>
-        <div class="step"><strong>2. Set provider key</strong><span>Run <code>./start.sh set-key openai sk-...</code> on the server.</span></div>
-        <div class="step"><strong>3. Enable backend</strong><span>Choose the backend, confirm URL/format, then save.</span></div>
-        <div class="step"><strong>4. Route and issue key</strong><span>Fetch models, create a route, then create a team API key.</span></div>
-      </div>
-    </section>
-
-    <div class="grid">
-      <section class="card wide">
-        <h2>Provider backends</h2>
-        <p>Disabled providers are templates. Enable only providers with a configured key.</p>
-        <div class="actions">
-          <button onclick="loadBackends()">Load providers</button>
-          <button class="secondary" onclick="loadRoutes()">Load routes</button>
-        </div>
-        <table id="backend-table">
-          <thead>
-            <tr><th>ID</th><th>Name</th><th>Enabled</th><th>Key ready</th><th>Base URL</th><th>Format</th><th>Action</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-        <pre id="backend-result"></pre>
-      </section>
-
-      <section class="card">
-        <h2>Edit backend</h2>
-        <label for="backend-id">Backend ID</label>
-        <input id="backend-id" type="number" placeholder="1">
-        <label for="backend-base-url">Base URL</label>
-        <input id="backend-base-url" placeholder="https://api.openai.com">
-        <label for="backend-key-ref">API key reference</label>
-        <input id="backend-key-ref" placeholder="env:OPENAI_API_KEY">
-        <div class="inline">
-          <div>
-            <label for="backend-format">Format</label>
-            <select id="backend-format">
-              <option value="openai">OpenAI-style</option>
-              <option value="anthropic">Anthropic Messages</option>
-            </select>
-          </div>
-          <div>
-            <label for="backend-max-inflight">Max in-flight, 0 = unlimited</label>
-            <input id="backend-max-inflight" type="number" min="0" value="0">
-          </div>
-        </div>
-        <label class="checkline"><input id="backend-enabled" type="checkbox"> Enabled</label>
-        <button onclick="updateBackend()">Save backend</button>
-        <div class="help">If key ready is false, run <code>./start.sh set-key &lt;provider&gt; &lt;api-key&gt;</code> on the server.</div>
-      </section>
-
-      <section class="card">
-        <h2>Fetch models and create route</h2>
-        <label for="models-backend-id">Backend ID</label>
-        <input id="models-backend-id" type="number" placeholder="1">
-        <button onclick="fetchModels()">Fetch models</button>
-        <div id="models-list" class="model-list"></div>
-        <label for="route-model">Model name exposed to users</label>
-        <input id="route-model" placeholder="gpt-4o-mini">
-        <label for="route-backends">Backend IDs</label>
-        <input id="route-backends" placeholder="1 or 1,2,3">
-        <div class="inline">
-          <div>
-            <label for="route-chars-per-token">Chars per token</label>
-            <input id="route-chars-per-token" type="number" step="0.1" min="0.1" value="4">
-          </div>
-          <div>
-            <label for="route-timeout">First byte timeout, seconds</label>
-            <input id="route-timeout" type="number" min="1" value="180">
-          </div>
-        </div>
-        <button onclick="createRouteFromInputs()">Create or update route</button>
-        <pre id="route-result"></pre>
-      </section>
-
-      <section class="card wide">
-        <h2>Current model routes</h2>
-        <p>These are the model names clients can call through <code>/v1/chat/completions</code>, <code>/v1/completions</code>, or <code>/v1/embeddings</code>.</p>
-        <table id="route-table">
-          <thead><tr><th>Model</th><th>Backends</th><th>Fallback</th><th>Chars/token</th><th>Timeout</th><th>Action</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <pre id="routes-result"></pre>
-      </section>
-
-      <section class="card">
-        <h2>Create team</h2>
-        <label for="team-name">Team name</label>
-        <input id="team-name" placeholder="team-a">
-        <label for="team-budget">Budget JSON, optional</label>
-        <textarea id="team-budget">{"period":"month","max_tokens":1000000}</textarea>
-        <label class="checkline"><input id="team-enabled" type="checkbox" checked> Enabled</label>
-        <button onclick="createTeam()">Create team</button>
-        <pre id="team-result"></pre>
-      </section>
-
-      <section class="card">
-        <h2>Create API key</h2>
-        <label for="key-team-id">Team ID</label>
-        <input id="key-team-id" type="number" value="1">
-        <label for="key-owner">Owner</label>
-        <input id="key-owner" placeholder="user@example.com">
-        <label for="key-models">Allowed models, comma-separated; empty = all</label>
-        <input id="key-models" placeholder="gpt-4o-mini,deepseek-chat">
-        <label for="key-budget">Budget JSON, optional</label>
-        <textarea id="key-budget"></textarea>
-        <div class="inline">
-          <div>
-            <label for="key-rpm">Requests per minute, optional</label>
-            <input id="key-rpm" type="number" min="1">
-          </div>
-          <div>
-            <label for="key-concurrency">Concurrent requests, optional</label>
-            <input id="key-concurrency" type="number" min="1">
-          </div>
-        </div>
-        <label for="key-expires">Expires at, Unix seconds, optional</label>
-        <input id="key-expires" type="number">
-        <button onclick="createKey()">Create API key</button>
-        <pre id="key-result"></pre>
-        <div class="notice good hidden" id="key-note"></div>
-      </section>
-
-      <section class="card">
-        <h2>Set team budget</h2>
-        <label for="patch-team-id">Team ID</label>
-        <input id="patch-team-id" type="number" value="1">
-        <label for="patch-budget">Budget JSON</label>
-        <textarea id="patch-budget">{"period":"day","max_tokens":500000}</textarea>
-        <button onclick="patchTeam()">Update budget</button>
-        <pre id="patch-result"></pre>
-      </section>
-
-      <section class="card wide">
-        <h2>Usage ledger</h2>
-        <p>Shows the latest 1,000 usage rows from PostgreSQL.</p>
-        <div class="inline">
-          <div>
-            <label for="usage-team">Team ID, optional</label>
-            <input id="usage-team" type="number">
-          </div>
-          <div>
-            <label for="usage-from">From Unix seconds, optional</label>
-            <input id="usage-from" type="number">
-          </div>
-        </div>
-        <label for="usage-to">To Unix seconds, optional</label>
-        <input id="usage-to" type="number">
-        <button onclick="loadUsage()">Load usage</button>
-        <table id="usage-table">
-          <thead>
-            <tr><th>Time</th><th>Request</th><th>Team</th><th>Model</th><th>Status</th><th>Input</th><th>Output</th><th>First byte</th><th>Total</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-        <pre id="usage-result"></pre>
-      </section>
+    <div class="hint" id="login-mode-desc" style="margin:0 0 14px"></div>
+    <div class="field">
+      <label id="login-label">Admin master key</label>
+      <input id="login-key" type="password" placeholder="brightoIsGreat@2026" autocomplete="off">
     </div>
+    <button class="btn primary btn-block" onclick="login()">Sign in</button>
+    <div class="warn-note hidden" id="login-error"></div>
+    <div class="hint" style="margin-top:14px">
+      Admin key is set via <code>ADMIN_MASTER_KEY</code>. A User signs in with their client API key
+      (<code>Bearer</code>) to see only their own usage, charts and logs.
+    </div>
+  </div>
+</div>
 
-    <div class="footer">BrighTO-Router open-source control portal. Keep provider secrets in server environment variables or files.</div>
+<div id="app-view" class="hidden">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="logo">B</div><h1 style="font-size:16px">BrighTO</h1></div>
+    <button class="nav active" data-view="dashboard" onclick="go('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z"/></svg>Dashboard</button>
+    <button class="nav" data-view="models" onclick="go('models')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 5-9 5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/></svg>Models</button>
+    <button class="nav" data-view="providers" onclick="go('providers')" id="nav-providers">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg>Providers</button>
+    <button class="nav" data-view="teams" onclick="go('teams')" id="nav-teams">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Teams</button>
+    <button class="nav" data-view="keys" onclick="go('keys')" id="nav-keys">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zM15 6l3 3m-1-4l3 3"/></svg>API Keys</button>
+    <button class="nav" data-view="usage" onclick="go('usage')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg>Usage</button>
+    <button class="nav" data-view="logs" onclick="go('logs')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>Logs</button>
+    <div class="foot">
+      <div class="mode-pill" id="mode-pill">Admin</div>
+      <button class="btn ghost sm" onclick="logout()">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <button class="btn sm ghost hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+      <div><h2 id="page-title">Dashboard</h2><div class="desc" id="page-desc"></div></div>
+      <div class="row"><button class="btn sm" onclick="refresh()">Refresh</button></div>
+    </div>
+    <div id="content"></div>
   </main>
+</div>
 
-  <script>
-    let backendRows = new Map();
+<div id="modal-overlay" class="hidden" onclick="if(event.target===this)closeModal()"></div>
+<div id="toast"></div>
 
-    function byId(id) { return document.getElementById(id); }
-    function val(id) { return byId(id).value.trim(); }
-    function setText(id, text) { byId(id).textContent = text; }
-
-    function show(id, data) {
-      byId(id).textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+<script>
+"use strict";
+var mode = "admin";
+var authKey = "";
+var backends = [];
+var routes = [];
+var teams = [];
+var keys = [];
+function $(id){ return document.getElementById(id); }
+function el(tag, cls, text){ var n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
+function fmt(n){ if(n===null||n===undefined)return "-"; return Number(n).toLocaleString(); }
+function fmtTs(sec){ if(!sec)return "-"; var d=new Date(sec*1000); return d.toISOString().replace("T"," ").slice(0,19); }
+function fmtDate(sec){ var d=new Date(sec*1000); return d.toISOString().slice(0,10); }
+function authHeaders(){
+  if(mode === "admin"){ return {"Content-Type":"application/json","x-admin-key":authKey}; }
+  return {"Content-Type":"application/json","Authorization":"Bearer "+authKey};
+}
+async function api(path, method, body){
+  var res = await fetch(path, {method:method, headers:authHeaders(), body:body?JSON.stringify(body):undefined});
+  if(!res.ok){
+    var text = await res.text();
+    var msg = text;
+    try { var j = JSON.parse(text); if(j.error) msg = j.error.message || j.error; } catch(e){}
+    throw new Error(res.status + " " + msg);
+  }
+  if(res.status === 204) return null;
+  return res.json();
+}
+function toast(msg, type){
+  var box = $("toast");
+  var t = el("div","toast "+(type||""), msg);
+  box.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 4000);
+}
+function setMode(m){
+  mode = m;
+  $("seg-admin").classList.toggle("active", m==="admin");
+  $("seg-user").classList.toggle("active", m==="user");
+  $("login-label").textContent = m==="admin" ? "Admin master key" : "Your API key";
+  $("login-key").placeholder = m==="admin" ? "brightoIsGreat@2026" : "lc-... or Bearer key";
+  $("login-mode-desc").textContent = m==="admin"
+    ? "Admin — full control: manage providers, model routes, teams, API keys and view all usage."
+    : "User — view-only: see your own key, team, usage charts and request logs.";
+}
+async function login(){
+  authKey = $("login-key").value.trim();
+  var err = $("login-error");
+  err.classList.add("hidden");
+  if(!authKey){ err.textContent = "Please enter a key."; err.classList.remove("hidden"); return; }
+  try{
+    if(mode === "admin"){ await api("/admin/backends","GET"); }
+    else { await api("/portal/me","GET"); }
+  }catch(e){
+    err.textContent = "Sign-in failed: " + e.message;
+    err.classList.remove("hidden");
+    return;
+  }
+  $("login-view").classList.add("hidden");
+  $("app-view").classList.remove("hidden");
+  $("mode-pill").textContent = mode === "admin" ? "Admin" : "User · " + (authKey.slice(0,8) || "");
+  ["providers","teams","keys","models"].forEach(function(v){
+    var n = $("nav-"+v);
+    if(n) n.style.display = mode==="admin" ? "" : "none";
+  });
+  await refresh();
+}
+function logout(){
+  authKey = "";
+  $("app-view").classList.add("hidden");
+  $("login-view").classList.remove("hidden");
+  $("content").innerHTML = "";
+}
+var titles = {dashboard:"Dashboard",models:"Models",providers:"Providers",teams:"Teams",keys:"API Keys",usage:"Usage",logs:"Request Logs"};
+var descs = {
+  dashboard:"Overview of your gateway",
+  models:"Model routes → provider backends",
+  providers:"Provider backends and API keys",
+  teams:"Teams and budgets",
+  keys:"Client API keys",
+  usage:"Token usage charts",
+  logs:"Recent requests"
+};
+function go(view){
+  document.querySelectorAll(".nav").forEach(function(n){ n.classList.toggle("active", n.dataset.view===view); });
+  $("page-title").textContent = titles[view];
+  $("page-desc").textContent = descs[view];
+  render(view);
+}
+async function refresh(){
+  try{
+    if(mode==="admin"){
+      backends = await api("/admin/backends","GET");
+      routes = await api("/admin/routes","GET");
+      teams = await api("/admin/teams","GET");
+      keys = await api("/admin/keys","GET");
     }
-
-    function flash(message, kind = 'good') {
-      const box = byId('global-message');
-      box.className = `notice ${kind}`;
-      box.textContent = message;
+    var cur = document.querySelector(".nav.active");
+    if(cur) render(cur.dataset.view);
+    else go("dashboard");
+  }catch(e){ toast("Load failed: "+e.message,"err"); }
+}
+function render(view){
+  var c = $("content");
+  c.innerHTML = "";
+  if(mode === "user" && ["models","providers","teams","keys"].indexOf(view)>=0){ view = "dashboard"; }
+  if(view==="dashboard") renderDashboard(c);
+  else if(view==="models") renderModels(c);
+  else if(view==="providers") renderProviders(c);
+  else if(view==="teams") renderTeams(c);
+  else if(view==="keys") renderKeys(c);
+  else if(view==="usage") renderUsage(c);
+  else if(view==="logs") renderLogs(c);
+}
+function emptyBox(text){
+  var d = el("div","empty");
+  d.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
+  d.appendChild(document.createTextNode(text));
+  return d;
+}
+async function renderDashboard(c){
+  var stats = [];
+  try{
+    var path = mode==="admin" ? "/admin/stats?days=30" : "/portal/me/stats?days=30";
+    stats = await api(path,"GET");
+  }catch(e){ stats = []; }
+  var totalIn = stats.reduce(function(a,s){return a + s.input_tokens},0);
+  var totalOut = stats.reduce(function(a,s){return a + s.output_tokens},0);
+  var totalReq = stats.reduce(function(a,s){return a + s.requests},0);
+  var cards = [];
+  if(mode==="admin"){
+    cards = [
+      ["Providers", backends.length, backends.filter(function(b){return b.enabled}).length + " enabled"],
+      ["Models", routes.length, "routes configured"],
+      ["Teams", teams.length, teams.filter(function(t){return t.enabled}).length + " enabled"],
+      ["API keys", keys.length, keys.filter(function(k){return k.enabled}).length + " active"]
+    ];
+  }
+  cards = cards.concat([
+    ["Requests (30d)", totalReq, "completed"],
+    ["Input tokens (30d)", fmt(totalIn), "total"],
+    ["Output tokens (30d)", fmt(totalOut), "total"]
+  ]);
+  var grid = el("div","grid");
+  cards.forEach(function(card){
+    var cardEl = el("div","card");
+    cardEl.appendChild(el("div","muted", card[0]));
+    cardEl.appendChild(el("div","big", card[1]));
+    cardEl.appendChild(el("div","muted", card[2]));
+    grid.appendChild(cardEl);
+  });
+  c.appendChild(grid);
+  var panel = el("div","panel");
+  var head = el("div","panel-head");
+  head.appendChild(el("h3",null,"Tokens by model — last 30 days"));
+  panel.appendChild(head);
+  if(stats.length){ panel.appendChild(chartBars(stats)); }
+  else { panel.appendChild(emptyBox("No usage yet. Make a request through the router to see charts.")); }
+  c.appendChild(panel);
+  if(mode==="admin"){
+    var p2 = el("div","panel");
+    var h2 = el("div","panel-head");
+    h2.appendChild(el("h3",null,"Recent requests"));
+    p2.appendChild(h2);
+    p2.appendChild(await logsTable(null));
+    c.appendChild(p2);
+  }
+}
+function renderModels(c){
+  var panel = el("div","panel");
+  var head = el("div","panel-head");
+  head.appendChild(el("h3",null,"Model routes"));
+  var add = el("button","btn primary sm","New route");
+  add.onclick = openRouteModal;
+  head.appendChild(add);
+  panel.appendChild(head);
+  panel.appendChild(el("p","hint","A route maps a client-facing model name to one or more provider backends."));
+  if(!routes.length){ panel.appendChild(emptyBox("No routes yet. Click “New route”.")); }
+  else{
+    var wrap = el("div","table-wrap");
+    var t = el("table");
+    t.appendChild(thead(["Model","Backends","Fallback","Timeout",""]));
+    var tb = el("tbody");
+    routes.forEach(function(r){
+      var tr = el("tr");
+      tr.appendChild(el("td","mono", r.model_name));
+      tr.appendChild(el("td",null, r.backend_ids.join(", ")));
+      tr.appendChild(el("td",null, r.fallback_backend_id===null?"—":String(r.fallback_backend_id)));
+      tr.appendChild(el("td",null, r.first_byte_timeout+"s"));
+      var td = el("td");
+      var b = el("button","btn sm ghost","Edit");
+      b.onclick = function(){ openRouteModal(r); };
+      td.appendChild(b);
+      tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    wrap.appendChild(t);
+    panel.appendChild(wrap);
+  }
+  c.appendChild(panel);
+}
+function openRouteModal(route){
+  route = route || {};
+  var overlay = $("modal-overlay");
+  overlay.innerHTML = "";
+  var m = el("div","modal");
+  m.appendChild(el("h3",null, route.model_name ? "Edit route" : "Create route"));
+  var f = el("div","field");
+  f.appendChild(el("label",null,"Model name"));
+  var modelInput = el("input"); modelInput.placeholder = "gpt-4o-mini"; modelInput.value = route.model_name || ""; modelInput.id="f-model";
+  f.appendChild(modelInput); m.appendChild(f);
+  var f2 = el("div","field");
+  f2.appendChild(el("label",null,"Backend(s) — pick one or more"));
+  var chips = el("div","chips");
+  var selected = {};
+  (route.backend_ids||[]).forEach(function(id){ selected[id]=true; });
+  backends.forEach(function(b){
+    var ch = el("label","chip" + (selected[b.id]?" selected":""));
+    var cb = el("input"); cb.type="checkbox"; cb.value=b.id; cb.checked=!!selected[b.id];
+    cb.onchange = function(){ ch.classList.toggle("selected", cb.checked); };
+    ch.appendChild(cb);
+    ch.appendChild(document.createTextNode(b.name + " (id "+b.id+")"));
+    chips.appendChild(ch);
+  });
+  f2.appendChild(chips); m.appendChild(f2);
+  var f3 = el("div","field");
+  f3.appendChild(el("label",null,"Fallback backend (optional)"));
+  var fb = el("input"); fb.type="number"; fb.placeholder="backend id"; fb.value = route.fallback_backend_id===null||route.fallback_backend_id===undefined?"":route.fallback_backend_id;
+  f3.appendChild(fb); m.appendChild(f3);
+  var f4 = el("div","field");
+  f4.appendChild(el("label",null,"First-byte timeout (seconds)"));
+  var to = el("input"); to.type="number"; to.value = route.first_byte_timeout || 180;
+  f4.appendChild(to); m.appendChild(f4);
+  var actions = el("div","actions");
+  var cancel = el("button","btn","Cancel"); cancel.onclick = closeModal;
+  var save = el("button","btn primary","Save route");
+  save.onclick = async function(){
+    var name = modelInput.value.trim();
+    if(!name){ toast("Model name is required","err"); return; }
+    var ids = [];
+    chips.querySelectorAll("input:checked").forEach(function(cb){ ids.push(Number(cb.value)); });
+    if(!ids.length){ toast("Pick at least one backend","err"); return; }
+    var payload = {model_name:name, backend_ids:ids, chars_per_token:4.0, first_byte_timeout:Number(to.value)||180};
+    if(fb.value) payload.fallback_backend_id = Number(fb.value);
+    try{
+      await api("/admin/routes","POST",payload);
+      closeModal(); toast("Route saved"); routes = await api("/admin/routes","GET"); renderModels($("content"));
+    }catch(e){ toast("Save failed: "+e.message,"err"); }
+  };
+  actions.appendChild(cancel); actions.appendChild(save);
+  m.appendChild(actions);
+  overlay.appendChild(m);
+  overlay.classList.remove("hidden");
+}
+function renderProviders(c){
+  var panel = el("div","panel");
+  var head = el("div","panel-head");
+  head.appendChild(el("h3",null,"Provider backends"));
+  panel.appendChild(head);
+  panel.appendChild(el("p","hint","Set provider API keys from the shell with <b>./start.sh set-key &lt;name&gt; &lt;key&gt;</b> — they are never shown here."));
+  var wrap = el("div","table-wrap");
+  var t = el("table");
+  t.appendChild(thead(["","Name","Format","Base URL","Key","Enabled",""]));
+  var tb = el("tbody");
+  backends.forEach(function(b){
+    var tr = el("tr");
+    tr.appendChild(el("td","mono", String(b.id)));
+    tr.appendChild(el("td",null,b.name));
+    tr.appendChild(el("td",null,b.format));
+    tr.appendChild(el("td","mono",b.base_url));
+    var keyCell = el("td");
+    keyCell.appendChild(pill(b.key_resolved ? "ready":"missing", b.key_resolved?"on":"warn"));
+    tr.appendChild(keyCell);
+    var en = el("td");
+    var sw = el("label","chip" + (b.enabled?" selected":""));
+    var cb = el("input"); cb.type="checkbox"; cb.checked=b.enabled;
+    cb.onchange = async function(){
+      try{ await api("/admin/backends/"+b.id,"PATCH",{enabled:cb.checked}); toast("Provider "+(cb.checked?"enabled":"disabled")); }
+      catch(e){ toast(e.message,"err"); cb.checked=!cb.checked; }
+    };
+    sw.appendChild(cb); sw.appendChild(document.createTextNode(b.enabled?"On":"Off"));
+    en.appendChild(sw);
+    tr.appendChild(en);
+    var td = el("td");
+    var row = el("div","row"); row.style.gap="6px";
+    var fetchB = el("button","btn sm ghost","Models"); fetchB.onclick = function(){ fetchModels(b); };
+    var editB = el("button","btn sm ghost","Edit"); editB.onclick = function(){ openBackendModal(b); };
+    row.appendChild(fetchB); row.appendChild(editB);
+    td.appendChild(row); tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  wrap.appendChild(t);
+  panel.appendChild(wrap);
+  c.appendChild(panel);
+}
+function openBackendModal(b){
+  var overlay = $("modal-overlay");
+  overlay.innerHTML = "";
+  var m = el("div","modal");
+  m.appendChild(el("h3",null,"Edit provider · " + b.name));
+  var fields = [
+    ["name","Name", b.name],
+    ["base_url","Base URL", b.base_url],
+    ["api_key_ref","API key ref", b.api_key_ref],
+    ["format","Format (openai / anthropic)", b.format],
+    ["weight","Weight", String(b.weight)],
+    ["max_inflight","Max inflight (0 = unlimited)", String(b.max_inflight)]
+  ];
+  var inputs = {};
+  fields.forEach(function(f){
+    var box = el("div","field");
+    box.appendChild(el("label",null,f[1]));
+    var inp = el("input"); inp.value = f[2]; inputs[f[0]] = inp;
+    box.appendChild(inp); m.appendChild(box);
+  });
+  var actions = el("div","actions");
+  var cancel = el("button","btn","Cancel"); cancel.onclick = closeModal;
+  var save = el("button","btn primary","Save");
+  save.onclick = async function(){
+    var payload = {
+      name: inputs.name.value.trim(),
+      base_url: inputs.base_url.value.trim(),
+      api_key_ref: inputs.api_key_ref.value.trim(),
+      format: inputs.format.value.trim(),
+      weight: Number(inputs.weight.value)||1,
+      max_inflight: Number(inputs.max_inflight.value)||0
+    };
+    try{
+      await api("/admin/backends/"+b.id,"PATCH",payload);
+      closeModal(); toast("Provider saved"); backends = await api("/admin/backends","GET"); renderProviders($("content"));
+    }catch(e){ toast("Save failed: "+e.message,"err"); }
+  };
+  actions.appendChild(cancel); actions.appendChild(save);
+  m.appendChild(actions);
+  overlay.appendChild(m);
+  overlay.classList.remove("hidden");
+}
+async function fetchModels(b){
+  toast("Fetching models from "+b.name+" …");
+  try{
+    var data = await api("/admin/backends/"+b.id+"/models","GET");
+    if(!data.models.length){ toast("Provider returned no models"); return; }
+    var overlay = $("modal-overlay");
+    overlay.innerHTML = "";
+    var m = el("div","modal");
+    m.appendChild(el("h3",null,"Models · " + b.name + " ("+data.models.length+")"));
+    var chips = el("div","chips");
+    data.models.slice(0,200).forEach(function(model){
+      var ch = el("button","chip", model);
+      ch.onclick = function(){
+        var backendIds = [b.id];
+        api("/admin/routes","POST",{model_name:model, backend_ids:backendIds, chars_per_token:4.0, first_byte_timeout:180})
+          .then(function(){ closeModal(); toast("Route created for " + model); routes = api("/admin/routes","GET"); })
+          .catch(function(e){ toast("Route failed: "+e.message,"err"); });
+      };
+      chips.appendChild(ch);
+    });
+    m.appendChild(chips);
+    m.appendChild(el("p","hint","Click a model to create a route to this provider."));
+    var actions = el("div","actions");
+    var cancel = el("button","btn","Close"); cancel.onclick = closeModal;
+    actions.appendChild(cancel); m.appendChild(actions);
+    overlay.appendChild(m);
+    overlay.classList.remove("hidden");
+  }catch(e){ toast("Fetch models: "+e.message,"err"); }
+}
+function renderTeams(c){
+  var panel = el("div","panel");
+  var head = el("div","panel-head");
+  head.appendChild(el("h3",null,"Teams"));
+  var add = el("button","btn primary sm","New team"); add.onclick = openTeamModal;
+  head.appendChild(add);
+  panel.appendChild(head);
+  if(!teams.length){ panel.appendChild(emptyBox("No teams yet.")); }
+  else{
+    var wrap = el("div","table-wrap");
+    var t = el("table");
+    t.appendChild(thead(["ID","Name","Budget","Enabled",""]));
+    var tb = el("tbody");
+    teams.forEach(function(tm){
+      var tr = el("tr");
+      tr.appendChild(el("td","mono",String(tm.id)));
+      tr.appendChild(el("td",null,tm.name));
+      tr.appendChild(el("td",null, tm.budget ? budgetText(tm.budget) : "—"));
+      var en = el("td"); en.appendChild(pill(tm.enabled?"on":"off", tm.enabled?"on":"off")); tr.appendChild(en);
+      var td = el("td"); var b = el("button","btn sm ghost","Edit"); b.onclick = function(){ openTeamModal(tm); }; td.appendChild(b); tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); wrap.appendChild(t); panel.appendChild(wrap);
+  }
+  c.appendChild(panel);
+}
+function budgetText(b){ return (b.period || "?") + " · " + fmt(b.max_tokens) + " tokens"; }
+function openTeamModal(tm){
+  tm = tm || {};
+  var overlay = $("modal-overlay");
+  overlay.innerHTML = "";
+  var m = el("div","modal");
+  m.appendChild(el("h3",null, tm.id ? "Edit team" : "Create team"));
+  var f = el("div","field"); f.appendChild(el("label",null,"Team name"));
+  var nameInp = el("input"); nameInp.value = tm.name || ""; f.appendChild(nameInp); m.appendChild(f);
+  var f2 = el("div","field"); f2.appendChild(el("label",null,"Budget (JSON, optional)"));
+  var budInp = el("textarea");
+  budInp.value = tm.budget ? JSON.stringify(tm.budget) : '{"period":"month","max_tokens":1000000}';
+  f2.appendChild(budInp); m.appendChild(f2);
+  var f3 = el("div","field");
+  var enLabel = el("label","chip"+(tm.enabled===false?"":" selected"));
+  var cb = el("input"); cb.type="checkbox"; cb.checked = tm.enabled !== false;
+  enLabel.appendChild(cb); enLabel.appendChild(document.createTextNode("Enabled"));
+  f3.appendChild(enLabel); m.appendChild(f3);
+  var actions = el("div","actions");
+  var cancel = el("button","btn","Cancel"); cancel.onclick = closeModal;
+  var save = el("button","btn primary", tm.id?"Save":"Create");
+  save.onclick = async function(){
+    var payload = {name:nameInp.value.trim(), enabled:cb.checked};
+    var bt = budInp.value.trim();
+    if(bt){ try{ payload.budget = JSON.parse(bt); }catch(e){ toast("Invalid budget JSON: "+e.message,"err"); return; } }
+    try{
+      if(tm.id){ await api("/admin/teams/"+tm.id,"PATCH",payload); }
+      else { await api("/admin/teams","POST",payload); }
+      closeModal(); toast("Team saved"); teams = await api("/admin/teams","GET"); renderTeams($("content"));
+    }catch(e){ toast("Save failed: "+e.message,"err"); }
+  };
+  actions.appendChild(cancel); actions.appendChild(save);
+  m.appendChild(actions);
+  overlay.appendChild(m); overlay.classList.remove("hidden");
+}
+function renderKeys(c){
+  var panel = el("div","panel");
+  var head = el("div","panel-head");
+  head.appendChild(el("h3",null,"API keys"));
+  var add = el("button","btn primary sm","New key"); add.onclick = openKeyModal;
+  head.appendChild(add);
+  panel.appendChild(head);
+  if(!keys.length){ panel.appendChild(emptyBox("No keys yet.")); }
+  else{
+    var wrap = el("div","table-wrap");
+    var t = el("table");
+    t.appendChild(thead(["ID","Prefix","Owner","Team","Allowed models","Enabled",""]));
+    var tb = el("tbody");
+    keys.forEach(function(k){
+      var tr = el("tr");
+      tr.appendChild(el("td","mono",String(k.id)));
+      tr.appendChild(el("td","mono",k.prefix));
+      tr.appendChild(el("td",null,k.owner));
+      tr.appendChild(el("td",null,k.team_name + " ("+k.team_id+")"));
+      tr.appendChild(el("td",null, k.allowed_models.length?k.allowed_models.join(", "):"all"));
+      var en = el("td"); en.appendChild(pill(k.enabled?"on":"off", k.enabled?"on":"off")); tr.appendChild(en);
+      var td = el("td"); var b = el("button","btn sm danger","Disable"); b.onclick = function(){ disableKey(k); }; td.appendChild(b); tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); wrap.appendChild(t); panel.appendChild(wrap);
+  }
+  c.appendChild(panel);
+}
+function openKeyModal(){
+  var overlay = $("modal-overlay");
+  overlay.innerHTML = "";
+  var m = el("div","modal");
+  m.appendChild(el("h3",null,"Create API key"));
+  var f = el("div","field"); f.appendChild(el("label",null,"Team"));
+  var teamSel = el("select");
+  teams.forEach(function(tm){ var o=el("option",null,tm.name+" (id "+tm.id+")"); o.value=tm.id; teamSel.appendChild(o); });
+  f.appendChild(teamSel); m.appendChild(f);
+  var f2 = el("div","field"); f2.appendChild(el("label",null,"Owner"));
+  var ownerInp = el("input"); ownerInp.placeholder="alice@example.com"; f2.appendChild(ownerInp); m.appendChild(f2);
+  var f3 = el("div","field"); f3.appendChild(el("label",null,"Allowed models (comma-separated, empty = all)"));
+  var modelsInp = el("input"); modelsInp.placeholder="gpt-4o,deepseek-v3"; f3.appendChild(modelsInp); m.appendChild(f3);
+  var actions = el("div","actions");
+  var cancel = el("button","btn","Cancel"); cancel.onclick = closeModal;
+  var save = el("button","btn primary","Create");
+  save.onclick = async function(){
+    var payload = {
+      team_id:Number(teamSel.value),
+      owner:ownerInp.value.trim(),
+      allowed_models:modelsInp.value.split(",").map(function(s){return s.trim();}).filter(Boolean)
+    };
+    try{
+      var data = await api("/admin/keys","POST",payload);
+      closeModal();
+      overlay.innerHTML = "";
+      var m2 = el("div","modal");
+      m2.appendChild(el("h3",null,"Key created — copy it now"));
+      m2.appendChild(el("div","key-reveal", data.key));
+      m2.appendChild(el("p","hint","This plaintext key is shown <b>only once</b>. Store it securely."));
+      var actions2 = el("div","actions");
+      var done = el("button","btn primary","Done"); done.onclick = closeModal;
+      actions2.appendChild(done); m2.appendChild(actions2);
+      overlay.appendChild(m2); overlay.classList.remove("hidden");
+      keys = await api("/admin/keys","GET");
+    }catch(e){ toast("Create key failed: "+e.message,"err"); }
+  };
+  actions.appendChild(cancel); actions.appendChild(save);
+  m.appendChild(actions);
+  overlay.appendChild(m); overlay.classList.remove("hidden");
+}
+async function disableKey(k){
+  if(!confirm("Disable key " + k.prefix + " for " + k.owner + "?")) return;
+  try{ await api("/admin/keys/"+k.id,"DELETE"); toast("Key disabled"); keys = await api("/admin/keys","GET"); renderKeys($("content")); }
+  catch(e){ toast(e.message,"err"); }
+}
+async function renderUsage(c){
+  var stats = [];
+  try{ stats = await api(mode==="admin" ? "/admin/stats?days=30" : "/portal/me/stats?days=30","GET"); }
+  catch(e){ stats=[]; }
+  var panel = el("div","panel");
+  panel.appendChild(el("h3",null,"Token usage — last 30 days"));
+  panel.appendChild(el("p","hint","Stacked by model, per day."));
+  if(stats.length){ panel.appendChild(chartBars(stats)); }
+  else { panel.appendChild(emptyBox("No usage data yet.")); }
+  c.appendChild(panel);
+}
+async function renderLogs(c){
+  var panel = el("div","panel");
+  panel.appendChild(el("h3",null,"Recent requests"));
+  panel.appendChild(el("p","hint","Most recent 1000 requests."));
+  panel.appendChild(await logsTable(null));
+  c.appendChild(panel);
+}
+async function logsTable(teamFilter){
+  var qs = "";
+  if(teamFilter) qs = "?team=" + teamFilter;
+  var rows = [];
+  try{ rows = await api((mode==="admin" ? "/admin/usage" : "/portal/me/usage") + qs,"GET"); }catch(e){ rows=[]; }
+  var wrap = el("div","table-wrap");
+  var t = el("table");
+  t.appendChild(thead(["Time","Model","Status","Input","Output","TTFB","Total","Request ID"]));
+  var tb = el("tbody");
+  if(!rows.length){ wrap.appendChild(emptyBox("No requests logged yet.")); return wrap; }
+  rows.slice(0,200).forEach(function(r){
+    var tr = el("tr");
+    tr.appendChild(el("td","mono",fmtTs(r.ts)));
+    tr.appendChild(el("td",null,r.model));
+    var st = el("td"); st.appendChild(pill(String(r.status), r.status===200?"on":(r.status>=500?"off":"warn"))); tr.appendChild(st);
+    tr.appendChild(el("td","num",fmt(r.input_tokens)));
+    tr.appendChild(el("td","num",fmt(r.output_tokens)));
+    tr.appendChild(el("td","num", r.ttfb_ms+"ms"));
+    tr.appendChild(el("td","num", r.total_ms+"ms"));
+    tr.appendChild(el("td","mono", r.request_id));
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  wrap.appendChild(t);
+  return wrap;
+}
+function chartBars(stats){
+  var days = {};
+  stats.forEach(function(s){ (days[s.day] = days[s.day] || {})[s.model] = s.input_tokens + s.output_tokens; });
+  var dayKeys = Object.keys(days).map(Number).sort(function(a,b){return a-b;});
+  var models = [];
+  stats.forEach(function(s){ if(models.indexOf(s.model)<0) models.push(s.model); });
+  var colors = ["#7c6cf0","#22d3ee","#34d399","#fbbf24","#f87171","#a78bfa","#fb7185","#38bdf8"];
+  function color(i){ return colors[i % colors.length]; }
+  var max = 1;
+  dayKeys.forEach(function(d){ var sum=0; models.forEach(function(m){ sum += (days[d][m]||0); }); if(sum>max)max=sum; });
+  var W = 760, H = 260, padL = 56, padB = 26, padT = 12;
+  var cw = W - padL, ch = H - padT - padB;
+  var bw = Math.min(34, cw / Math.max(dayKeys.length,1) * 0.7);
+  var svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.setAttribute("viewBox","0 0 "+W+" "+H);
+  svg.setAttribute("width","100%"); svg.setAttribute("height",H);
+  for(var g=0; g<=4; g++){
+    var y = padT + ch - (ch*g/4);
+    var line = document.createElementNS("http://www.w3.org/2000/svg","line");
+    line.setAttribute("x1",padL); line.setAttribute("x2",W); line.setAttribute("y1",y); line.setAttribute("y2",y);
+    line.setAttribute("stroke","#2c2c38"); line.setAttribute("stroke-width","1");
+    svg.appendChild(line);
+    var lab = document.createElementNS("http://www.w3.org/2000/svg","text");
+    lab.setAttribute("x",padL-8); lab.setAttribute("y",y+4); lab.setAttribute("text-anchor","end");
+    lab.setAttribute("fill","#6b6b80"); lab.setAttribute("font-size","10");
+    lab.textContent = fmtNum(max*g/4);
+    svg.appendChild(lab);
+  }
+  var n = dayKeys.length;
+  var totalW = n * bw;
+  var step = n>1 ? cw/(n-1) : 0;
+  dayKeys.forEach(function(d, i){
+    var x = n>1 ? padL + i*step : padL + cw/2 - bw/2;
+    var yBottom = padT + ch;
+    var yTop = yBottom;
+    models.forEach(function(m, mi){
+      var v = days[d][m]||0;
+      if(!v) return;
+      var h = (v/max)*ch;
+      var rect = document.createElementNS("http://www.w3.org/2000/svg","rect");
+      rect.setAttribute("x", x); rect.setAttribute("y", yBottom - (yBottom - yTop) - h);
+      rect.setAttribute("width", bw); rect.setAttribute("height", h);
+      rect.setAttribute("fill", color(mi)); rect.setAttribute("rx","2");
+      svg.appendChild(rect);
+      yTop = yBottom - (yBottom - yTop) - h;
+    });
+    if(n<=16 || i%Math.ceil(n/14)===0){
+      var lab = document.createElementNS("http://www.w3.org/2000/svg","text");
+      lab.setAttribute("x", x + bw/2); lab.setAttribute("y", H-8); lab.setAttribute("text-anchor","middle");
+      lab.setAttribute("fill","#6b6b80"); lab.setAttribute("font-size","10");
+      lab.textContent = fmtDate(d).slice(5);
+      svg.appendChild(lab);
     }
-
-    function adminKey() { return val('admin-key'); }
-
-    function requireAdminKey() {
-      const key = adminKey();
-      if (!key) throw new Error('Enter ADMIN_MASTER_KEY first. Default local key is brightoIsGreat@2026.');
-      return key;
-    }
-
-    function headers() {
-      return { 'Content-Type': 'application/json', 'x-admin-key': requireAdminKey() };
-    }
-
-    async function api(path, method = 'GET', body) {
-      const res = await fetch(path, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined });
-      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
-      if (res.status === 204) return null;
-      return res.json();
-    }
-
-    function setPill(id, text, kind) {
-      const el = byId(id);
-      el.textContent = text;
-      el.className = `pill ${kind || ''}`.trim();
-    }
-
-    async function checkRuntime() {
-      await Promise.all([
-        fetch('/healthz').then(r => setPill('health-pill', `health: ${r.ok ? 'ok' : r.status}`, r.ok ? 'good' : 'bad')).catch(() => setPill('health-pill', 'health: error', 'bad')),
-        fetch('/readyz').then(r => setPill('ready-pill', `ready: ${r.ok ? 'ready' : r.status}`, r.ok ? 'good' : 'bad')).catch(() => setPill('ready-pill', 'ready: error', 'bad')),
-      ]);
-    }
-
-    async function loadEverything() {
-      try {
-        requireAdminKey();
-        await checkRuntime();
-        await loadBackends();
-        await loadRoutes();
-        flash('Dashboard loaded.');
-      } catch (e) {
-        flash(String(e), 'bad');
-      }
-    }
-
-    function td(text, className) {
-      const cell = document.createElement('td');
-      cell.textContent = text == null ? '' : String(text);
-      if (className) cell.className = className;
-      return cell;
-    }
-
-    function fillBackendForm(row) {
-      byId('backend-id').value = row.id;
-      byId('backend-base-url').value = row.base_url;
-      byId('backend-key-ref').value = row.api_key_ref;
-      byId('backend-format').value = row.format;
-      byId('backend-max-inflight').value = row.max_inflight;
-      byId('backend-enabled').checked = row.enabled;
-      byId('models-backend-id').value = row.id;
-      flash(`Selected backend ${row.name}.`);
-    }
-
-    async function loadBackends() {
-      const tbody = document.querySelector('#backend-table tbody');
-      tbody.innerHTML = '';
-      try {
-        const data = await api('/admin/backends');
-        backendRows = new Map(data.map(row => [row.id, row]));
-        for (const row of data) {
-          const tr = document.createElement('tr');
-          tr.appendChild(td(row.id));
-          tr.appendChild(td(row.name));
-          tr.appendChild(td(row.enabled ? 'yes' : 'no'));
-          tr.appendChild(td(row.key_resolved ? 'yes' : 'no'));
-          tr.appendChild(td(row.base_url, 'wrap'));
-          tr.appendChild(td(row.format));
-          const action = document.createElement('td');
-          const button = document.createElement('button');
-          button.className = 'secondary';
-          button.type = 'button';
-          button.textContent = 'Edit';
-          button.onclick = () => fillBackendForm(row);
-          action.appendChild(button);
-          tr.appendChild(action);
-          tbody.appendChild(tr);
-        }
-        const enabled = data.filter(row => row.enabled).length;
-        const ready = data.filter(row => row.key_resolved).length;
-        setPill('provider-pill', `providers: ${data.length}, ready: ${ready}, enabled: ${enabled}`, data.length ? 'good' : 'warn');
-        show('backend-result', `Loaded ${data.length} providers.`);
-      } catch (e) {
-        show('backend-result', String(e));
-        throw e;
-      }
-    }
-
-    async function updateBackend() {
-      try {
-        const id = Number(val('backend-id'));
-        if (!Number.isInteger(id) || id <= 0) throw new Error('Backend ID must be a positive integer.');
-        const payload = { enabled: byId('backend-enabled').checked };
-        const base = val('backend-base-url');
-        const keyRef = val('backend-key-ref');
-        const format = val('backend-format');
-        const maxInflight = val('backend-max-inflight');
-        if (base) payload.base_url = base;
-        if (keyRef) payload.api_key_ref = keyRef;
-        if (format) payload.format = format;
-        if (maxInflight) payload.max_inflight = Number(maxInflight);
-        const data = await api(`/admin/backends/${id}`, 'PATCH', payload);
-        show('backend-result', data);
-        await loadBackends();
-        flash('Backend saved and router config reloaded.');
-      } catch (e) {
-        show('backend-result', String(e));
-      }
-    }
-
-    async function fetchModels() {
-      const box = byId('models-list');
-      box.innerHTML = '';
-      try {
-        const id = Number(val('models-backend-id'));
-        if (!Number.isInteger(id) || id <= 0) throw new Error('Backend ID must be a positive integer.');
-        const data = await api(`/admin/backends/${id}/models`);
-        byId('route-backends').value = String(id);
-        if (!data.models.length) {
-          box.textContent = 'Provider returned no models. Type a model name manually.';
-          return;
-        }
-        for (const model of data.models) {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'model-chip';
-          btn.textContent = model;
-          btn.onclick = () => { byId('route-model').value = model; byId('route-backends').value = String(id); };
-          box.appendChild(btn);
-        }
-        flash(`Fetched ${data.models.length} models from ${data.backend_name}.`);
-      } catch (e) {
-        box.textContent = String(e);
-      }
-    }
-
-    function parseIdList(text) {
-      const ids = text.split(',').map(v => Number(v.trim())).filter(v => !Number.isNaN(v));
-      if (!ids.length || ids.some(v => !Number.isInteger(v) || v <= 0)) throw new Error('Backend IDs must be positive integers, for example 1 or 1,2,3.');
-      return ids;
-    }
-
-    async function createRouteFromInputs() {
-      try {
-        const model = val('route-model');
-        if (!model) throw new Error('Model name is required.');
-        const backendIds = parseIdList(val('route-backends'));
-        const charsPerToken = Number(val('route-chars-per-token') || '4');
-        const timeout = Number(val('route-timeout') || '180');
-        if (!Number.isFinite(charsPerToken) || charsPerToken <= 0) throw new Error('Chars per token must be greater than zero.');
-        if (!Number.isInteger(timeout) || timeout <= 0) throw new Error('First byte timeout must be a positive integer.');
-        const payload = { model_name: model, backend_ids: backendIds, chars_per_token: charsPerToken, first_byte_timeout: timeout };
-        const data = await api('/admin/routes', 'POST', payload);
-        show('route-result', data);
-        await loadRoutes();
-        flash('Route saved and router config reloaded.');
-      } catch (e) {
-        show('route-result', String(e));
-      }
-    }
-
-    function fillRouteForm(row) {
-      byId('route-model').value = row.model_name;
-      byId('route-backends').value = row.backend_ids.join(',');
-      byId('route-chars-per-token').value = row.chars_per_token;
-      byId('route-timeout').value = row.first_byte_timeout;
-      flash(`Selected route ${row.model_name}.`);
-    }
-
-    async function loadRoutes() {
-      const tbody = document.querySelector('#route-table tbody');
-      tbody.innerHTML = '';
-      try {
-        const data = await api('/admin/routes');
-        for (const row of data) {
-          const tr = document.createElement('tr');
-          tr.appendChild(td(row.model_name));
-          tr.appendChild(td(row.backend_ids.join(',')));
-          tr.appendChild(td(row.fallback_backend_id));
-          tr.appendChild(td(row.chars_per_token));
-          tr.appendChild(td(`${row.first_byte_timeout}s`));
-          const action = document.createElement('td');
-          const button = document.createElement('button');
-          button.className = 'secondary';
-          button.type = 'button';
-          button.textContent = 'Edit';
-          button.onclick = () => fillRouteForm(row);
-          action.appendChild(button);
-          tr.appendChild(action);
-          tbody.appendChild(tr);
-        }
-        show('routes-result', data.length ? `Loaded ${data.length} routes.` : 'No routes yet. Create one after enabling a provider.');
-      } catch (e) {
-        show('routes-result', String(e));
-      }
-    }
-
-    function parseOptionalJson(id) {
-      const text = val(id);
-      if (!text) return undefined;
-      try { return JSON.parse(text); } catch (e) { throw new Error(`${id} contains invalid JSON: ${e.message}`); }
-    }
-
-    async function createTeam() {
-      try {
-        const name = val('team-name');
-        if (!name) throw new Error('Team name is required.');
-        const payload = { name, enabled: byId('team-enabled').checked };
-        const budget = parseOptionalJson('team-budget');
-        if (budget !== undefined) payload.budget = budget;
-        const data = await api('/admin/teams', 'POST', payload);
-        show('team-result', data);
-        byId('key-team-id').value = data.id;
-        flash(`Team ${data.name} created.`);
-      } catch (e) {
-        show('team-result', String(e));
-      }
-    }
-
-    async function createKey() {
-      try {
-        const teamId = Number(val('key-team-id'));
-        const owner = val('key-owner');
-        if (!Number.isInteger(teamId) || teamId <= 0) throw new Error('Team ID must be a positive integer.');
-        if (!owner) throw new Error('Owner is required.');
-        const payload = {
-          team_id: teamId,
-          owner,
-          allowed_models: val('key-models').split(',').map(v => v.trim()).filter(Boolean),
-        };
-        const budget = parseOptionalJson('key-budget');
-        if (budget !== undefined) payload.budget = budget;
-        for (const [field, id] of [['rpm_limit', 'key-rpm'], ['concurrency_limit', 'key-concurrency'], ['expires_at', 'key-expires']]) {
-          const text = val(id);
-          if (text) payload[field] = Number(text);
-        }
-        const data = await api('/admin/keys', 'POST', payload);
-        show('key-result', data);
-        const note = byId('key-note');
-        note.className = 'notice good';
-        note.textContent = 'Copy this API key now. It is returned only once.';
-        flash('API key created. Copy it now.');
-      } catch (e) {
-        show('key-result', String(e));
-      }
-    }
-
-    async function patchTeam() {
-      try {
-        const id = Number(val('patch-team-id'));
-        if (!Number.isInteger(id) || id <= 0) throw new Error('Team ID must be a positive integer.');
-        const payload = { budget: parseOptionalJson('patch-budget') };
-        const data = await api(`/admin/teams/${id}`, 'PATCH', payload);
-        show('patch-result', data);
-        flash('Team budget updated and router config reloaded.');
-      } catch (e) {
-        show('patch-result', String(e));
-      }
-    }
-
-    async function loadUsage() {
-      try {
-        requireAdminKey();
-        const qs = new URLSearchParams();
-        for (const [key, id] of [['team', 'usage-team'], ['from', 'usage-from'], ['to', 'usage-to']]) {
-          const text = val(id);
-          if (text) qs.set(key, text);
-        }
-        const data = await api(`/admin/usage?${qs.toString()}`);
-        const tbody = document.querySelector('#usage-table tbody');
-        tbody.innerHTML = '';
-        for (const row of data) {
-          const tr = document.createElement('tr');
-          tr.appendChild(td(new Date(row.ts * 1000).toLocaleString()));
-          tr.appendChild(td(row.request_id, 'wrap'));
-          tr.appendChild(td(row.team_id));
-          tr.appendChild(td(row.model));
-          tr.appendChild(td(row.status));
-          tr.appendChild(td(row.input_tokens));
-          tr.appendChild(td(row.output_tokens));
-          tr.appendChild(td(`${row.ttfb_ms} ms`));
-          tr.appendChild(td(`${row.total_ms} ms`));
-          tbody.appendChild(tr);
-        }
-        show('usage-result', data.length ? `Loaded ${data.length} usage rows.` : 'No usage rows yet.');
-      } catch (e) {
-        show('usage-result', String(e));
-      }
-    }
-
-    checkRuntime();
-  </script>
+  });
+  var wrap = el("div","chart-wrap");
+  wrap.appendChild(svg);
+  var legend = el("div","legend");
+  models.forEach(function(m, i){
+    var s = el("span");
+    var dot = el("i"); dot.style.background = color(i);
+    s.appendChild(dot);
+    s.appendChild(document.createTextNode(m));
+    legend.appendChild(s);
+  });
+  wrap.appendChild(legend);
+  return wrap;
+}
+function fmtNum(v){
+  if(v>=1000000000) return (v/1000000000).toFixed(1)+"B";
+  if(v>=1000000) return (v/1000000).toFixed(1)+"M";
+  if(v>=1000) return (v/1000).toFixed(1)+"k";
+  return String(Math.round(v));
+}
+function thead(cols){
+  var tr = el("tr");
+  cols.forEach(function(h){ tr.appendChild(el("th",null,h)); });
+  var theadEl = document.createElement("thead");
+  theadEl.appendChild(tr);
+  return theadEl;
+}
+function pill(text, kind){
+  var p = el("span","pill "+kind);
+  var dot = el("span","dot");
+  p.appendChild(dot);
+  p.appendChild(document.createTextNode(text));
+  return p;
+}
+function closeModal(){ $("modal-overlay").classList.add("hidden"); $("modal-overlay").innerHTML=""; }
+function toggleSidebar(){ $("sidebar").classList.toggle("open"); }
+setMode("admin");
+</script>
 </body>
 </html>
