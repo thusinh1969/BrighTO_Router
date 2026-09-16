@@ -94,3 +94,20 @@ BENCH_B10=0 \
 REQUIRE_PASS=0 \
 python3 scripts/bench_real.py
 ```
+
+## Docker image verification
+
+After this commit, the Docker runtime image was rebuilt and pushed for tag parity:
+
+```bash
+DOCKER_BUILDKIT=1 docker build -t thusinh1969/brighto_airouter:v1 . && docker push thusinh1969/brighto_airouter:v1
+```
+
+Result:
+
+```text
+image sha256:797139d67babced41a5a43c7748f8f357d0e02168da35d2351cf867359a39cde
+v1 digest sha256:08904ab54e1bc42c7008e62f5e10310499201557f461692672b7ce60ebbe1a61
+```
+
+The digest stayed the same because the runtime image copies only `brighto-router`; this change affected docs, benchmark scripts, and the benchmark mock server.
