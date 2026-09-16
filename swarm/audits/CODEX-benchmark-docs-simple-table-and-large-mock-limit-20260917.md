@@ -111,3 +111,28 @@ v1 digest sha256:08904ab54e1bc42c7008e62f5e10310499201557f461692672b7ce60ebbe1a6
 ```
 
 The digest stayed the same because the runtime image copies only `brighto-router`; this change affected docs, benchmark scripts, and the benchmark mock server.
+
+## Follow-up — warm-up command and smoke wording
+
+A follow-up harness audit found that `oha_run()` built the warm-up command with the `-D body URL` pair twice and ignored warm-up failures. The measured run still wrote raw JSON, but a release harness should not have ambiguous warm-up behavior.
+
+Fix applied:
+
+- Warm-up now sends exactly one target request shape.
+- Warm-up non-zero exit now fails loudly with payload/concurrency context and stderr tail.
+- Smoke console output no longer says `release thresholds pass: False`; it says release thresholds are not enforced in smoke and points to `BASELINE_BOOTSTRAP=1 ./start.sh gate` for release proof.
+
+Evidence:
+
+```bash
+python3 -m py_compile scripts/bench_real.py
+./start.sh smoke
+```
+
+Observed latest smoke artifact:
+
+```text
+artifacts: /mnt/data02/BrigTO_Router/bench/results/20260917-025936
+smoke command pass: True
+release thresholds: not enforced in smoke; run BASELINE_BOOTSTRAP=1 ./start.sh gate for release proof
+```

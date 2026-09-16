@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""SOTA benchmark orchestrator + measurement for BrighTO-Router (mock upstream + Postgres ledger).
+"""Benchmark orchestrator for BrighTO-Router with a local mock backend and PostgreSQL ledger.
 
-Chứng minh router-minus-direct overhead trên payload 1K/50K/200K ở concurrency 1/50/200,
-delta TTFB streaming, và throughput B6 target-rate (conc 200 thật). Ghi raw `oha` JSON cho MỌI
-run (không ghi đè direct bằng router) + `gate.json` audit-friendly.
+It measures router-minus-direct overhead for 1k/50k/200k payloads at concurrency 1/50/200,
+streaming time-to-first-byte delta, B6 target-rate throughput, and B10 PostgreSQL ledger lag.
+Every measured run writes raw oha JSON plus summary.json and gate.json.
 
-Cách chạy:
-    # smoke ngắn: chứng minh orchestration + artifact, KHÔNG phải số SOTA (không fail ngưỡng)
+Smoke example:
     DUR=1s WARM=1s RUNS=1 CONCS=50 BENCH_B6=0 BENCH_B10=1 B10_TARGET_RPS=200 REQUIRE_PASS=0 python3 scripts/bench_real.py
-    # full release gate
-    python3 scripts/bench_real.py
+
+Full release-gate example:
+    BASELINE_BOOTSTRAP=1 python3 scripts/bench_real.py
 
 Env knobs: DUR (60s), WARM (15s), RUNS (3), CONCS ("1,50,200"), REQUIRE_PASS ("1"),
             ADMIN_MASTER_KEY (bench-admin), MODEL (mock-model), BENCH_RPS_1K/50K/200K, B6_TARGET_RPS,
             BENCH_PAYLOADS ("1k,50k,200k"), BENCH_STREAM_PAYLOADS ("1k-stream,50k-stream,200k-stream"),
             BENCH_B6 ("1"), BENCH_B10 ("1"), B10_TARGET_RPS, BENCH_BASELINE (bench/baseline.json),
             BASELINE_BOOTSTRAP ("0").
-Cần: docker, sqlx-cli, psql, oha, cargo. Build target/release/brighto-router + brighto-router-mock.
+Requires: docker, sqlx-cli, psql, oha, cargo.
 """
 import hashlib
 import json
@@ -751,7 +751,7 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                 print("release gate pass:", release_pass)
             else:
                 print("smoke command pass:", command_pass)
-                print("release thresholds pass:", release_pass, "(not enforced in smoke)")
+                print("release thresholds: not enforced in smoke; run BASELINE_BOOTSTRAP=1 ./start.sh gate for release proof")
 
             if REQUIRE_PASS and not release_pass:
                 sys.exit(1)
