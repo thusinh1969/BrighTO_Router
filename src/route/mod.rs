@@ -524,6 +524,7 @@ mod tests {
             enabled: true,
             provider_key_ref: None,
             auth_mode: "bearer".into(),
+            protocol: "openai_chat".into(),
             provider_key: None,
         }
     }
@@ -605,6 +606,7 @@ mod tests {
             enabled: true,
             provider_key_ref: None,
             auth_mode: "bearer".into(),
+            protocol: "openai_chat".into(),
             provider_key: None,
         }
     }

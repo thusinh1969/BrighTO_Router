@@ -25,7 +25,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 
 use crate::auth;
 use crate::config::{DbConfigLoader, resolve_backend_key};
-use crate::contract::{ApiKey, AppState, Budget, KeyHash, ModelRoute};
+use crate::contract::{ApiKey, AppState, Budget, KeyHash, ModelRoute, ProviderProtocol};
 
 // ===== Admin state =====
 
@@ -420,6 +420,8 @@ struct UpsertRoute {
     provider_key: Option<String>,
     /// bearer | anthropic | none
     auth_mode: Option<String>,
+    /// openai_chat | openai_completions | openai_embeddings | anthropic_messages | local_openai_chat | custom_openai_chat
+    protocol: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -436,6 +438,7 @@ struct RouteResponse {
     price_output_per_mtok_usd: Option<f64>,
     enabled: bool,
     auth_mode: String,
+    protocol: String,
 }
 
 #[derive(Deserialize)]
@@ -619,7 +622,7 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
     let rows = sqlx::query::<sqlx::Postgres>(
         "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
-         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, auth_mode \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, auth_mode, protocol \
          FROM model_routes ORDER BY model_name",
     )
     .fetch_all(pool)
@@ -641,6 +644,7 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
             price_output_per_mtok_usd: row.try_get("price_output_per_mtok_usd")?,
             enabled: row.try_get("enabled")?,
             auth_mode: row.try_get("auth_mode")?,
+            protocol: row.try_get("protocol")?,
         });
     }
     Ok(out)
@@ -1076,6 +1080,7 @@ struct ValidatedRoute {
     enabled: bool,
     provider_key_ref: Option<String>,
     auth_mode: String,
+    protocol: String,
 }
 
 fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
@@ -1141,6 +1146,23 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
             ));
         }
     };
+    // Route-level protocol (CODEX taxonomy). Default: anthropic auth -> anthropic_messages,
+    // ngược lại openai_chat. Client có thể ghi đè tường minh.
+    let protocol = match payload
+        .protocol
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(p) => ProviderProtocol::parse(p).as_str().to_string(),
+        None => {
+            if auth_mode == "anthropic" {
+                "anthropic_messages".to_string()
+            } else {
+                "openai_chat".to_string()
+            }
+        }
+    };
     // Ghi provider key (plaintext) ra file secrets nếu được cung cấp; chỉ lưu ref.
     let provider_key_ref = match payload
         .provider_key
@@ -1187,6 +1209,7 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
         enabled,
         provider_key_ref,
         auth_mode,
+        protocol,
     })
 }
 
@@ -1204,6 +1227,7 @@ fn route_response(v: ValidatedRoute) -> RouteResponse {
         price_output_per_mtok_usd: v.price_output_per_mtok_usd,
         enabled: v.enabled,
         auth_mode: v.auth_mode,
+        protocol: v.protocol,
     }
 }
 
@@ -1219,8 +1243,8 @@ async fn upsert_route(
     sqlx::query::<sqlx::Postgres>(
         "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
-         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) \
          ON CONFLICT (model_name) DO UPDATE SET \
          backend_ids = EXCLUDED.backend_ids, fallback_backend_id = EXCLUDED.fallback_backend_id, \
          chars_per_token = EXCLUDED.chars_per_token, first_byte_timeout = EXCLUDED.first_byte_timeout, \
@@ -1228,7 +1252,8 @@ async fn upsert_route(
          max_output_tokens = EXCLUDED.max_output_tokens, \
          price_input_per_mtok_usd = EXCLUDED.price_input_per_mtok_usd, \
          price_output_per_mtok_usd = EXCLUDED.price_output_per_mtok_usd, enabled = EXCLUDED.enabled, \
-         provider_key_ref = EXCLUDED.provider_key_ref, auth_mode = EXCLUDED.auth_mode",
+         provider_key_ref = EXCLUDED.provider_key_ref, auth_mode = EXCLUDED.auth_mode, \
+         protocol = EXCLUDED.protocol",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -1243,6 +1268,7 @@ async fn upsert_route(
     .bind(v.enabled)
     .bind(&v.provider_key_ref)
     .bind(&v.auth_mode)
+    .bind(&v.protocol)
     .execute(pool)
     .await?;
     state.reload_now().await?;
@@ -1279,8 +1305,8 @@ async fn patch_route(
         "UPDATE model_routes SET model_name = $1, backend_ids = $2, fallback_backend_id = $3, \
          chars_per_token = $4, first_byte_timeout = $5, provider_model_name = $6, \
          context_tokens = $7, max_output_tokens = $8, price_input_per_mtok_usd = $9, \
-         price_output_per_mtok_usd = $10, enabled = $11, provider_key_ref = $12, auth_mode = $13 \
-         WHERE model_name = $14",
+         price_output_per_mtok_usd = $10, enabled = $11, provider_key_ref = $12, auth_mode = $13, \
+         protocol = $14 WHERE model_name = $15",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -1295,6 +1321,7 @@ async fn patch_route(
     .bind(v.enabled)
     .bind(&v.provider_key_ref)
     .bind(&v.auth_mode)
+    .bind(&v.protocol)
     .bind(&old_name)
     .execute(pool)
     .await?;
