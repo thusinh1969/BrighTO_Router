@@ -144,6 +144,8 @@ async function inspectViewport(browser, name, width, height) {
       const cells = row ? [...row.querySelectorAll('td')] : [];
       const firstCell = cells[0] || null;
       const statusCell = cells[1] || null;
+      const providerCell = cells[2] || null;
+      const providerModelCell = cells[3] || null;
       const actions = row ? row.querySelector('td.actions') : null;
       const modelText = document.body.innerText.includes(model);
       const sidebar = document.querySelector('.sidebar');
@@ -171,6 +173,8 @@ async function inspectViewport(browser, name, width, height) {
         row: detail(row),
         firstCell: detail(firstCell),
         statusCell: detail(statusCell),
+        providerCell: detail(providerCell),
+        providerModelCell: detail(providerModelCell),
         actions: detail(actions),
         sidebar: detail(sidebar),
         sidebarOpen: sidebar ? sidebar.classList.contains('open') : false,
@@ -227,6 +231,13 @@ async function inspectViewport(browser, name, width, height) {
         fail('visual', `${name}: long public model overflows without ellipsis`, c, 'Wrap model text in a truncating element/cell: overflow:hidden; text-overflow:ellipsis; white-space:nowrap; title=full name; copy action.');
       } else {
         pass('visual', `${name}: public model cell is controlled`, c);
+      }
+      for (const [label, cell] of [['provider', metrics.providerCell], ['provider model', metrics.providerModelCell]]) {
+        if (cell && cell.scrollWidth > cell.clientWidth + 4 && !(cell.overflow === 'hidden' && cell.textOverflow === 'ellipsis')) {
+          fail('visual', `${name}: ${label} cell overflows into the next column`, cell, 'Provider and provider-model cells must use the same truncation pattern as public model: overflow hidden, ellipsis, title/copy where useful.');
+        } else {
+          pass('visual', `${name}: ${label} cell is controlled`, cell);
+        }
       }
       const a = metrics.actions;
       if (a && a.scrollWidth > a.clientWidth + 4) {
