@@ -159,6 +159,10 @@ async function inspectPage(page, label) {
       const r = node.getBoundingClientRect();
       return { text: (node.textContent || '').trim(), x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
     });
+    const chartDataBars = [...document.querySelectorAll('#content .chart-data-bar')].map((node) => {
+      const r = node.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+    });
     const sectionPositions = [...document.querySelectorAll('#content h3, #content .diagnostic-details summary b')].map((node) => {
       const r = node.getBoundingClientRect();
       return { text: (node.innerText || node.textContent || '').trim(), y: Math.round(r.y) };
@@ -246,6 +250,7 @@ async function inspectPage(page, label) {
       tableStats,
       legendStats,
       chartValueLabels,
+      chartDataBars,
       sectionPositions,
       diagnosticDetails,
       opsStatus,
@@ -475,6 +480,10 @@ async function runViewport(browser, name, width, height) {
     }
     if (['dashboard', 'usage'].includes(view) && (metrics.legendStats || []).length && !(metrics.chartValueLabels || []).some((l) => /^\d|[KMB]/.test(l.text))) {
       fail(`${name}/${view}: sparse chart bars need visible value labels`, metrics);
+    }
+    if (!mobile && ['dashboard', 'usage'].includes(view) && (metrics.chartDataBars || []).length > 0 && (metrics.chartDataBars || []).length <= 3) {
+      const skinnyBars = (metrics.chartDataBars || []).filter((b) => b.width < 44);
+      if (skinnyBars.length) fail(`${name}/${view}: sparse desktop chart bars are too skinny to read`, { skinnyBars, metrics });
     }
     if (view === 'dashboard') {
       const speed = (metrics.opsStatus || []).find((s) => s.label === 'Speed');
