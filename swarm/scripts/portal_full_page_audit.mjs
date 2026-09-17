@@ -197,6 +197,13 @@ async function runViewport(browser, name, width, height) {
     if (!metrics.title) fail(`${name}/${view}: missing page title`, metrics);
     if (!metrics.panelCount && view !== 'dashboard') fail(`${name}/${view}: no content panels`, metrics);
     if (['providers', 'models', 'teams', 'keys'].includes(view) && (metrics.summaryCards || []).length < 4) fail(`${name}/${view}: missing operational summary cards`, metrics);
+    if (view === 'usage') {
+      if (!(metrics.visibleButtons || []).includes('Show filters')) fail(`${name}/${view}: Usage should default to collapsed filters with a Show filters action`, metrics);
+      for (const label of ['7d', '30d', '90d']) {
+        if (!(metrics.visibleButtons || []).includes(label)) fail(`${name}/${view}: Usage collapsed filters should keep ${label} quick range visible`, metrics);
+      }
+      if (metrics.visibleUsageFilterFields > 0) fail(`${name}/${view}: Usage default filter panel renders too many fields before data`, metrics);
+    }
     if (!mobile && view === 'dashboard') {
       const diag = metrics.diagnosticDetails || [];
       if (!diag.length || diag.some((d) => !d.open)) fail(`${name}/${view}: desktop dashboard diagnostics should stay open`, metrics);
@@ -243,8 +250,6 @@ async function runViewport(browser, name, width, height) {
         if (recentY == null || diagY == null || recentY > diagY) fail(`${name}/${view}: mobile Recent requests should appear before technical diagnostics`, metrics);
       }
       if (view === 'usage') {
-        if (!(metrics.visibleButtons || []).includes('Show filters')) fail(`${name}/${view}: mobile Usage should default to collapsed filters with a Show filters action`, metrics);
-        if (metrics.visibleUsageFilterFields > 0) fail(`${name}/${view}: mobile Usage default filter panel renders too many fields before data`, metrics);
         const breakdown = (metrics.diagnosticDetails || []).filter((d) => /Usage breakdowns/i.test(d.text || ''));
         if (!breakdown.length || breakdown.some((d) => d.open)) fail(`${name}/${view}: mobile Usage breakdowns should default collapsed`, metrics);
         const logsY = (metrics.sectionPositions || []).find((s) => s.text === 'Request logs')?.y;

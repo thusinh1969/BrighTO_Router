@@ -1752,9 +1752,8 @@ async function renderUsage(c,seq){
 
   if(mode==="admin"){
     var activeUsageFilter=usageFilterActive();
-    var mobileUsage=window.innerWidth<=820;
     var filtersOpen=usageFiltersOpen;
-    if(filtersOpen==null) filtersOpen=!(mobileUsage && !activeUsageFilter);
+    if(filtersOpen==null) filtersOpen=activeUsageFilter;
     if(activeUsageFilter && usageFiltersOpen==null) filtersOpen=true;
     var bar=el("div","panel usage-filter-panel"+(filtersOpen?"":" collapsed"));
     var h=el("div","panel-head"); h.appendChild(el("h3",null,"Filters"));
@@ -1784,18 +1783,18 @@ async function renderUsage(c,seq){
         rerender();
       }; row.appendChild(ap);
       bar.appendChild(row);
-      var quick=el("div","range-pills");
-      ["7","30","90"].forEach(function(d){
-        var b=el("button","btn sm ghost",d+"d");
-        b.classList.toggle("active", usageFilter.days===d && !usageFilter.from && !usageFilter.to);
-        b.onclick=function(){ usageFilter.days=d; usageFilter.from=""; usageFilter.to=""; usageFiltersOpen=false; rerender(); };
-        quick.appendChild(b);
-      });
-      var reset=el("button","btn sm ghost","Reset filters");
-      reset.onclick=function(){ usageFilter={model:"",status:"all",team:"",backend:"",key:"",from:"",to:"",days:"30"}; usageFiltersOpen=false; rerender(); };
-      quick.appendChild(reset);
-      bar.appendChild(quick);
     }
+    var quick=el("div","range-pills");
+    ["7","30","90"].forEach(function(d){
+      var b=el("button","btn sm ghost",d+"d");
+      b.classList.toggle("active", usageFilter.days===d && !usageFilter.from && !usageFilter.to);
+      b.onclick=function(){ usageFilter.days=d; usageFilter.from=""; usageFilter.to=""; usageFiltersOpen=false; rerender(); };
+      quick.appendChild(b);
+    });
+    var reset=el("button","btn sm ghost","Reset filters");
+    reset.onclick=function(){ usageFilter={model:"",status:"all",team:"",backend:"",key:"",from:"",to:"",days:"30"}; usageFiltersOpen=false; rerender(); };
+    quick.appendChild(reset);
+    bar.appendChild(quick);
     c.appendChild(bar);
   }
 
