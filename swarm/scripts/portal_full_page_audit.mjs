@@ -378,6 +378,20 @@ async function inspectPage(page, label) {
         scrollHeight: n.scrollHeight,
         clientHeight: n.clientHeight,
       })),
+      keyOwnerScopeLabels: [...document.querySelectorAll('.key-list-table td:nth-child(2) .compact-line, .key-list-table td:nth-child(3) .compact-line')].map((n) => {
+        const st = getComputedStyle(n);
+        return {
+          text: (n.innerText || n.textContent || '').trim(),
+          className: n.className || '',
+          scrollWidth: n.scrollWidth,
+          clientWidth: n.clientWidth,
+          scrollHeight: n.scrollHeight,
+          clientHeight: n.clientHeight,
+          whiteSpace: st.whiteSpace,
+          overflow: st.overflow,
+          textOverflow: st.textOverflow,
+        };
+      }),
       cardRects: [...document.querySelectorAll('#content .grid .card')].map((n) => {
         const r = n.getBoundingClientRect();
         return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), text: (n.innerText || '').trim().slice(0, 80) };
@@ -548,6 +562,8 @@ async function runViewport(browser, name, width, height) {
       if (clippedKeys.length) fail(`${name}/${view}: revealed API keys are clipped`, { clippedKeys, metrics });
       const clippedKeyLimits = (metrics.keyLimitItems || []).filter((r) => r.text && (r.scrollWidth > r.clientWidth + 4 || r.scrollHeight > r.clientHeight + 4));
       if (clippedKeyLimits.length) fail(`${name}/${view}: API key limit labels are clipped`, { clippedKeyLimits, metrics });
+      const clippedKeyOwnerScope = (metrics.keyOwnerScopeLabels || []).filter((r) => r.text && (/nowrap/i.test(r.whiteSpace || '') || /ellipsis/i.test(r.textOverflow || '') || r.scrollWidth > r.clientWidth + 4 || r.scrollHeight > r.clientHeight + 4));
+      if (clippedKeyOwnerScope.length) fail(`${name}/${view}: API key owner/team/scope labels are clipped`, { clippedKeyOwnerScope, metrics });
       if (!mobile) {
         const wrappedDesktopKeys = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && r.keyClientHeight > 24);
         if (wrappedDesktopKeys.length) fail(`${name}/${view}: desktop API keys should fit on one readable line`, { wrappedDesktopKeys, metrics });
