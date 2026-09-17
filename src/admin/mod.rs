@@ -1070,7 +1070,8 @@ async fn delete_backend(
         }
         let ids_json: String = row.try_get("backend_ids")?;
         let ids = parse_backend_ids(&ids_json).unwrap_or_default();
-        if ids.contains(&id) {
+        let fallback: Option<i64> = row.try_get("fallback_backend_id")?;
+        if ids.contains(&id) || fallback == Some(id) {
             active_in_use.push(row.try_get::<String, _>("model_name")?);
         }
     }
