@@ -924,6 +924,7 @@ async function renderDashboard(c,seq){
 
   if(mode==="admin" && routes.length===0){
     c.appendChild(firstRunPanel());
+    return;
   }
 
   var p=el("div","panel");

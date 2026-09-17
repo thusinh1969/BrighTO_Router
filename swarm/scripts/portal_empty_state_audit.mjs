@@ -63,12 +63,18 @@ async function main() {
       launchPanels: [...document.querySelectorAll('#content .panel h3')].filter((h) => (h.textContent || '') === 'Launch checklist').length,
       addFirstModelButtons: [...document.querySelectorAll('#content button')].filter((b) => (b.innerText || '').trim() === 'Add first model').length,
       hasLaunch: !!document.querySelector('.launch-list'),
+      emptyPanels: document.querySelectorAll('#content .empty').length,
+      sectionTitles: [...document.querySelectorAll('#content h3, #content .diagnostic-details summary b')].map((n) => (n.textContent || '').trim()),
     }));
     result.evidence.dashboard = dash;
     if (!dash.hasLaunch || dash.launchSteps !== 3) fail('dashboard empty state must show a 3-step launch checklist', dash);
     if (dash.launchPanels !== 1) fail('dashboard empty state must not render duplicate launch panels', dash);
     if (dash.addFirstModelButtons !== 1) fail('dashboard empty state must show exactly one Add first model CTA', dash);
     if (!dash.buttons.includes('View API keys')) fail('dashboard empty state must include View API keys CTA', dash);
+    if (dash.emptyPanels !== 0) fail('dashboard first-run should not render repeated empty chart/log panels below the launch checklist', dash);
+    if (dash.sectionTitles.some((t) => ['Tokens by model — last 30 days', 'Top consumers', 'Top models', 'Recent requests', 'Technical diagnostics'].includes(t))) {
+      fail('dashboard first-run should stop at Launch checklist instead of showing empty analytics sections', dash);
+    }
 
     await page.getByRole('button', { name: 'Add first model' }).click({ force: true });
     await page.locator('#modal-overlay:not(.hidden) .modal').waitFor({ state: 'visible', timeout: 5000 });
