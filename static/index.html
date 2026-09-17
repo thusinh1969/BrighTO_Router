@@ -1417,11 +1417,16 @@ function openKeyModal(k){
     else { payload.budget=null; }
     if(isEdit) payload.enabled=ecb.checked;
     try{
-      if(isEdit){ await api("/admin/keys/"+k.id,"PATCH",payload); closeModal(); toast("Key saved"); }
+      if(isEdit){
+        await api("/admin/keys/"+k.id,"PATCH",payload);
+        closeModal(); toast("Key saved");
+        try{ keys=await api("/admin/keys","GET"); rerender(); }catch(refreshErr){ toast("Key saved, but list refresh failed: "+refreshErr.message,"err"); }
+      }
       else{
         var data=await api("/admin/keys","POST",payload);
         closeModal();
-        ov.innerHTML=""; var m2=el("div","modal");
+        try{ keys=await api("/admin/keys","GET"); rerender(); }catch(refreshErr){ toast("Key created, but list refresh failed: "+refreshErr.message,"err"); }
+        ov=$("modal-overlay"); ov.innerHTML=""; var m2=el("div","modal");
         m2.appendChild(el("h3",null,"Key created"));
         m2.appendChild(el("div","key-reveal"));
         var span=el("span",null,data.key); m2.querySelector(".key-reveal").appendChild(span);
@@ -1430,7 +1435,6 @@ function openKeyModal(k){
         var act2=el("div","actions"); var done=el("button","btn primary","Done"); done.onclick=closeModal; act2.appendChild(done); m2.appendChild(act2);
         ov.appendChild(m2); ov.classList.remove("hidden");
       }
-      keys=await api("/admin/keys","GET"); rerender();
     }catch(e){ toast((isEdit?"Save":"Create")+" key failed: "+e.message,"err"); }
   };
   act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
