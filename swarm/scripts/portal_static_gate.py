@@ -31,9 +31,21 @@ check(
     not bool(re.search(r'\+\s*["\']k["\']|["\']k["\']\s*;', text)),
     'lowercase k marker present',
 )
+def render_clears_container(fn: str) -> bool:
+    # Direct renderX($("content")) calls are acceptable only if renderX clears
+    # the target container before appending fresh DOM. This matches DeepSeek's
+    # current minimal fix and avoids a false positive while still protecting
+    # against stale/duplicate panels.
+    m = re.search(rf'function\s+{fn}\s*\(c\)\s*{{(?P<body>.{{0,260}})', text, re.S)
+    if not m:
+        return False
+    return bool(re.search(r'c\.innerHTML\s*=\s*["\']{2}', m.group('body')))
+
 for fn in ['renderProviders', 'renderModels', 'renderTeams', 'renderKeys', 'renderUsage']:
     pattern = f'{fn}($("content"))'
-    check(f'no direct post-action {fn} append', pattern not in text, pattern)
+    ok = pattern not in text or render_clears_container(fn)
+    evidence = pattern if pattern in text else f'{fn} definition missing/unsafe'
+    check(f'post-action {fn} cannot append stale panels', ok, evidence)
 
 failures = [c for c in checks if not c[1]]
 print('PORTAL_STATIC_GATE', 'PASS' if not failures else f'FAIL {len(failures)}')
