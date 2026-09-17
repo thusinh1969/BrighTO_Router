@@ -1623,7 +1623,7 @@ function groupPanel(title,cols,rows){
 async function renderSettings(c,seq){
   var pp=el("div","panel");
   pp.appendChild(el("h3",null,"Settings"));
-  pp.appendChild(el("p","hint","Runtime health and personal display preferences. Runtime values are read-only; change them in environment config and restart."));
+  pp.appendChild(el("p","hint",mode==="admin"?"Runtime health and personal display preferences. Runtime values are read-only; change them in environment config and restart.":"Personal Portal preferences for this browser and your current API-key session."));
   var grid=el("div","settings-grid");
 
   var display=el("div","setting-card");
@@ -1637,10 +1637,10 @@ async function renderSettings(c,seq){
   display.appendChild(prow);
   grid.appendChild(display);
 
-  var runtime=el("div","setting-card");
-  runtime.appendChild(el("h4",null,"Runtime"));
-  runtime.appendChild(el("p","hint","Current process state."));
   if(mode==="admin"){
+    var runtime=el("div","setting-card");
+    runtime.appendChild(el("h4",null,"Runtime"));
+    runtime.appendChild(el("p","hint","Current process state."));
     try{
       var s=await api("/admin/settings","GET");
       if(!isCurrentRender(c,seq)) return;
@@ -1650,10 +1650,22 @@ async function renderSettings(c,seq){
       });
       runtime.appendChild(sg);
     }catch(e){ if(!isCurrentRender(c,seq)) return; runtime.appendChild(el("div","warn-note","Could not load settings: "+e.message)); }
+    grid.appendChild(runtime);
   }else{
-    runtime.appendChild(el("div","empty","Settings are admin-only."));
+    var session=el("div","setting-card");
+    session.appendChild(el("h4",null,"Session"));
+    session.appendChild(el("p","hint","Read-only details for the API key used in this browser."));
+    try{
+      var me=await api("/portal/me","GET");
+      if(!isCurrentRender(c,seq)) return;
+      var sg=el("div","status-grid");
+      [["Key",me.key?me.key.prefix:"—"],["Team",me.team?me.team.name:"—"],["Status",me.key&&me.key.enabled?"enabled":"disabled"],["Model scope",me.key&&me.key.allowed_models&&me.key.allowed_models.length?fmt(me.key.allowed_models.length)+" model(s)":"all enabled routes"]].forEach(function(r){
+        var tile=el("div","status-tile"); tile.appendChild(el("span","k",r[0])); var v=el("span","v",r[1]); v.title=String(r[1]||""); tile.appendChild(v); sg.appendChild(tile);
+      });
+      session.appendChild(sg);
+    }catch(e){ if(!isCurrentRender(c,seq)) return; session.appendChild(el("div","warn-note","Could not load session: "+e.message)); }
+    grid.appendChild(session);
   }
-  grid.appendChild(runtime);
   pp.appendChild(grid);
   c.appendChild(pp);
 }
