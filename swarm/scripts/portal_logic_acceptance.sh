@@ -23,39 +23,37 @@ if [[ -z "${PLAYWRIGHT_CHROMIUM_EXECUTABLE:-}" ]]; then
 fi
 
 cleanup_test_records() {
-  python3 - <<'PY' || true
-import os, requests, urllib3
-urllib3.disable_warnings()
-root=os.environ['ROOT']; base=os.environ['BASE_URL']; admin=os.environ['BRIGHTO_ADMIN_KEY']
-h={'x-admin-key':admin,'content-type':'application/json'}
-try:
-    routes=requests.get(base+'/admin/routes',headers=h,verify=False,timeout=10).json()
-    for r in routes:
-        if str(r.get('model_name','')).startswith(('pw-','crud-','verify-')):
-            requests.delete(base+'/admin/routes/'+requests.utils.quote(r['model_name'],safe=''),headers=h,verify=False,timeout=10)
-    backends=requests.get(base+'/admin/backends',headers=h,verify=False,timeout=10).json()
-    routes=requests.get(base+'/admin/routes',headers=h,verify=False,timeout=10).json()
-    used={bid for rr in routes for bid in rr.get('backend_ids',[])} | {rr.get('fallback_backend_id') for rr in routes if rr.get('fallback_backend_id') is not None}
-    for b in backends:
-        if str(b.get('name','')).startswith(('pw-','crud-','verify-')) and b.get('id') not in used:
-            requests.delete(base+f"/admin/backends/{b['id']}",headers=h,verify=False,timeout=10)
-except Exception as e:
-    print('API cleanup warning:',e)
-PY
   if command -v docker >/dev/null 2>&1 && [[ -f "$ROOT/docker-compose.yml" ]]; then
     db_cid="$(cd "$ROOT" && docker compose ps -q postgres 2>/dev/null || true)"
     if [[ -n "$db_cid" ]]; then
       docker exec -i "$db_cid" psql -U "${DB_USER:-brighto_router}" -d "${DB_NAME:-brighto_router}" >/dev/null 2>&1 <<'SQL' || true
 DELETE FROM api_keys WHERE owner LIKE 'pw-%' OR owner LIKE 'crud-%' OR owner LIKE 'verify-%';
 DELETE FROM teams WHERE name LIKE 'pw-%' OR name LIKE 'crud-%' OR name LIKE 'verify-%';
-DELETE FROM usage_ledger WHERE model LIKE 'pw-%' OR model LIKE 'crud-%' OR model LIKE 'verify-%';
-DELETE FROM model_routes WHERE model_name LIKE 'pw-%' OR model_name LIKE 'crud-%' OR model_name LIKE 'verify-%';
+DELETE FROM usage_ledger WHERE model LIKE 'pw-%' OR model LIKE 'crud-%' OR model LIKE 'verify-%' OR model = 'mock-model';
+DELETE FROM model_routes WHERE model_name LIKE 'pw-%' OR model_name LIKE 'crud-%' OR model_name LIKE 'verify-%' OR model_name = 'mock-model';
 DELETE FROM backends WHERE base_url = 'http://127.0.0.1:9000/v1';
 SQL
     fi
   fi
+  python3 - <<'PY_CLEANUP' || true
+import os, requests, urllib3
+urllib3.disable_warnings()
+base=os.environ['BASE_URL']; admin=os.environ['BRIGHTO_ADMIN_KEY']
+h={'x-admin-key':admin,'content-type':'application/json'}
+try:
+    routes=requests.get(base+'/admin/routes',headers=h,verify=False,timeout=10).json()
+    for r in routes:
+        name=str(r.get('model_name',''))
+        if name.startswith(('pw-','crud-','verify-')) or name == 'mock-model':
+            requests.delete(base+'/admin/routes/'+requests.utils.quote(name,safe=''),headers=h,verify=False,timeout=10)
+    backends=requests.get(base+'/admin/backends',headers=h,verify=False,timeout=10).json()
+    for b in backends:
+        if b.get('base_url') == 'http://127.0.0.1:9000/v1' or str(b.get('name','')).startswith(('pw-','crud-','verify-')):
+            requests.delete(base+f"/admin/backends/{b['id']}",headers=h,verify=False,timeout=10)
+except Exception as e:
+    print('API cleanup warning:',e)
+PY_CLEANUP
 }
-
 export ROOT BASE_URL BRIGHTO_ADMIN_KEY
 cleanup_test_records
 cp "$ROOT/swarm/scripts/portal_logic_acceptance.mjs" "$OUT_DIR/portal_logic_acceptance.mjs"

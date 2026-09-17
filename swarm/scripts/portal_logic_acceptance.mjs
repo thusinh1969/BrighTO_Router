@@ -134,10 +134,16 @@ async function main() {
 
     await page.locator('.nav[data-view="providers"]').click({ force: true });
     await page.waitForTimeout(600);
-    const connRow = row(page, 'Custom LLM');
+    const testBackend = (await adminFetch('/admin/backends')).find((b) => b.base_url === 'http://127.0.0.1:9000/v1');
+    if (testBackend && testBackend.can_delete === false) pass('lifecycle', 'in-use connection API can_delete=false', { backend: testBackend });
+    else fail('lifecycle', 'in-use connection API should have can_delete=false', { backend: testBackend });
+    const connRow = page.locator('tr').filter({ hasText: '127.0.0.1:9000/v1' }).first();
     if (await connRow.count()) {
       const delBtn = connRow.getByRole('button', { name: 'Delete' });
-      if (await delBtn.isDisabled()) pass('lifecycle', 'in-use connection Delete disabled'); else fail('lifecycle', 'in-use connection Delete should be disabled');
+      if (await delBtn.isDisabled()) pass('lifecycle', 'in-use connection Delete disabled');
+      else fail('lifecycle', 'in-use connection Delete should be disabled', { rowText: await connRow.innerText() });
+    } else {
+      fail('lifecycle', 'test connection row not visible in Connections UI', { base_url: 'http://127.0.0.1:9000/v1' });
     }
 
     const team = await adminFetch('/admin/teams', 'POST', { name: prefix + '-team', budget: { period: 'month', max_tokens: 1000000, per_model: {} }, enabled: true });
