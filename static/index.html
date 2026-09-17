@@ -542,7 +542,7 @@ function logout(){ authKey=""; clearSession(); $("app-view").classList.add("hidd
 
 /* ===== Nav ===== */
 var titles={dashboard:"Dashboard",providers:"Providers",models:"Models & Routes",teams:"Teams",keys:"API Keys",usage:"Usage",settings:"Settings"};
-var descs={dashboard:"Gateway overview",providers:"Connect LLM backends",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client API keys",usage:"Usage and requests",settings:"Runtime configuration"};
+var descs={dashboard:"Gateway overview",providers:"Connect LLM provider endpoints",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client API keys",usage:"Usage and requests",settings:"Runtime configuration"};
 var userDescs={dashboard:"Your API access and usage",usage:"Your requests and token usage",settings:"Portal preferences and session"};
 function pageDesc(view){ return mode==="user" && userDescs[view] ? userDescs[view] : descs[view]; }
 function go(view){
@@ -589,7 +589,7 @@ function emptyBox(text){ var d=el("div","empty"); d.innerHTML='<svg viewBox="0 0
 function firstRunPanel(){
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Launch checklist")); p.appendChild(h);
-  p.appendChild(el("p","hint","Create one tested model route first. BrighTO will create the upstream connection automatically; then use the client API key to send traffic."));
+  p.appendChild(el("p","hint","Create one tested model route first. BrighTO will create the provider connection automatically; then use the client API key to send traffic."));
   var list=el("div","launch-list");
   [["1","Add a model","Choose a provider or Custom LLM, enter its base URL/API key, load model names, test, then save enabled."],
    ["2","Use a client key","The default demo key is available in API Keys, or create one for a team with budget/expiry."],
@@ -703,7 +703,7 @@ function dashboardHero(sum,inT,outT,req,errRate,cost){
   right.appendChild(el("h3",null,"Readiness"));
   var list=el("div","readiness-list");
   list.appendChild(readinessItem("Routes",enabledRoutes+"/"+configuredRoutes+" enabled",enabledRoutes>0?"":"bad"));
-  list.appendChild(readinessItem("Providers",activeProviders+"/"+backends.length+" active",activeProviders>0?"":"bad"));
+  list.appendChild(readinessItem("Provider connections",activeProviders+"/"+backends.length+" active",activeProviders>0?"":"bad"));
   list.appendChild(readinessItem("Teams",activeTeams+"/"+teams.length+" active",activeTeams>0?"":"bad"));
   list.appendChild(readinessItem("Pricing",missingPrices?missingPrices+" missing":"complete",missingPrices?"warn":""));
   list.appendChild(readinessItem("Provider health",badProviders?badProviders+" warning(s)":"clean",badProviders?"warn":""));
@@ -820,14 +820,14 @@ async function renderDashboard(c,seq){
 function renderProviders(c){
   c.innerHTML="";
   c.appendChild(summaryStrip([
-    ["Connections",fmt(backends.length),"total upstream endpoints","info"],
+    ["Provider connections",fmt(backends.length),"total upstream endpoints","info"],
     ["Active",fmt(backends.filter(function(b){return b.enabled;}).length),"available to routes","ok"],
     ["Locked",fmt(backends.filter(function(b){return !b.can_delete;}).length),"has routes or usage","warn"],
     ["Disabled",fmt(backends.filter(function(b){return !b.enabled;}).length),"cannot receive traffic",backends.some(function(b){return !b.enabled;})?"bad":"info"]
   ]));
   var p=el("div","panel");
   var h=el("div","panel-head");
-  h.appendChild(el("h3",null,"Connections"));
+  h.appendChild(el("h3",null,"Provider connections"));
   var add=el("button","btn primary sm","Add provider"); add.onclick=openProviderModal;
   h.appendChild(add);
   var filt=el("select"); filt.style.maxWidth="160px";
@@ -836,17 +836,17 @@ function renderProviders(c){
   filt.onchange=function(){ window.provFilter=filt.value; renderProviders($("content")); };
   h.appendChild(filt);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Connections are upstream endpoints, created automatically when you add a model. Manage enable/disable and safety here. The API key lives on the model route, never on the connection."));
+  p.appendChild(el("p","hint","Provider connections are upstream endpoints, created automatically when you add a model. Manage enable/disable and safety here. The API key lives on the model route, never on the provider connection."));
   var fv=(window.provFilter||"all");
   var shown=backends.filter(function(b){ return fv==="all" || (fv==="enabled"?b.enabled:!b.enabled); });
-  if(!backends.length){ p.appendChild(emptyBox("No connections yet — add a model and one is created automatically.")); }
-  else if(!shown.length){ p.appendChild(emptyBox("No connections match this filter.")); }
+  if(!backends.length){ p.appendChild(emptyBox("No provider connections yet — add a model and one is created automatically.")); }
+  else if(!shown.length){ p.appendChild(emptyBox("No provider connections match this filter.")); }
   else{
     var w=el("div","table-wrap pro-table"); var t=el("table","conn-table");
     var colg=document.createElement("colgroup");
     ["30%","20%","7%","7%","18%","18%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
-    t.appendChild(thead(["Connection","Status","Routes","Usage","Base URL",""]));
+    t.appendChild(thead(["Provider connection","Status","Routes","Usage","Base URL",""]));
     var tb=el("tbody");
     shown.forEach(function(b){
       var tr=el("tr"); tr.setAttribute("data-id",b.id);
@@ -868,7 +868,7 @@ function renderProviders(c){
       tr.appendChild(el("td","num",String(b.usage_count||0)));
       var bu=el("td","mono"); var bus=el("span","truncate",b.base_url.replace("https://","").replace("http://","")); bus.title=b.base_url; bu.appendChild(bus); tr.appendChild(bu);
       var td=el("td","actions"); var row=el("div","action-row");
-      var cr=el("button","btn sm ghost","Route"); cr.title="Create a model route from this connection"; cr.onclick=function(){ openRouteModalFromConnection(b); };
+      var cr=el("button","btn sm ghost","Route"); cr.title="Create a model route from this provider connection"; cr.onclick=function(){ openRouteModalFromConnection(b); };
       var tg2=el("button","btn sm ghost", b.enabled?"Disable":"Enable"); tg2.onclick=function(){ toggleBackend(b); };
       var e=el("button","btn sm primary","Edit"); e.onclick=function(){openProviderModal(b);};
       var d=el("button","btn sm danger","Delete");
@@ -887,7 +887,7 @@ function openRouteModalFromConnection(b){ window.presetConnection=b; openRouteMo
 async function toggleBackend(b){
   try{
     await api("/admin/backends/"+b.id,"PATCH",{enabled:!b.enabled});
-    toast(b.enabled?"Connection disabled":"Connection enabled");
+    toast(b.enabled?"Provider connection disabled":"Provider connection enabled");
     backends=await api("/admin/backends","GET"); routes=await api("/admin/routes","GET"); rerender();
   }catch(e){ toast("Toggle failed: "+e.message,"err"); }
 }
@@ -906,9 +906,9 @@ function openProviderModal(b){
   var m=el("div","modal");
   m.appendChild(el("h3",null, b.id?"Edit provider · "+b.name:"Add provider"));
   m.appendChild(el("p","hint",b.id
-    ?"This edits the upstream connection only. Provider API keys live on model routes."
+    ?"This edits the provider connection only. API keys live on model routes."
     :"Most teams should use Models & Routes → Add model. Create a provider here only when you need to pre-register or disable an upstream endpoint."));
-  m.appendChild(el("div","section-title","Connection preset"));
+  m.appendChild(el("div","section-title","Provider preset"));
   // Chọn provider từ catalog hard-coded trong .env (chỉ 2 dialect: openai/anthropic).
   var fp=el("div","field"); fp.appendChild(el("label",null,"Provider"));
   var psel=el("select");
@@ -991,7 +991,7 @@ function renderModels(c){
     ["Live routes",fmt(liveRoutes),"callable by clients",liveRoutes?"ok":"warn"],
     ["Drafts",fmt(draftRoutes),"saved but disabled",draftRoutes?"warn":"info"],
     ["Provider-blocked",fmt(providerDisabled),"provider disabled",providerDisabled?"bad":"ok"],
-    ["Providers used",fmt(Object.keys(routeProviders).length),"backends behind routes","info"]
+    ["Providers used",fmt(Object.keys(routeProviders).length),"provider endpoints behind routes","info"]
   ]));
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Models"));
@@ -1033,7 +1033,7 @@ function renderModels(c){
       st.appendChild(pill(statusTxt, statusKind));
       tr.appendChild(st);
       var providerName=r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ");
-      var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=el("div","cell-main",providerName||"—"); pvw.title=providerName||""; pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" backend"+((r.backend_ids||[]).length===1?"":"s"))); pv.appendChild(pvs); tr.appendChild(pv);
+      var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=el("div","cell-main",providerName||"—"); pvw.title=providerName||""; pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s"))); pv.appendChild(pvs); tr.appendChild(pv);
       var pm=el("td"); var pms=el("div","stack-cell"); var pmw=el("div","cell-main mono",r.provider_model_name||"—"); pmw.title=r.provider_model_name||""; pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
       var meta=el("td");
       var mg=el("div","model-meta-grid");
@@ -1071,7 +1071,7 @@ function openRouteModal(route){
   [["1","Connect","Provider, URL, and API key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]].forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
   m.appendChild(steps);
 
-  m.appendChild(el("div","section-title","Connection"));
+  m.appendChild(el("div","section-title","Provider connection"));
   var f0=el("div","field"); f0.appendChild(el("label",null,"Provider"));
   var ps=el("select");
   (catalog||[]).forEach(function(e){ var o=el("option",null,e.label); o.value=e.key; ps.appendChild(o); });
@@ -1134,7 +1134,11 @@ function openRouteModal(route){
   var f6=el("div","field"); f6.appendChild(el("label",null,"Max output tokens (optional)")); var mo=el("input"); mo.type="number"; mo.value=route.max_output_tokens||""; f6.appendChild(mo); limits.appendChild(f6);
   var f7=el("div","field"); f7.appendChild(el("label",null,"Price per 1M input tokens (USD, optional)")); var pi=el("input"); pi.type="number"; pi.step="0.01"; pi.value=route.price_input_per_mtok_usd||""; f7.appendChild(pi); limits.appendChild(f7);
   var f8=el("div","field"); f8.appendChild(el("label",null,"Price per 1M output tokens (USD, optional)")); var po=el("input"); po.type="number"; po.step="0.01"; po.value=route.price_output_per_mtok_usd||""; f8.appendChild(po); limits.appendChild(f8);
-  var f3=el("div","field"); f3.appendChild(el("label",null,"Fallback backend (optional)")); var fb=el("input"); fb.type="number"; fb.value=route.fallback_backend_id||""; f3.appendChild(fb); limits.appendChild(f3);
+  var f3=el("div","field"); f3.appendChild(el("label",null,"Fallback provider (optional)"));
+  var fb=el("select"); var none=el("option",null,"None"); none.value=""; fb.appendChild(none);
+  (backends||[]).forEach(function(b){ var o=el("option",null,b.name+" · "+b.base_url.replace("https://","").replace("http://","")); o.value=String(b.id); fb.appendChild(o); });
+  fb.value=route.fallback_backend_id?String(route.fallback_backend_id):"";
+  f3.appendChild(fb); f3.appendChild(el("p","hint","Optional backup provider connection if the primary route fails.")); limits.appendChild(f3);
   var f4=el("div","field"); f4.appendChild(el("label",null,"First-byte timeout (seconds)")); var to=el("input"); to.type="number"; to.value=route.first_byte_timeout||180; f4.appendChild(to); limits.appendChild(f4);
   m.appendChild(limits);
 

@@ -228,25 +228,25 @@ async function main() {
     await fill(page, 'Max concurrent', '0');
     await (await modalButton(page, 'Add')).click({ force: true });
     await (await row(page, providerName)).waitFor({ state: 'visible', timeout: 8000 });
-    let providerPanels = await panels(page, 'Connections');
+    let providerPanels = await panels(page, 'Provider connections');
     result.evidence.providerPanelsAfterCreate = providerPanels;
-    if (providerPanels !== 1) bug(`Provider create leaves ${providerPanels} Connections panels; expected exactly 1.`);
+    if (providerPanels !== 1) bug(`Provider create leaves ${providerPanels} Provider connections panels; expected exactly 1.`);
 
     await nav(page, 'Providers');
     await clickRowButton(page, providerName, 'Edit');
     await fill(page, 'Name', providerEdit);
     await (await modalButton(page, 'Save')).click({ force: true });
     await page.waitForTimeout(800);
-    providerPanels = await panels(page, 'Connections');
+    providerPanels = await panels(page, 'Provider connections');
     result.evidence.providerPanelsAfterEdit = providerPanels;
-    if (providerPanels !== 1) bug(`Provider edit leaves ${providerPanels} Connections panels; expected exactly 1.`);
+    if (providerPanels !== 1) bug(`Provider edit leaves ${providerPanels} Provider connections panels; expected exactly 1.`);
 
     await nav(page, 'Providers');
     await clickRowButton(page, providerEdit, 'Delete');
     await page.waitForTimeout(1000);
-    providerPanels = await panels(page, 'Connections');
+    providerPanels = await panels(page, 'Provider connections');
     result.evidence.providerPanelsAfterDelete = providerPanels;
-    if (providerPanels !== 1) bug(`Provider delete leaves ${providerPanels} Connections panels; expected exactly 1.`);
+    if (providerPanels !== 1) bug(`Provider delete leaves ${providerPanels} Provider connections panels; expected exactly 1.`);
 
     usageSeed = await seedUsage(page);
     await nav(page, 'Usage');
