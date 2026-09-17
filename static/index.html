@@ -97,11 +97,42 @@ textarea{resize:vertical;min-height:72px}
 .card .big{font-size:30px;font-weight:850;letter-spacing:-.02em;margin-top:6px}
 .card .foot{color:var(--muted);font-size:12px;margin-top:3px}
 .card .foot b{font-weight:800}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;margin-bottom:20px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px;margin-bottom:20px;min-width:0}
 .panel h3{margin:0 0 5px;font-size:16px;font-weight:800;display:flex;align-items:center;gap:9px}
 .panel .hint{color:var(--muted);font-size:12.5px;margin:0 0 16px}
 .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:10px;flex-wrap:wrap}
 .panel-head h3{margin:0}
+.ops-hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:16px;margin-bottom:18px}
+.ops-primary,.ops-side{background:linear-gradient(145deg,rgba(17,28,49,.96),rgba(15,23,42,.96));border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;box-shadow:0 18px 50px rgba(0,0,0,.22);min-width:0}
+.ops-primary{position:relative;overflow:hidden}
+.ops-primary::after{content:"";position:absolute;right:0;top:0;transform:translate(45%,-45%);width:250px;height:250px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.2),transparent 62%);pointer-events:none}
+.ops-kicker{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--accent-text);font-weight:850;margin-bottom:8px}
+.ops-title{font-size:28px;font-weight:900;letter-spacing:-.03em;margin:0 0 6px}
+.ops-copy{color:var(--muted);max-width:720px;margin:0 0 16px;font-size:13.5px}
+.ops-status-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ops-status{background:#0b1220;border:1px solid rgba(51,65,85,.8);border-radius:14px;padding:12px;min-width:0}
+.ops-status .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:5px}
+.ops-status .v{display:block;color:var(--text);font-size:16px;font-weight:850;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ops-status.ok{border-color:rgba(34,197,94,.35)} .ops-status.warn{border-color:rgba(245,158,11,.4)} .ops-status.bad{border-color:rgba(248,113,113,.4)}
+.ops-side h3{margin:0 0 12px;font-size:15px}
+.readiness-list{display:grid;gap:9px}
+.readiness-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid rgba(38,54,79,.8)}
+.readiness-item:last-child{border-bottom:none}
+.readiness-dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.1)}
+.readiness-dot.warn{background:var(--amber);box-shadow:0 0 0 4px rgba(245,158,11,.1)}
+.readiness-dot.bad{background:var(--red);box-shadow:0 0 0 4px rgba(248,113,113,.1)}
+.readiness-label{font-weight:760;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.readiness-note{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.dash-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.7fr);gap:16px;margin-bottom:18px;min-width:0}
+.dash-split>*{min-width:0;max-width:100%}
+.focus-list{display:grid;gap:10px}
+.focus-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;background:#0b1220;border:1px solid var(--border);border-radius:14px;padding:11px 13px}
+.focus-main{min-width:0}
+.focus-title{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.focus-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+.focus-value{text-align:right;font-weight:900;color:var(--accent-text)}
+.focus-value span{display:block;color:var(--muted);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
 
 /* ---------- Tables ---------- */
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:#0b1220;contain:layout}
@@ -181,7 +212,7 @@ table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:an
 @keyframes slide{from{transform:translateX(18px);opacity:0}to{transform:none;opacity:1}}
 
 /* ---------- Charts ---------- */
-.chart-wrap{width:100%;overflow-x:auto}
+.chart-wrap{width:100%;max-width:100%;min-width:0;overflow-x:auto}
 .chart-wrap svg{display:block}
 .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
 .legend span{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -211,6 +242,11 @@ table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:an
   .main{padding:18px 16px;max-width:none;width:100%}
   .topbar{flex-direction:column;align-items:flex-start;margin-bottom:16px}
   .topbar h2{font-size:24px}
+  .ops-hero,.dash-split,.ops-status-row{grid-template-columns:1fr;max-width:100%;min-width:0}
+  .ops-primary,.ops-side,.focus-row,.request-card,.dash-split>*,.chart-wrap,.legend{max-width:100%;min-width:0;overflow:hidden}
+  .panel{max-width:100%}
+  .ops-primary::after{display:none}
+  .quick-actions .btn{flex:1 1 120px;min-width:0;padding-left:9px;padding-right:9px}
   .grid{grid-template-columns:1fr;gap:10px;margin-bottom:14px}
   .card{padding:15px 16px;border-radius:16px}
   .panel{padding:16px;border-radius:18px;margin-bottom:14px}
@@ -453,6 +489,81 @@ function firstRunPanel(){
   p.appendChild(acts);
   return p;
 }
+function tone(ok,warn){ return ok ? "ok" : (warn ? "warn" : "bad"); }
+function readinessItem(label,note,kind){
+  var row=el("div","readiness-item");
+  row.appendChild(el("span","readiness-dot "+(kind||"")));
+  row.appendChild(el("div","readiness-label",label));
+  row.appendChild(el("div","readiness-note",note));
+  return row;
+}
+function dashboardHero(sum,inT,outT,req,errRate,cost){
+  var enabledRoutes=routes.filter(function(r){return r.effective_enabled}).length;
+  var configuredRoutes=routes.length;
+  var activeProviders=backends.filter(function(b){return b.enabled}).length;
+  var activeTeams=teams.filter(function(t){return t.enabled}).length;
+  var badProviders=sum&&sum.by_backend?sum.by_backend.filter(function(b){return (b.errors||0)>0 || (b.rate_limited||0)>0 || (b.server_errors||0)>0 || (b.timeouts||0)>0;}).length:0;
+  var missingPrices=routes.filter(function(r){return r.enabled && (r.price_input_per_mtok_usd==null || r.price_output_per_mtok_usd==null);}).length;
+  var healthOk=enabledRoutes>0 && activeProviders>0 && errRate===0 && badProviders===0;
+  var hero=el("div","ops-hero");
+
+  var left=el("div","ops-primary");
+  left.appendChild(el("div","ops-kicker","Production control room"));
+  left.appendChild(el("div","ops-title",healthOk?"Gateway ready":"Needs attention"));
+  left.appendChild(el("p","ops-copy",healthOk
+    ? "Routes are enabled, providers are available, and recent traffic has no recorded errors."
+    : "Check route readiness, provider state, pricing, and recent request errors before sending production traffic."));
+  var stats=el("div","ops-status-row");
+  [
+    ["Traffic",fmt(req)+" req",req>0?"last 30 days":"no requests yet",tone(req>0,true)],
+    ["Tokens",fmt(inT+outT),fmt(inT)+" in / "+fmt(outT)+" out",tone((inT+outT)>0,true)],
+    ["Cost",fmtCost(cost),missingPrices?missingPrices+" unpriced route(s)":"priced routes ready",tone(missingPrices===0,missingPrices>0)],
+    ["Errors",errRate+"%",badProviders?badProviders+" provider issue(s)":"no provider errors",tone(errRate===0 && badProviders===0,errRate<5)]
+  ].forEach(function(x){
+    var b=el("div","ops-status "+x[3]);
+    b.appendChild(el("span","k",x[0]));
+    b.appendChild(el("span","v",x[1]));
+    b.appendChild(el("div","cell-sub",x[2]));
+    stats.appendChild(b);
+  });
+  left.appendChild(stats);
+  var acts=el("div","quick-actions");
+  var add=el("button","btn primary sm","Add tested model"); add.onclick=function(){ go("models"); setTimeout(function(){openRouteModal();},50); };
+  var keysBtn=el("button","btn ghost sm","Create API key"); keysBtn.onclick=function(){ go("keys"); setTimeout(function(){openKeyModal();},50); };
+  var usageBtn=el("button","btn ghost sm","Inspect usage"); usageBtn.onclick=function(){ go("usage"); };
+  acts.appendChild(add); acts.appendChild(keysBtn); acts.appendChild(usageBtn);
+  left.appendChild(acts);
+  hero.appendChild(left);
+
+  var right=el("div","ops-side");
+  right.appendChild(el("h3",null,"Readiness"));
+  var list=el("div","readiness-list");
+  list.appendChild(readinessItem("Routes",enabledRoutes+"/"+configuredRoutes+" enabled",enabledRoutes>0?"":"bad"));
+  list.appendChild(readinessItem("Providers",activeProviders+"/"+backends.length+" active",activeProviders>0?"":"bad"));
+  list.appendChild(readinessItem("Teams",activeTeams+"/"+teams.length+" active",activeTeams>0?"":"bad"));
+  list.appendChild(readinessItem("Pricing",missingPrices?missingPrices+" missing":"complete",missingPrices?"warn":""));
+  list.appendChild(readinessItem("Provider health",badProviders?badProviders+" warning(s)":"clean",badProviders?"warn":""));
+  right.appendChild(list);
+  hero.appendChild(right);
+  return hero;
+}
+function focusPanel(title,rows,empty){
+  var p=el("div","panel");
+  p.appendChild(el("h3",null,title));
+  if(!rows || !rows.length){ p.appendChild(emptyBox(empty||"No data yet.")); return p; }
+  var list=el("div","focus-list");
+  rows.slice(0,5).forEach(function(r){
+    var row=el("div","focus-row");
+    var main=el("div","focus-main");
+    main.appendChild(el("div","focus-title",r.title||"—"));
+    main.appendChild(el("div","focus-sub",r.sub||""));
+    var val=el("div","focus-value",r.value||"—");
+    val.appendChild(el("span",null,r.label||""));
+    row.appendChild(main); row.appendChild(val); list.appendChild(row);
+  });
+  p.appendChild(list);
+  return p;
+}
 
 /* ===== Dashboard ===== */
 async function renderDashboard(c,seq){
@@ -468,6 +579,10 @@ async function renderDashboard(c,seq){
   var errRate=sum?Math.round(sum.totals.error_rate_pct*10)/10:0;
   var cost=(mode==="admin"&&sum)?sum.totals.estimated_cost_usd:null;
   var pricedReqs=(mode==="admin"&&sum)?sum.totals.cost_known_requests:0;
+
+  if(mode==="admin"){
+    c.appendChild(dashboardHero(sum,inT,outT,req,errRate,cost));
+  }
 
   var cards=[];
   if(mode==="admin"){
@@ -499,19 +614,16 @@ async function renderDashboard(c,seq){
   var p=el("div","panel");
   p.appendChild(el("h3",null,"Tokens by model — last 30 days"));
   if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage yet. Create a route, create an API key, and send one request."));
-  c.appendChild(p);
-
-  if(mode==="admin" && sum && sum.by_model.length){
-    c.appendChild(groupPanel("Top models", ["Model","Requests","Tokens","Cost","Errors"],
-      sum.by_model.map(function(r){return [r.model, fmt(r.requests), fmt(r.input_tokens+r.output_tokens), fmtCost(r.estimated_cost_usd), fmt(r.errors)];})));
-  }
-  if(mode==="admin" && sum && sum.by_team.length){
-    c.appendChild(groupPanel("Top teams", ["Team","Requests","Tokens","Errors"],
-      sum.by_team.map(function(r){return [r.team_name, fmt(r.requests), fmt(r.input_tokens+r.output_tokens), fmt(r.errors)];})));
-  }
-  if(mode==="admin" && sum && sum.by_backend.length){
+  if(mode==="admin" && sum){
+    var split=el("div","dash-split");
+    split.appendChild(p);
+    split.appendChild(focusPanel("Top consumers", (sum.by_team||[]).map(function(r){return {title:r.team_name,sub:fmt(r.requests)+" requests · "+fmt(r.errors)+" errors",value:fmt(r.input_tokens+r.output_tokens),label:"tokens"};}), "No team usage yet."));
+    c.appendChild(split);
+    c.appendChild(focusPanel("Top models", (sum.by_model||[]).map(function(r){return {title:r.model,sub:fmt(r.requests)+" requests · "+fmt(r.errors)+" errors · "+fmtCost(r.estimated_cost_usd),value:fmt(r.input_tokens+r.output_tokens),label:"tokens"};}), "No model usage yet."));
     c.appendChild(groupPanel("Provider health", ["Provider","Requests","Errors","429","5xx","Timeout"],
-      sum.by_backend.map(function(r){return [r.backend_name, fmt(r.requests), fmt(r.errors), fmt(r.rate_limited), fmt(r.server_errors), fmt(r.timeouts)];})));
+      (sum.by_backend||[]).map(function(r){return [r.backend_name, fmt(r.requests), fmt(r.errors), fmt(r.rate_limited), fmt(r.server_errors), fmt(r.timeouts)];})));
+  }else{
+    c.appendChild(p);
   }
 
   if(mode==="admin" && sum && sum.totals){
