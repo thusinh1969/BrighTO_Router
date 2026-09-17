@@ -163,6 +163,23 @@ async function inspectPage(page, label) {
           rows: table.querySelectorAll('tbody tr').length,
         };
       }),
+      providerListStats: [...document.querySelectorAll('.provider-list-table')].map((table) => {
+        const tbody = table.querySelector('tbody');
+        const thead = table.querySelector('thead');
+        const firstRow = table.querySelector('tbody tr');
+        const firstAction = table.querySelector('td.actions .action-row');
+        const wrap = table.closest('.provider-list-wrap');
+        return {
+          tableDisplay: getComputedStyle(table).display,
+          bodyDisplay: tbody ? getComputedStyle(tbody).display : '',
+          headDisplay: thead ? getComputedStyle(thead).display : '',
+          rowDisplay: firstRow ? getComputedStyle(firstRow).display : '',
+          rowColumns: firstRow ? getComputedStyle(firstRow).gridTemplateColumns : '',
+          actionDisplay: firstAction ? getComputedStyle(firstAction).display : '',
+          wrapBorder: wrap ? getComputedStyle(wrap).borderStyle : '',
+          rows: table.querySelectorAll('tbody tr').length,
+        };
+      }),
       keySecretRows: [...document.querySelectorAll('.key-secret')].map((n) => {
         const st = getComputedStyle(n);
         const key = n.querySelector('.mono');
@@ -236,6 +253,10 @@ async function runViewport(browser, name, width, height) {
     }
     const redDisabledDanger = (metrics.disabledDangerButtons || []).filter((b) => /248, 113, 113/.test(b.color) || /248, 113, 113/.test(b.borderColor));
     if (redDisabledDanger.length) fail(`${name}/${view}: disabled destructive actions still look clickable/red`, { redDisabledDanger, metrics });
+    if (view === 'providers' && !mobile) {
+      const badProviderList = (metrics.providerListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
+      if (badProviderList.length || !(metrics.providerListStats || []).length) fail(`${name}/${view}: desktop Providers should render as compact provider cards, not a wide sparse table`, { badProviderList, metrics });
+    }
     if (view === 'models') {
       const badModelNameRows = (metrics.modelNameRows || []).filter((r) => r.display !== 'grid' || r.copyButtons !== 1);
       if (badModelNameRows.length) fail(`${name}/${view}: public model name and copy action are not aligned as a stable grid`, { badModelNameRows, metrics });
