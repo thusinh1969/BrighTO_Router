@@ -42,3 +42,20 @@ Representative logs:
 - `swarm/out/portal_logic_acceptance-rerun-195149.log`
 - `swarm/out/portal_logic_acceptance-key-budget-full2-195212.log`
 - `swarm/out/portal_modal_surface_audit-key-budget-full2-195304.log`
+
+## Follow-up hardening in the same area
+
+After the budget fix, Codex also hardened the API key create/edit flow. A successful write is no longer reported as failed just because the follow-up list refresh has a transient error. The Portal now:
+
+- patches/creates the key first,
+- closes the edit modal and reports the write result,
+- refreshes the API key table in a separate guarded step,
+- opens the created-key reveal modal after the table refresh attempt.
+
+This keeps the admin-visible secret available even if the non-critical table refresh has a temporary browser/network failure.
+
+Additional verification:
+
+- `swarm/out/portal_logic_acceptance-key-flow-195638.log` — PASS
+- `swarm/out/portal_logic_acceptance-key-flow-full-195700.log` — PASS
+- `swarm/out/portal_modal_surface_audit-key-flow-full-195752.log` — PASS
