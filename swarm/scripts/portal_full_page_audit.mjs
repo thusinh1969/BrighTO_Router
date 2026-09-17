@@ -131,6 +131,30 @@ async function inspectPage(page, label) {
           nameOverflow: ns ? ns.overflow : '',
         };
       }),
+      keySecretRows: [...document.querySelectorAll('.key-secret')].map((n) => {
+        const st = getComputedStyle(n);
+        const key = n.querySelector('.mono');
+        const ks = key ? getComputedStyle(key) : null;
+        return {
+          display: st.display,
+          columns: st.gridTemplateColumns,
+          keyText: key ? (key.innerText || key.textContent || '').trim() : '',
+          copyButtons: n.querySelectorAll('button.icon-btn').length,
+          revealButtons: [...n.querySelectorAll('button')].filter((b) => (b.innerText || '').trim() === 'Reveal').length,
+          keyScrollHeight: key ? key.scrollHeight : 0,
+          keyClientHeight: key ? key.clientHeight : 0,
+          keyTextOverflow: ks ? ks.textOverflow : '',
+          keyOverflow: ks ? ks.overflow : '',
+          keyWhiteSpace: ks ? ks.whiteSpace : '',
+        };
+      }),
+      keyLimitItems: [...document.querySelectorAll('.keys-table .mini-meta-grid span')].map((n) => ({
+        text: (n.innerText || n.textContent || '').trim(),
+        scrollWidth: n.scrollWidth,
+        clientWidth: n.clientWidth,
+        scrollHeight: n.scrollHeight,
+        clientHeight: n.clientHeight,
+      })),
       visibleButtons: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => b.innerText.trim()).filter(Boolean).slice(0, 30),
     };
   });
@@ -162,6 +186,18 @@ async function runViewport(browser, name, width, height) {
       if (badModelNameRows.length) fail(`${name}/${view}: public model name and copy action are not aligned as a stable grid`, { badModelNameRows, metrics });
       const clippedModelNames = (metrics.modelNameRows || []).filter((r) => /ellipsis/i.test(r.nameTextOverflow) || r.nameLineClamp !== 'none' || r.nameOverflow !== 'visible' || r.nameScrollHeight > r.nameClientHeight + 4);
       if (clippedModelNames.length) fail(`${name}/${view}: public model names are clipped`, { clippedModelNames, metrics });
+    }
+    if (view === 'keys') {
+      const badKeyRows = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && (r.keyText === '…' || r.copyButtons !== 1 || r.revealButtons !== 1));
+      if (badKeyRows.length) fail(`${name}/${view}: revealed API key row is missing full key, copy, or reveal action`, { badKeyRows, metrics });
+      const clippedKeys = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && (/ellipsis/i.test(r.keyTextOverflow) || r.keyOverflow !== 'visible' || r.keyScrollHeight > r.keyClientHeight + 4));
+      if (clippedKeys.length) fail(`${name}/${view}: revealed API keys are clipped`, { clippedKeys, metrics });
+      const clippedKeyLimits = (metrics.keyLimitItems || []).filter((r) => r.text && (r.scrollWidth > r.clientWidth + 4 || r.scrollHeight > r.clientHeight + 4));
+      if (clippedKeyLimits.length) fail(`${name}/${view}: API key limit labels are clipped`, { clippedKeyLimits, metrics });
+      if (!mobile) {
+        const wrappedDesktopKeys = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && r.keyClientHeight > 24);
+        if (wrappedDesktopKeys.length) fail(`${name}/${view}: desktop API keys should fit on one readable line`, { wrappedDesktopKeys, metrics });
+      }
     }
     if (mobile) {
       const wideTables = metrics.tableStats.filter((t) => t.scrollWidth > t.clientWidth + 8);
