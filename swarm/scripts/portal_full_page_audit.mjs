@@ -379,12 +379,59 @@ async function inspectPage(page, label) {
     };
   });
 }
+
+async function verifyCopyFallback(page, name) {
+  const evidence = await page.evaluate(async () => {
+    const originalExec = document.execCommand;
+    let execCalled = false;
+    let copiedValue = '';
+    document.execCommand = function(cmd) {
+      execCalled = cmd === 'copy';
+      copiedValue = document.querySelector('textarea')?.value || '';
+      return execCalled;
+    };
+    let restoreClipboard = null;
+    const forcedClipboard = { writeText: () => Promise.reject(new Error('forced clipboard failure')) };
+    try {
+      const desc = Object.getOwnPropertyDescriptor(Navigator.prototype, 'clipboard') || Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      const original = navigator.clipboard;
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: forcedClipboard });
+      restoreClipboard = () => {
+        try {
+          if (desc) Object.defineProperty(Navigator.prototype, 'clipboard', desc);
+          Object.defineProperty(navigator, 'clipboard', { configurable: true, value: original });
+        } catch {}
+      };
+    } catch {
+      restoreClipboard = null;
+    }
+    try {
+      if (typeof copyText !== 'function') return { hasHelper: false, execCalled, copiedValue, toast: '' };
+      copyText('copy-fallback-probe', 'Fallback probe copied');
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      return {
+        hasHelper: true,
+        execCalled,
+        copiedValue,
+        toast: document.querySelector('#toast')?.innerText || '',
+      };
+    } finally {
+      document.execCommand = originalExec;
+      if (restoreClipboard) restoreClipboard();
+    }
+  });
+  if (!evidence.hasHelper || !evidence.execCalled || evidence.copiedValue !== 'copy-fallback-probe' || !/Fallback probe copied/i.test(evidence.toast || '')) {
+    fail(`${name}: copy fallback should work when navigator.clipboard rejects`, evidence);
+  }
+}
+
 async function runViewport(browser, name, width, height) {
   const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width, height } });
   page.on('console', (m) => { if (m.type() === 'error' && !/ERR_NETWORK_CHANGED/i.test(m.text())) result.consoleErrors.push(`${name}: ${m.text()}`); });
   page.on('pageerror', (e) => result.consoleErrors.push(`${name}: pageerror ${e.message}`));
   await login(page);
   await verifyAdminReload(page, name);
+  if (width >= 1200) await verifyCopyFallback(page, name);
   const mobile = width <= 820;
   if (mobile) await verifyMobileSidebar(page, name);
   result.pages[name] = {};

@@ -832,10 +832,10 @@ function userCallPanel(me,logs){
   var actions=el("div","panel-head-actions");
   var copy=el("button","btn sm ghost","Copy endpoint");
   copy.title="Copy the OpenAI-compatible endpoint URL"; copy.dataset.copy=endpoint;
-  copy.onclick=function(){navigator.clipboard.writeText(endpoint).then(function(){toast("Endpoint copied");});};
+  copy.onclick=function(){copyText(endpoint,"Endpoint copied");};
   var copyCurl=el("button","btn sm primary","Copy cURL");
   copyCurl.title="Copy a complete test command for this key and model"; copyCurl.dataset.copy=curl;
-  copyCurl.onclick=function(){navigator.clipboard.writeText(curl).then(function(){toast("cURL copied");});};
+  copyCurl.onclick=function(){copyText(curl,"cURL copied");};
   actions.appendChild(copy); actions.appendChild(copyCurl); h.appendChild(actions); p.appendChild(h);
   p.appendChild(el("p","hint","Use the same client API key you used to sign in. BrighTO accepts OpenAI-compatible chat completion calls at this endpoint."));
   var grid=el("div","call-grid");
@@ -896,7 +896,7 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
   var endpointBtn=el("button","btn ghost sm","Copy endpoint");
   endpointBtn.title="Copy the OpenAI-compatible router endpoint";
   endpointBtn.dataset.copy=location.origin+"/v1/chat/completions";
-  endpointBtn.onclick=function(){navigator.clipboard.writeText(endpointBtn.dataset.copy).then(function(){toast("Endpoint copied");});};
+  endpointBtn.onclick=function(){copyText(endpointBtn.dataset.copy,"Endpoint copied");};
   acts.appendChild(add); acts.appendChild(keysBtn); acts.appendChild(usageBtn); acts.appendChild(endpointBtn);
   left.appendChild(acts);
   hero.appendChild(left);
@@ -2161,7 +2161,23 @@ function displayNameNode(tag,cls,display,raw){
 }
 
 function shQuote(s){ return "'"+String(s).replace(/'/g,"'\"'\"'")+"'"; }
-function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.setAttribute("aria-label","Copy"); b.dataset.copy=text; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
+function copyText(text,label){
+  var value=String(text||"");
+  function ok(){ toast(label||"Copied"); }
+  function fallback(){
+    var ta=document.createElement("textarea");
+    ta.value=value; ta.setAttribute("readonly","");
+    ta.style.position="fixed"; ta.style.left="-9999px"; ta.style.top="0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try{ if(document.execCommand("copy")){ ok(); } else { throw new Error("copy command rejected"); } }
+    catch(e){ toast("Copy failed — select and copy manually","err"); }
+    finally{ ta.remove(); }
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(value).then(ok).catch(fallback);
+  }else{ fallback(); }
+}
+function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.setAttribute("aria-label","Copy"); b.dataset.copy=text; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){copyText(text,"Copied");}; return b; }
 function copyKeyBtn(text){ var b=copyIconBtn(text); b.classList.add("copy-key-btn"); b.title="Copy API key"; b.setAttribute("aria-label","Copy API key"); b.appendChild(el("span",null,"Copy key")); return b; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
 var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]];
