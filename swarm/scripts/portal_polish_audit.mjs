@@ -271,12 +271,13 @@ async function main() {
     const smokeLogLine = usageText.split('\n').find((line) => usageSeed.model && line.includes(usageSeed.model)) || '';
     result.evidence.usageSmokeLine = smokeLogLine;
     const rowMs = result.evidence.usageSmokeRow ? Number(result.evidence.usageSmokeRow.total_ms) : null;
-    const expectedTokS = result.evidence.usageSmokeRow && result.evidence.usageSmokeRow.total_tokens_per_second != null && Number.isFinite(rowMs) && rowMs >= 100
+    const expectedTokS = result.evidence.usageSmokeRow && result.evidence.usageSmokeRow.total_tokens_per_second != null
       ? compact(result.evidence.usageSmokeRow.total_tokens_per_second)
       : null;
-    result.evidence.expectedTokS = expectedTokS || 'suppressed-because-duration-below-100ms';
+    result.evidence.expectedTokS = expectedTokS || 'missing-api-token-rate';
     if (expectedTokS && !usageText.includes(expectedTokS)) bug(`Usage page did not render compact Tokens/sec value ${expectedTokS}.`);
-    if (!expectedTokS && !/TOKENS\/SEC\s+—/.test(usageText)) bug('Usage page must suppress Tokens/sec as — when duration is below 100 ms.');
+    if (expectedTokS && Number.isFinite(rowMs) && rowMs < 100 && !usageText.includes(expectedTokS + '*')) bug('Usage page must mark sub-100ms Tokens/sec as a short sample with * instead of hiding it.');
+    if (expectedTokS && /TOKENS\/SEC\s+—/.test(usageText)) bug('Usage page hides Tokens/sec as — even though the API returned a token-rate value.');
     if (/\b(ROUTER|DURATION)\s+0 ms\b/.test(usageText)) bug('Usage log must show <1 ms instead of 0 ms for sub-millisecond timings.');
     if (/\b\d{1,3},\d{3}\b/.test(usageText)) bug('Usage still shows comma-formatted large counts; expected compact K/M/B display.');
     if (result.consoleErrors.length) bug(`Browser console errors: ${JSON.stringify(result.consoleErrors)}`);
