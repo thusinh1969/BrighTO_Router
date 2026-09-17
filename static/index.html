@@ -336,6 +336,7 @@ function emptyBox(text){ var d=el("div","empty"); d.innerHTML='<svg viewBox="0 0
 
 /* ===== Dashboard ===== */
 async function renderDashboard(c){
+  c.innerHTML="";
   var stats=[], logs=[], sum=null;
   try{ stats=await api(mode==="admin"?"/admin/stats?days=30":"/portal/me/stats?days=30","GET"); }catch(e){}
   try{ logs=await api(mode==="admin"?"/admin/usage":"/portal/me/usage","GET"); }catch(e){}
@@ -412,6 +413,7 @@ async function renderDashboard(c){
 
 /* ===== Providers ===== */
 function renderProviders(c){
+  c.innerHTML="";
   var p=el("div","panel");
   var h=el("div","panel-head");
   h.appendChild(el("h3",null,"Provider backends"));
@@ -504,6 +506,7 @@ async function fetchModels(b){
 
 /* ===== Models & Routes ===== */
 function renderModels(c){
+  c.innerHTML="";
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Model routes"));
   var add=el("button","btn primary sm","Create model route"); add.onclick=function(){openRouteModal();};
@@ -640,6 +643,7 @@ async function deleteRoute(r){
 
 /* ===== Teams ===== */
 function renderTeams(c){
+  c.innerHTML="";
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Teams"));
   var add=el("button","btn primary sm","New team"); add.onclick=function(){openTeamModal();};
@@ -704,6 +708,7 @@ function openTeamModal(tm){
 
 /* ===== API Keys ===== */
 function renderKeys(c){
+  c.innerHTML="";
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"API keys"));
   var add=el("button","btn primary sm","New key"); add.onclick=openKeyModal;
@@ -815,6 +820,7 @@ async function disableKey(k){
 /* ===== Usage ===== */
 var usageFilter={model:"",status:"all",team:"",backend:"",key:"",from:"",to:"",days:"30"};
 async function renderUsage(c){
+  c.innerHTML="";
   var qs="days="+usageFilter.days;
   if(usageFilter.model) qs+="&model="+encodeURIComponent(usageFilter.model);
   if(usageFilter.status!=="all") qs+="&status="+usageFilter.status;
