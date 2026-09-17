@@ -1110,7 +1110,7 @@ function openRouteModal(route){
   m.appendChild(el("div","section-title","Provider connection"));
   var f0=el("div","field"); f0.appendChild(el("label",null,"Provider"));
   var ps=el("select");
-  (catalog||[]).forEach(function(e){ var o=el("option",null,e.label); o.value=e.key; ps.appendChild(o); });
+	  (catalog||[]).forEach(function(e){ var o=el("option",null,e.enabled===false ? e.label+" (coming soon)" : e.label); o.value=e.key; if(e.enabled===false) o.disabled=true; ps.appendChild(o); });
   if(!(catalog||[]).length){ var no=el("option",null,"Custom LLM"); no.value="custom"; ps.appendChild(no); }
   var pHint=el("p","hint");
   f0.appendChild(ps); f0.appendChild(pHint); m.appendChild(f0);

@@ -80,6 +80,14 @@ async function main() {
     const saveDisabled = page.getByRole('button', { name: 'Save disabled' });
     if (await saveEnabled.isDisabled()) pass('gating', 'Save enabled disabled before test'); else fail('gating', 'Save enabled should be disabled before test');
     if (await saveDisabled.isEnabled()) pass('gating', 'Save disabled available without test'); else fail('gating', 'Save disabled should be available');
+    const providerOptions = await modalField(page, 'Provider').locator('option').evaluateAll((opts) => opts.map((o) => ({ value: o.value, text: o.textContent || '', disabled: o.disabled })));
+    const geminiOption = providerOptions.find((o) => o.value === 'gemini');
+    const metaMuseOption = providerOptions.find((o) => o.value === 'meta-muse');
+    if (geminiOption?.disabled === true && /coming soon/i.test(geminiOption.text) && metaMuseOption?.disabled === true && /coming soon/i.test(metaMuseOption.text)) {
+      pass('models', 'Add Model disables coming-soon provider catalog entries', { geminiOption, metaMuseOption });
+    } else {
+      fail('models', 'Add Model provider dropdown exposes unsupported catalog entries as selectable', { providerOptions });
+    }
 
     await modalField(page, 'Provider').selectOption('custom-llm');
     await page.waitForTimeout(200);
