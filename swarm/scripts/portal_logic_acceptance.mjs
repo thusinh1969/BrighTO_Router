@@ -197,6 +197,14 @@ async function main() {
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
     await modalField(page, 'Team').selectOption('1');
     await modalField(page, 'Owner').fill(prefix + '-owner');
+    const keyModalText = await page.locator('.modal').innerText();
+    if (/Model access|All models|Restrict to selected models/i.test(keyModalText) && !/comma-separated|empty = all/i.test(keyModalText)) {
+      pass('keys', 'New key uses guided model access picker', { route: modelName });
+    } else {
+      fail('keys', 'New key still exposes weak model scope UX', { text: keyModalText.slice(0, 400) });
+    }
+    await page.locator('.modal').getByRole('button', { name: 'Restrict to selected models' }).click({ force: true });
+    await page.locator(`.modal .scope-chips input[value="${modelName}"]`).click({ force: true });
     await page.locator('.modal').getByRole('button', { name: 'Create' }).click({ force: true });
     await page.locator('.modal').filter({ hasText: 'Key created' }).waitFor({ state: 'visible', timeout: 10000 });
     const keyText = await page.locator('.modal').innerText();
@@ -207,6 +215,11 @@ async function main() {
     keyId = key?.id;
     if (keyMatch && key && key.revealable) pass('keys', 'key create + revealable', { owner: key.owner, prefix: key.prefix });
     else fail('keys', 'key create/reveal missing', { key });
+    if (key && Array.isArray(key.allowed_models) && key.allowed_models.length === 1 && key.allowed_models[0] === modelName) {
+      pass('keys', 'guided model access picker persists exact model scope', { allowed_models: key.allowed_models });
+    } else {
+      fail('keys', 'guided model access picker saved wrong scope', { key, expected: modelName });
+    }
 
     let createdKeyRow = row(page, prefix + '-owner');
     await createdKeyRow.getByRole('button', { name: 'Edit' }).click({ force: true });

@@ -242,7 +242,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .chip{display:flex;align-items:center;gap:7px;background:#111827;border:1px solid var(--border2);border-radius:99px;
   padding:6px 13px;font-size:12.5px;cursor:pointer;color:var(--text);font-weight:600}
 .chip.selected{border-color:var(--sky);background:rgba(56,189,248,.12);color:var(--accent-text)}
-.chip input{margin:0;accent-color:var(--sky)}
+.chip input{width:14px;height:14px;margin:0;accent-color:var(--sky);flex:0 0 auto;padding:0}
 .field .switch-field{display:flex;align-items:center;justify-content:space-between;gap:14px;background:#0b1220;border:1px solid var(--border2);border-radius:13px;padding:12px 14px;color:var(--text);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500;margin-bottom:0}
 .field .switch-field.selected{border-color:var(--sky);background:rgba(56,189,248,.10)}
 .field .switch-field b{display:block;font-size:13px;color:var(--text);font-weight:750}
@@ -1493,7 +1493,45 @@ function openKeyModal(k){
   var f2=el("div","field"); f2.appendChild(el("label",null,"Owner (name / email)")); var oi=el("input"); oi.placeholder="alice@example.com"; oi.value=k.owner||""; f2.appendChild(oi); ident.appendChild(f2);
   m.appendChild(ident);
   m.appendChild(el("div","section-title","Scope"));
-  var f3=el("div","field"); f3.appendChild(el("label",null,"Allowed models (comma-separated, empty = all)")); var mi=el("input"); mi.placeholder="gpt-4o,deepseek-v3"; mi.value=(k.allowed_models||[]).join(", "); f3.appendChild(mi); m.appendChild(f3);
+  var selectedModels={}; (k.allowed_models||[]).forEach(function(name){ if(name) selectedModels[name]=true; });
+  var availableModels=[];
+  (routes||[]).forEach(function(r){ if(r.model_name && availableModels.indexOf(r.model_name)<0) availableModels.push(r.model_name); });
+  (k.allowed_models||[]).forEach(function(name){ if(name && availableModels.indexOf(name)<0) availableModels.push(name); });
+  availableModels.sort();
+  var scopeMode=Object.keys(selectedModels).length?"selected":"all";
+  var f3=el("div","field"); f3.appendChild(el("label",null,"Model access"));
+  var scopeSeg=el("div","seg scope-seg");
+  var allScope=el("button",null,"All models");
+  var selectedScope=el("button",null,"Restrict to selected models");
+  var scopePicker=el("div","scope-picker");
+  function chosenModels(){ return availableModels.filter(function(name){ return !!selectedModels[name]; }); }
+  function drawScopePicker(){
+    allScope.classList.toggle("active",scopeMode==="all");
+    selectedScope.classList.toggle("active",scopeMode==="selected");
+    scopePicker.innerHTML="";
+    if(scopeMode==="all"){
+      scopePicker.appendChild(el("p","hint","This key can call every enabled model route. Disable a route to remove access globally."));
+      return;
+    }
+    if(!availableModels.length){
+      scopePicker.appendChild(emptyBox("No model routes yet. Create a model route first, or use All models."));
+      return;
+    }
+    scopePicker.appendChild(el("p","hint","Choose exact public model names this key may call."));
+    var chips=el("div","chips scope-chips");
+    availableModels.forEach(function(name){
+      var lab=el("label","chip"+(selectedModels[name]?" selected":""));
+      var cb=el("input"); cb.type="checkbox"; cb.checked=!!selectedModels[name]; cb.value=name;
+      cb.onchange=function(){ selectedModels[name]=cb.checked; lab.classList.toggle("selected",cb.checked); };
+      var txt=el("span",null,name); txt.title=name;
+      lab.appendChild(cb); lab.appendChild(txt); chips.appendChild(lab);
+    });
+    scopePicker.appendChild(chips);
+  }
+  allScope.onclick=function(){ scopeMode="all"; drawScopePicker(); };
+  selectedScope.onclick=function(){ scopeMode="selected"; drawScopePicker(); };
+  scopeSeg.appendChild(allScope); scopeSeg.appendChild(selectedScope); f3.appendChild(scopeSeg); f3.appendChild(scopePicker); m.appendChild(f3);
+  drawScopePicker();
   m.appendChild(el("div","section-title","Access limits"));
   var limitsGrid=el("div","form-grid");
   var f4=el("div","field"); f4.appendChild(el("label",null,"Expiry date (optional)")); var ex=el("input"); ex.type="date"; if(k.expires_at) ex.value=new Date(k.expires_at*1000).toISOString().slice(0,10); f4.appendChild(ex); limitsGrid.appendChild(f4);
@@ -1522,7 +1560,9 @@ function openKeyModal(k){
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary",isEdit?"Save":"Create");
   save.onclick=async function(){
-    var payload={team_id:Number(ts.value),owner:oi.value.trim(),allowed_models:mi.value.split(",").map(function(s){return s.trim();}).filter(Boolean)};
+    var allowedModels=scopeMode==="all"?[]:chosenModels();
+    if(scopeMode==="selected" && !allowedModels.length){ toast("Choose at least one model, or use All models.","err"); return; }
+    var payload={team_id:Number(ts.value),owner:oi.value.trim(),allowed_models:allowedModels};
     if(ex.value) payload.expires_at=Math.floor(new Date(ex.value+"T23:59:59").getTime()/1000);
     if(rpm.value) payload.rpm_limit=Number(rpm.value);
     if(conc.value) payload.concurrency_limit=Number(conc.value);
