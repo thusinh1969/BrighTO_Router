@@ -222,6 +222,14 @@ async function main() {
     result.evidence.providerButtons = providerButtons;
     if (!providerButtons.includes('Pre-register provider')) bug('Providers page must label manual provider creation as Pre-register provider.');
     if (providerButtons.includes('Add provider')) bug('Providers page primary CTA must not imply admins need to add providers before models.');
+    const providerActionPriority = await page.locator('#content tbody tr').first().evaluate((tr) => {
+      const out = {};
+      for (const b of tr.querySelectorAll('button')) out[(b.innerText || '').trim()] = b.className;
+      return out;
+    }).catch(() => ({}));
+    result.evidence.providerActionPriority = providerActionPriority;
+    if (providerActionPriority.Route && !/\bprimary\b/.test(providerActionPriority.Route)) bug('Provider row Route action must be visually primary.');
+    if (providerActionPriority.Edit && /\bprimary\b/.test(providerActionPriority.Edit)) bug('Provider row Edit action must not be visually primary.');
     const providerName = `pw-polish-provider-${stamp}`;
     const providerEdit = `${providerName}-edited`;
     await page.getByRole('button', { name: /Pre-register provider|Add provider/ }).first().click({ force: true });
