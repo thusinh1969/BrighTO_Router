@@ -444,6 +444,8 @@ function renderProviders(c){
     var w=el("div","table-wrap"); var t=el("table");
     t.appendChild(thead(["Provider","Type","Status","Weight","Max","Base URL",""]));
     var tb=el("tbody");
+    var usedIds={};
+    routes.forEach(function(r){(r.backend_ids||[]).forEach(function(id){usedIds[id]=(usedIds[id]||0)+1;});});
     backends.forEach(function(b){
       var tr=el("tr"); tr.setAttribute("data-id",b.id);
       tr.appendChild(el("td",null,b.name));
@@ -456,7 +458,9 @@ function renderProviders(c){
       tr.appendChild(el("td","mono",b.base_url.replace("https://","").replace("http://","")));
       var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px";
       var e=el("button","btn sm primary","Edit"); e.onclick=function(){openProviderModal(b);};
-      var d=el("button","btn sm danger","Delete"); d.onclick=function(){deleteProvider(b);};
+      var d=el("button","btn sm danger","Delete");
+      if(usedIds[b.id]){ d.disabled=true; d.title="Used by "+usedIds[b.id]+" route(s) — delete routes first"; }
+      else { d.onclick=function(){deleteProvider(b);}; }
       row.appendChild(e); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
