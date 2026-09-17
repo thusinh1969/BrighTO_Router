@@ -285,9 +285,14 @@ async function main() {
     await row(page, `${prefix}-owner`).waitFor({ state: 'visible', timeout: 10000 });
     let key = (await adminFetch('/admin/keys')).find((k) => k.owner === `${prefix}-owner`);
     keyId = key?.id;
+    if (createdKey) {
+      await page.waitForFunction(({ owner, key }) => {
+        return [...document.querySelectorAll('tr')].some((tr) => tr.textContent.includes(owner) && tr.textContent.includes(key));
+      }, { owner: `${prefix}-owner`, key: createdKey }, { timeout: 7000 }).catch(() => {});
+    }
     const keyRow = await row(page, `${prefix}-owner`).innerText();
     if (createdKey && keyRow.includes(createdKey) && /Edit/.test(keyRow)) pass('keys', 'key reveal and Edit action visible', { row: keyRow.replace(createdKey, redact(createdKey)) });
-    else fail('keys', 'key reveal/Edit action missing', { row: createdKey ? keyRow.replace(createdKey, redact(createdKey)) : keyRow }, 'Admin must see revealable keys and Edit action.');
+    else fail('keys', 'key reveal/Edit action missing', { row: createdKey ? keyRow.replace(createdKey, redact(createdKey)) : keyRow }, 'Admin must see revealable keys after async reveal finishes, plus Edit action.');
     if (keyId) {
       await row(page, `${prefix}-owner`).getByRole('button', { name: 'Edit' }).click({ force: true });
       await modalField(page, 'Owner').fill(`${prefix}-owner-edited`);
