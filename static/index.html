@@ -1577,13 +1577,22 @@ function openKeyModal(k){
   selectedScope.onclick=function(){ scopeMode="selected"; drawScopePicker(); };
   scopeSeg.appendChild(allScope); scopeSeg.appendChild(selectedScope); f3.appendChild(scopeSeg); f3.appendChild(scopePicker); m.appendChild(f3);
   drawScopePicker();
-  m.appendChild(el("div","section-title","Access limits"));
+  var hasKeyLimits=!!(k.expires_at||k.rpm_limit||k.concurrency_limit||(k.budget&&k.budget.max_tokens>0));
+  var keyLimitsOpen=isEdit && hasKeyLimits;
+  var limitsWrap=el("div","advanced-wrap");
+  var limitsHead=el("button","advanced-toggle");
+  var limitsLabel=el("div"); limitsLabel.appendChild(el("b",null,"Optional limits and budget")); limitsLabel.appendChild(el("span",null,"Expiry, rate limits, token budget, and Advanced budget rules.")); limitsHead.appendChild(limitsLabel);
+  var limitsChevron=el("span","chev",keyLimitsOpen?"Hide":"Show"); limitsHead.appendChild(limitsChevron); limitsWrap.appendChild(limitsHead);
+  var limitsPanel=el("div","advanced-panel"+(keyLimitsOpen?"":" hidden"));
+  function redrawKeyLimits(){ limitsPanel.classList.toggle("hidden",!keyLimitsOpen); limitsChevron.textContent=keyLimitsOpen?"Hide":"Show"; }
+  limitsHead.onclick=function(e){ e.preventDefault(); keyLimitsOpen=!keyLimitsOpen; redrawKeyLimits(); };
+  limitsPanel.appendChild(el("div","section-title","Access limits"));
   var limitsGrid=el("div","form-grid");
   var f4=el("div","field"); f4.appendChild(el("label",null,"Expiry date (optional)")); var ex=el("input"); ex.type="date"; if(k.expires_at) ex.value=new Date(k.expires_at*1000).toISOString().slice(0,10); f4.appendChild(ex); limitsGrid.appendChild(f4);
   var f5=el("div","field"); f5.appendChild(el("label",null,"Requests per minute (optional)")); var rpm=el("input"); rpm.type="number"; rpm.placeholder="unlimited"; if(k.rpm_limit) rpm.value=k.rpm_limit; f5.appendChild(rpm); limitsGrid.appendChild(f5);
   var f6=el("div","field"); f6.appendChild(el("label",null,"Simultaneous request limit (optional)")); var conc=el("input"); conc.type="number"; conc.placeholder="unlimited"; if(k.concurrency_limit) conc.value=k.concurrency_limit; f6.appendChild(conc); limitsGrid.appendChild(f6);
-  m.appendChild(limitsGrid);
-  m.appendChild(el("div","section-title","Budget"));
+  limitsPanel.appendChild(limitsGrid);
+  limitsPanel.appendChild(el("div","section-title","Budget"));
   var budgetGrid=el("div","form-grid");
   var f7=el("div","field"); f7.appendChild(el("label",null,"Budget"));
   var kbm=el("select");
@@ -1595,12 +1604,13 @@ function openKeyModal(k){
   if(k.budget&&k.budget.period) kbp.value=k.budget.period;
   f8.appendChild(kbp); budgetGrid.appendChild(f8);
   var f9=el("div","field"); f9.appendChild(el("label",null,"Token amount")); var kba=el("input"); kba.type="number"; kba.placeholder="e.g. 1000000"; if(k.budget&&k.budget.max_tokens>0) kba.value=k.budget.max_tokens; f9.appendChild(kba); budgetGrid.appendChild(f9);
-  m.appendChild(budgetGrid);
+  limitsPanel.appendChild(budgetGrid);
   var f10=el("div","field");
 	  var advBtn=el("button","linkbtn","Advanced budget rules");
 	  var bud=el("textarea"); bud.style.display="none"; bud.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}'; if(k.budget) bud.value=JSON.stringify(k.budget);
 	  advBtn.onclick=function(){bud.style.display = bud.style.display==="none"?"block":"none";};
-	  f10.appendChild(advBtn); f10.appendChild(el("p","hint","Optional: use this only for money caps or per-model caps.")); f10.appendChild(bud); m.appendChild(f10);
+	  f10.appendChild(advBtn); f10.appendChild(el("p","hint","Optional: use this only for money caps or per-model caps.")); f10.appendChild(bud); limitsPanel.appendChild(f10);
+  limitsWrap.appendChild(limitsPanel); m.appendChild(limitsWrap);
   if(isEdit){ m.appendChild(el("div","section-title","State")); var f11=el("div","field"); var lab=el("label","switch-field"+(k.enabled!==false?" selected":"")); var ecb=el("input"); ecb.type="checkbox"; ecb.checked=k.enabled!==false; ecb.onchange=function(){ lab.classList.toggle("selected", ecb.checked); }; var copy=el("span"); copy.appendChild(el("b",null,"Enabled")); copy.appendChild(el("small",null,"Client key can call allowed routes.")); lab.appendChild(copy); lab.appendChild(ecb); f11.appendChild(lab); m.appendChild(f11); }
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary",isEdit?"Save":"Create");
