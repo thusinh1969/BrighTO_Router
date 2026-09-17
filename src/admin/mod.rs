@@ -1018,6 +1018,13 @@ async fn preview_models(
         .unwrap_or("")
         .trim()
         .to_string();
+    // Blank key cho auth bắt buộc -> chặn ngay (không gọi provider rồi dính 401/502).
+    if auth_mode != "none" && key.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "provider key is required for this auth mode",
+        ));
+    }
     let url = join_provider_url(&base_url, "/v1/models");
     let mut req = state
         .runtime
