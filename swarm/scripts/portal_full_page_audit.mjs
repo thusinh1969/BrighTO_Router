@@ -388,6 +388,9 @@ async function runViewport(browser, name, width, height) {
       const badProviderList = (metrics.providerListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
       if (badProviderList.length || !(metrics.providerListStats || []).length) fail(`${name}/${view}: desktop Providers should render as compact provider cards, not a wide sparse table`, { badProviderList, metrics });
     }
+    if (['providers', 'models'].includes(view) && (metrics.contentText || '').includes(`${prefix}-Custom LLM`)) {
+      fail(`${name}/${view}: generated provider test prefixes should not leak into primary provider labels`, metrics);
+    }
     if (view === 'teams' && !mobile) {
       const badTeamList = (metrics.teamListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
       if (badTeamList.length || !(metrics.teamListStats || []).length) fail(`${name}/${view}: desktop Teams should render as compact team cards, not a wide sparse table`, { badTeamList, metrics });
