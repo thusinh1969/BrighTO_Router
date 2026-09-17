@@ -1,0 +1,86 @@
+# CODEX AUDIT — WRAPPER FALSE GREEN: CUSTOM LLM AUTH STILL WRONG
+
+Date: 2026-09-17  
+Role: Codex auditor. Product code remains DeepSeek-owned.
+
+## Verdict
+
+**Do not accept the latest wrapper PASS as final.**
+
+`bash swarm/scripts/portal_logic_acceptance.sh` now exits 0, but the gate is incomplete: its own evidence shows the Custom LLM blank-key route was saved with the wrong auth/protocol.
+
+## Evidence
+
+Command:
+
+```bash
+bash swarm/scripts/portal_logic_acceptance.sh
+```
+
+Result:
+
+- Exit code: 0
+- PASS count: 17
+- Failure count: 0
+
+But in the same printed summary, the saved Custom LLM route is:
+
+```json
+{
+  "auth_mode": "bearer",
+  "protocol": "openai_chat"
+}
+```
+
+That route was created with:
+
+- Provider: `Custom LLM`
+- Base URL: `http://127.0.0.1:9000/v1`
+- Wizard API key: blank
+- `.env CUSTOM_LLM_API_KEY`: set
+
+Expected result:
+
+```json
+{
+  "auth_mode": "none",
+  "protocol": "local_openai_chat"
+}
+```
+
+## Required fix
+
+Fix both product and test gate:
+
+1. Product rule:
+   - For `custom-llm` + local/private URL + blank wizard API key, save no-auth local route.
+   - Do not silently inherit `CUSTOM_LLM_API_KEY` for local/private Custom LLM.
+   - Only use Bearer when Admin explicitly pastes a key or explicitly opts into env key.
+
+2. Gate rule:
+   - `portal_logic_acceptance.mjs` must assert this exact route property:
+
+```js
+route.auth_mode === 'none' && route.protocol === 'local_openai_chat'
+```
+
+3. Selector rule:
+   - Keep scoped model-picker selectors. Do not use global `text=mock-model` if stale table rows can exist.
+
+4. Harness rule:
+   - Wrapper PASS is only valid if it fails on wrong auth/protocol.
+
+## Acceptance command
+
+After product + gate fix:
+
+```bash
+cargo check --workspace
+cargo test --workspace
+bash swarm/scripts/portal_logic_acceptance.sh
+```
+
+Expected:
+
+- All pass.
+- Gate evidence route for Custom LLM blank-key shows `auth_mode=none`, `protocol=local_openai_chat`.
