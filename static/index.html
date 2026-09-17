@@ -20,6 +20,8 @@ html[data-font=small]{zoom:.9}
 html[data-font=large]{zoom:1.1}
 html[data-density=compact] th,html[data-density=compact] td{padding:4px 10px}
 html[data-density=compact] .panel{padding:14px;margin-bottom:14px}
+html[data-density=compact] .card .big{font-size:25px}
+html[data-density=compact] .topbar h2{font-size:22px}
 body{font-family:var(--font);font-size:14px;line-height:1.5;color:var(--text);
   background:linear-gradient(135deg,var(--bg1),var(--bg2));min-height:100vh;-webkit-font-smoothing:antialiased}
 .hidden{display:none!important}
@@ -225,7 +227,7 @@ var backends = [], routes = [], teams = [], keys = [];
 
 function $(id){ return document.getElementById(id); }
 function el(tag, cls, text){ var n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
-function fmt(n){ if(n===null||n===undefined)return "-"; return Number(n).toLocaleString(); }
+function fmt(n){ if(n===null||n===undefined)return "-"; n=Number(n); if(Math.abs(n)>=1e9)return (n/1e9).toFixed(1)+"B"; if(Math.abs(n)>=1e6)return (n/1e6).toFixed(1)+"M"; if(Math.abs(n)>=1e3)return (n/1e3).toFixed(1)+"K"; return String(Math.round(n)); }
 function fmtCount(n){ if(n===null||n===undefined)return "-"; n=Number(n); if(Math.abs(n)>=1e9)return (n/1e9).toFixed(1)+"B"; if(Math.abs(n)>=1e6)return (n/1e6).toFixed(1)+"M"; if(Math.abs(n)>=1e3)return (n/1e3).toFixed(1)+"K"; return String(Math.round(n)); }
 function fmtTs(sec){ if(!sec)return "-"; var d=new Date(sec*1000); return d.toISOString().replace("T"," ").slice(0,16); }
 function fmtDate(sec){ return new Date(sec*1000).toISOString().slice(0,10); }
@@ -992,9 +994,11 @@ function closeModal(){ $("modal-overlay").classList.add("hidden"); $("modal-over
 function toggleSidebar(){ $("sidebar").classList.toggle("open"); }
 function applyPrefs(){
   var font=localStorage.getItem("pref_font")||"normal";
-  var density=localStorage.getItem("pref_density")||"comfortable";
+  var density=localStorage.getItem("pref_density")||"compact";
   document.documentElement.dataset.font=font;
   document.documentElement.dataset.density=density;
+  if(!localStorage.getItem("pref_font")) localStorage.setItem("pref_font","normal");
+  if(!localStorage.getItem("pref_density")) localStorage.setItem("pref_density","compact");
 }
 function setPref(key,value){ localStorage.setItem("pref_"+key,value); applyPrefs(); }
 
