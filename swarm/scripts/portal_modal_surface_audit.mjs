@@ -106,6 +106,18 @@ async function inspectModal(page) {
     const footerCoveredInputs = footerRect
       ? inputs.filter((i) => i.bottom > footerRect.top + 4 && i.top < footerRect.bottom - 4)
       : [];
+    const disabledPrimaryButtons = [...modal.querySelectorAll('button.btn.primary:disabled')].filter((node) => node.offsetParent !== null).map((node) => {
+      const r = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return {
+        text: (node.innerText || node.textContent || '').trim(),
+        width: Math.round(r.width),
+        backgroundColor: style.backgroundColor,
+        borderColor: style.borderColor,
+        color: style.color,
+        opacity: style.opacity,
+      };
+    });
     return {
       missing: false,
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height), bottom: Math.round(rect.bottom) },
@@ -120,6 +132,7 @@ async function inspectModal(page) {
       wizardSteps,
       gateCopyRects,
       switches,
+      disabledPrimaryButtons,
       text: modal.innerText.slice(0, 2400),
       clipped: clipped.slice(0, 25),
     };
@@ -185,6 +198,8 @@ async function capture(page, name) {
   if (metrics.missing) fail(`${name}: modal missing`, metrics);
   if (metrics.clipped?.length) fail(`${name}: modal has clipped/overflowing content`, metrics);
   if (metrics.footerCoveredInputs?.length) fail(`${name}: sticky footer covers input fields`, metrics);
+  const activeLookingDisabledPrimary = (metrics.disabledPrimaryButtons || []).filter((b) => /Save enabled|Use this model|Sign in/i.test(b.text || '') && (/rgb\(29, 78, 216\)|rgb\(30, 64, 175\)/.test(b.backgroundColor || '') || /rgb\(29, 78, 216\)|rgb\(30, 64, 175\)/.test(b.borderColor || '')));
+  if (activeLookingDisabledPrimary.length) fail(`${name}: disabled primary buttons still look active`, { activeLookingDisabledPrimary, metrics });
   if (name.startsWith('mobile-')) {
     if (metrics.rect && metrics.rect.bottom > metrics.clientH + 3) fail(`${name}: mobile modal extends below viewport instead of scrolling internally`, metrics);
     if (metrics.modalScrollHeight <= metrics.modalClientHeight && name.endsWith('add-model') && metrics.rect.height > metrics.clientH - 30) fail(`${name}: long mobile modal should scroll internally`, metrics);
