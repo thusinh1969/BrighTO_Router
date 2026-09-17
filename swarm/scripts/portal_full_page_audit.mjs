@@ -307,6 +307,11 @@ async function inspectPage(page, label) {
         const firstRow = table.querySelector('tbody tr');
         const firstAction = table.querySelector('td.actions .action-row');
         const wrap = table.closest('.provider-list-wrap');
+        const metricCells = firstRow ? [...firstRow.querySelectorAll('td:nth-child(3),td:nth-child(4),td:nth-child(5)')].map((cell) => {
+          const st = getComputedStyle(cell);
+          const r = cell.getBoundingClientRect();
+          return { text: (cell.innerText || cell.textContent || '').trim(), width: Math.round(r.width), height: Math.round(r.height), borderStyle: st.borderStyle, borderRadius: st.borderRadius, backgroundColor: st.backgroundColor };
+        }) : [];
         return {
           tableDisplay: getComputedStyle(table).display,
           bodyDisplay: tbody ? getComputedStyle(tbody).display : '',
@@ -315,6 +320,7 @@ async function inspectPage(page, label) {
           rowColumns: firstRow ? getComputedStyle(firstRow).gridTemplateColumns : '',
           actionDisplay: firstAction ? getComputedStyle(firstAction).display : '',
           actionButtons: firstAction ? [...firstAction.querySelectorAll('button')].map((button) => { const r = button.getBoundingClientRect(); return { text: (button.innerText || button.textContent || '').trim(), x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; }) : [],
+          metricCells,
           wrapBorder: wrap ? getComputedStyle(wrap).borderStyle : '',
           rows: table.querySelectorAll('tbody tr').length,
         };
@@ -528,6 +534,8 @@ async function runViewport(browser, name, width, height) {
       if (width >= 1200) {
         const wrappedProviderActions = (metrics.providerListStats || []).filter((r) => (r.actionButtons || []).length >= 4 && (Math.max(...r.actionButtons.map((b) => b.y)) - Math.min(...r.actionButtons.map((b) => b.y)) > 5));
         if (wrappedProviderActions.length) fail(`${name}/${view}: desktop provider actions should fit on one row`, { wrappedProviderActions, metrics });
+        const flatMetricCells = (metrics.providerListStats || []).filter((r) => r.rows > 0 && (r.metricCells || []).some((c) => c.borderStyle === 'none' || parseFloat(c.borderRadius || '0') < 8 || c.height < 44));
+        if (flatMetricCells.length) fail(`${name}/${view}: desktop provider metrics should read as compact cards, not flat table cells`, { flatMetricCells, metrics });
       }
     }
     if (['providers', 'models'].includes(view) && (metrics.contentText || '').includes(`${prefix}-Custom LLM`)) {
