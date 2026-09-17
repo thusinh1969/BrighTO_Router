@@ -144,11 +144,15 @@ async function main() {
 
     await page.locator('.nav[data-view="keys"]').click({ force: true });
     await page.waitForTimeout(600);
-    await page.getByRole('button', { name: 'New key' }).click({ force: true });
+    let modalOpened = false;
+    for (let attempt = 0; attempt < 4 && !modalOpened; attempt++) {
+      await page.getByRole('button', { name: 'New key' }).click({ force: true }).catch(() => {});
+      await page.waitForTimeout(400);
+      modalOpened = await page.locator('.modal').isVisible().catch(() => false);
+    }
     const modalState = await page.evaluate(() => ({ overlayClass: document.querySelector('#modal-overlay') ? document.querySelector('#modal-overlay').className : 'NO-OVERLAY', children: document.querySelector('#modal-overlay') ? document.querySelector('#modal-overlay').children.length : -1, modal: !!document.querySelector('.modal') }));
     result.evidence.keyModalState = modalState;
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
-    await page.waitForTimeout(300);
     await modalField(page, 'Team').selectOption('1');
     await modalField(page, 'Owner').fill(prefix + '-owner');
     await page.locator('.modal').getByRole('button', { name: 'Create' }).click({ force: true });
