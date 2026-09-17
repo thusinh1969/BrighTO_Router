@@ -48,6 +48,9 @@ PY
       docker exec -i "$db_cid" psql -U "${DB_USER:-brighto_router}" -d "${DB_NAME:-brighto_router}" >/dev/null 2>&1 <<'SQL' || true
 DELETE FROM api_keys WHERE owner LIKE 'pw-%' OR owner LIKE 'crud-%' OR owner LIKE 'verify-%';
 DELETE FROM teams WHERE name LIKE 'pw-%' OR name LIKE 'crud-%' OR name LIKE 'verify-%';
+DELETE FROM usage_ledger WHERE model LIKE 'pw-%' OR model LIKE 'crud-%' OR model LIKE 'verify-%';
+DELETE FROM model_routes WHERE model_name LIKE 'pw-%' OR model_name LIKE 'crud-%' OR model_name LIKE 'verify-%';
+DELETE FROM backends WHERE base_url = 'http://127.0.0.1:9000/v1';
 SQL
     fi
   fi
