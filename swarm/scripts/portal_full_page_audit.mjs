@@ -226,8 +226,8 @@ async function runViewport(browser, name, width, height) {
       if (clippedModelNames.length) fail(`${name}/${view}: public model names are clipped`, { clippedModelNames, metrics });
     }
     if (view === 'keys') {
-      const badKeyRows = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && (r.keyText === '…' || r.copyButtons !== 1 || r.revealButtons !== 1));
-      if (badKeyRows.length) fail(`${name}/${view}: revealed API key row is missing full key, copy, or reveal action`, { badKeyRows, metrics });
+      const badKeyRows = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && (r.keyText === '…' || r.copyButtons !== 1 || r.revealButtons !== 0));
+      if (badKeyRows.length) fail(`${name}/${view}: visible API key rows should show full key plus copy, without redundant Reveal action`, { badKeyRows, metrics });
       const clippedKeys = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && (/ellipsis/i.test(r.keyTextOverflow) || r.keyOverflow !== 'visible' || r.keyScrollHeight > r.keyClientHeight + 4));
       if (clippedKeys.length) fail(`${name}/${view}: revealed API keys are clipped`, { clippedKeys, metrics });
       const clippedKeyLimits = (metrics.keyLimitItems || []).filter((r) => r.text && (r.scrollWidth > r.clientWidth + 4 || r.scrollHeight > r.clientHeight + 4));
@@ -235,6 +235,8 @@ async function runViewport(browser, name, width, height) {
       if (!mobile) {
         const wrappedDesktopKeys = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && r.keyClientHeight > 24);
         if (wrappedDesktopKeys.length) fail(`${name}/${view}: desktop API keys should fit on one readable line`, { wrappedDesktopKeys, metrics });
+        const ghostKeyColumns = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && /0px/.test(r.columns || ''));
+        if (ghostKeyColumns.length) fail(`${name}/${view}: desktop API key rows should not reserve a ghost Reveal column`, { ghostKeyColumns, metrics });
       }
     }
     if (mobile) {

@@ -217,7 +217,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .keys-table .mini-meta-grid{grid-template-columns:1fr;gap:3px}
 .keys-table td:nth-child(2) .cell-main,.keys-table td:nth-child(2) .cell-sub{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
 .mini-meta-grid b{color:var(--text);font-weight:750}
-.key-secret{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;min-width:0}
+.key-secret{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;min-width:0}
 .key-secret .mono{display:block;overflow:visible;text-overflow:clip;white-space:nowrap;overflow-wrap:normal;word-break:normal;min-width:0}
 .table-wrap.pro-table{overflow:visible}
 .metric-table td:first-child{min-width:220px;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1553,7 +1553,6 @@ function renderKeys(c){
           secret.innerHTML="";
           var full=el("span","mono",data.key); full.title=data.key; secret.appendChild(full);
           secret.appendChild(copyIconBtn(data.key));
-          var view=el("button","btn sm ghost","Reveal"); view.onclick=function(){revealKey(k);}; secret.appendChild(view);
         }).catch(function(){ secret.innerHTML=""; var vb=el("button","btn sm ghost","Reveal"); vb.onclick=function(){revealKey(k);}; secret.appendChild(vb); });
       }
       ks.appendChild(secret);
