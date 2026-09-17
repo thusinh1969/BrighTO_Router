@@ -1671,7 +1671,7 @@ async function renderUsage(c,seq){
     var bar=el("div","panel");
     var h=el("div","panel-head"); h.appendChild(el("h3",null,"Filters"));
     bar.appendChild(h);
-    bar.appendChild(el("p","hint","Narrow request history by model, status, provider, team, or key. Tokens/sec is shown only when request duration is long enough to be meaningful."));
+    bar.appendChild(el("p","hint","Narrow request history by model, status, provider, team, or key. Tokens/sec is shown for every request with token usage; * marks a very short sample."));
     var row=el("div","filter-grid");
     function fld(lbl, input){ var box=el("div","field"); box.appendChild(el("label",null,lbl)); box.appendChild(input); row.appendChild(box); }
     var mi=el("input"); mi.placeholder="model name"; mi.value=usageFilter.model; fld("Model",mi);
@@ -1824,9 +1824,10 @@ function fmtNum(v){ return fmt(v); }
 function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
 function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
 function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1) return "<1 ms"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
-function reliableTokRate(r){ var rate=Number(r&&r.total_tokens_per_second); var dur=Number(r&&r.total_ms); return Number.isFinite(rate) && rate>=0 && Number.isFinite(dur) && dur>=100; }
-function tokRateDisplay(r){ return reliableTokRate(r)?fmt(Math.round(Number(r.total_tokens_per_second))):"—"; }
-function tokRateTitle(r){ return reliableTokRate(r)?"Total tokens per second":"Hidden because duration is below 100 ms; too short to be a useful production speed signal."; }
+function reliableTokRate(r){ var rate=Number(r&&r.total_tokens_per_second); return Number.isFinite(rate) && rate>=0; }
+function shortTokSample(r){ var dur=Number(r&&r.total_ms); return reliableTokRate(r) && Number.isFinite(dur) && dur<100; }
+function tokRateDisplay(r){ return reliableTokRate(r)?fmt(Math.round(Number(r.total_tokens_per_second)))+(shortTokSample(r)?"*":""):"—"; }
+function tokRateTitle(r){ return reliableTokRate(r)?(shortTokSample(r)?"Tokens per second from a very short request; use sustained tests for benchmark claims.":"Observed total tokens per second."):"No token speed was recorded for this request."; }
 function shQuote(s){ return "'"+String(s).replace(/'/g,"'\"'\"'")+"'"; }
 function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.dataset.copy=text; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
