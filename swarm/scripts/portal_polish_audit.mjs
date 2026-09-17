@@ -74,7 +74,12 @@ async function field(page, label) {
     .first();
 }
 async function fill(page, label, value) { await (await field(page, label)).fill(String(value)); }
-async function row(page, text) { return page.locator('tr').filter({ hasText: text }).first(); }
+async function row(page, text) {
+  const literal = String(text).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return page.locator('tr').filter({ has: page.locator(`[title="${literal}"], [aria-label="${literal}"]`) }).first()
+    .or(page.locator('tr').filter({ hasText: text }).first())
+    .first();
+}
 async function panels(page, text) { return page.locator('.panel').filter({ hasText: text }).count(); }
 async function modalButton(page, name) { return page.locator('.modal').getByRole('button', { name }).first(); }
 async function clickRowButton(page, rowText, buttonName) {

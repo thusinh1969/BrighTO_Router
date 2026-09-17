@@ -33,3 +33,22 @@ Representative screenshot checked manually:
 ## Verdict
 
 This is a real polish fix, not a logic rewrite. It does not touch provider/model route APIs, database schema, routing behavior, keys, budgets, or Docker compose. It makes the Portal tolerate realistic long model names without visually breaking admin screens.
+
+## Follow-up polish in same area
+
+A second pass removed hidden duplicate full names from rendered DOM text and changed compact labels to use `title` plus `aria-label`. It also compacted long provider names, team names, API-key owners, API-key teams, and model scope labels in admin tables.
+
+The polish audit row locator was updated to find rows by visible text, `title`, or `aria-label`, because compact labels intentionally do not render the full raw value as visible text.
+
+Additional live verification after this follow-up:
+
+- `./swarm/scripts/portal_full_page_audit.sh` — PASS
+- `./swarm/scripts/portal_modal_surface_audit.sh` — PASS
+- `./swarm/scripts/portal_logic_acceptance.sh` — PASS
+- `./swarm/scripts/portal_user_journey_audit.sh` — PASS
+- `./swarm/scripts/portal_polish_audit.sh` — PASS
+
+Representative screenshots checked manually:
+
+- `swarm/out/playwright/20260918-023641-portal-full-page-audit/desktop-1440-providers.png`
+- `swarm/out/playwright/20260918-023641-portal-full-page-audit/desktop-1440-keys.png`

@@ -25,7 +25,6 @@ html[data-density=compact] .topbar h2{font-size:22px}
 body{font-family:var(--font);font-size:14px;line-height:1.5;color:var(--text);
   background:linear-gradient(135deg,var(--bg1),var(--bg2));min-height:100vh;-webkit-font-smoothing:antialiased}
 .hidden{display:none!important}
-.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 code{font-family:var(--mono);background:rgba(30,41,59,.6);padding:2px 7px;border-radius:6px;font-size:12px;color:var(--accent-text)}
 
 /* ---------- Login ---------- */
@@ -221,7 +220,8 @@ table.models-table,table.conn-table{table-layout:fixed;min-width:0!important}
 table.models-table td,table.conn-table td{overflow:hidden}
 table.models-table td:first-child,table.conn-table td:first-child{overflow:hidden;text-overflow:clip;white-space:normal}
 table.models-table td:first-child .cell-main,table.conn-table td:first-child .cell-main,table.models-table td:nth-child(3) .cell-main,table.models-table td:nth-child(4) .cell-main{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
- table.models-table .model-name-row .cell-main{display:block!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;-webkit-line-clamp:unset!important;-webkit-box-orient:initial!important}
+table.models-table .model-name-row .cell-main{display:block!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;-webkit-line-clamp:unset!important;-webkit-box-orient:initial!important}
+table.conn-table td:first-child .cell-main{display:block!important;white-space:nowrap!important;overflow:visible!important;text-overflow:clip!important;-webkit-line-clamp:unset!important;-webkit-box-orient:initial!important}
 .action-row{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 .conn-table .action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;justify-content:stretch}
 .conn-table .action-row .btn{width:100%;padding-left:8px;padding-right:8px}
@@ -230,7 +230,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .model-meta-grid b{color:var(--text);font-weight:750}
 .mini-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;font-size:11.5px;color:var(--muted)}
 .keys-table .mini-meta-grid{grid-template-columns:1fr;gap:3px}
-.keys-table td:nth-child(2) .cell-main,.keys-table td:nth-child(2) .cell-sub{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.keys-table td:nth-child(2) .cell-main,.keys-table td:nth-child(2) .cell-sub{white-space:nowrap!important;overflow:visible;text-overflow:clip;overflow-wrap:normal}
 .mini-meta-grid b{color:var(--text);font-weight:750}
 .key-secret{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;min-width:0}
 .key-secret .mono{display:block;overflow:visible;text-overflow:clip;white-space:nowrap;overflow-wrap:normal;word-break:normal;min-width:0}
@@ -1013,7 +1013,7 @@ function renderProviders(c){
       var tr=el("tr"); tr.setAttribute("data-id",b.id);
       var nc=el("td");
       var ns=el("div","stack-cell");
-      var nw=el("div","cell-main",b.name); nw.title=b.name; ns.appendChild(nw);
+      ns.appendChild(nameNode("div","cell-main",b.name,26));
       ns.appendChild(el("div","cell-sub",b.format==="anthropic"?"Anthropic Messages":"OpenAI-compatible"));
       nc.appendChild(ns);
       tr.appendChild(nc);
@@ -1515,7 +1515,7 @@ function renderTeams(c){
     teams.forEach(function(tm){
       var tr=el("tr");
       var name=el("td"); var ns=el("div","stack-cell");
-      ns.appendChild(el("div","cell-main",tm.name));
+      ns.appendChild(nameNode("div","cell-main",tm.name,36));
       ns.appendChild(el("div","cell-sub","Team ID "+tm.id));
       name.appendChild(ns); tr.appendChild(name);
       var budget=el("td"); var bs=el("div","stack-cell");
@@ -1645,12 +1645,12 @@ function renderKeys(c){
       kc.appendChild(ks);
       tr.appendChild(kc);
       var owner=el("td"); var os=el("div","stack-cell");
-      os.appendChild(el("div","cell-main",k.owner||"—"));
-      os.appendChild(el("div","cell-sub",k.team_name||("team "+k.team_id)));
+      os.appendChild(nameNode("div","cell-main",k.owner||"—",28));
+      os.appendChild(nameNode("div","cell-sub",k.team_name||("team "+k.team_id),28));
       owner.appendChild(os); tr.appendChild(owner);
       var scope=el("td"); var ss=el("div","stack-cell");
       var allowed=(k.allowed_models||[]);
-      ss.appendChild(el("div","cell-main",allowed.length?allowed.join(", "):"All models"));
+      ss.appendChild(nameNode("div","cell-main",allowed.length?allowed.join(", "):"All models",36));
       ss.appendChild(el("div","cell-sub",k.expires_at?("Expires "+fmtDate(k.expires_at)):"No expiry"));
       scope.appendChild(ss); tr.appendChild(scope);
       var limits=el("td"); var lg=el("div","mini-meta-grid");
@@ -2070,7 +2070,7 @@ function nameNode(tag,cls,text,max){
   var shown=compactName(full,max);
   var n=el(tag,cls,shown);
   n.title=full;
-  if(shown!==full) n.appendChild(el("small","sr-only"," "+full));
+  if(shown!==full) n.setAttribute("aria-label",full);
   return n;
 }
 
