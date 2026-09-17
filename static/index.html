@@ -835,7 +835,7 @@ function renderProviders(c){
   else{
     var w=el("div","table-wrap pro-table"); var t=el("table","conn-table");
     var colg=document.createElement("colgroup");
-    ["30%","22%","7%","7%","22%","12%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
+    ["30%","20%","7%","7%","18%","18%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
     t.appendChild(thead(["Connection","Status","Routes","Usage","Base URL",""]));
     var tb=el("tbody");
