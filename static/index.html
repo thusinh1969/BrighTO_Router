@@ -433,39 +433,63 @@ function renderProviders(c){
   c.innerHTML="";
   var p=el("div","panel");
   var h=el("div","panel-head");
-  h.appendChild(el("h3",null,"Provider backends"));
+  h.appendChild(el("h3",null,"Connections"));
   var add=el("button","btn primary sm","Add provider"); add.onclick=openProviderModal;
   h.appendChild(add);
+  var filt=el("select"); filt.style.maxWidth="160px";
+  [["all","All"],["enabled","Enabled only"],["disabled","Disabled only"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; filt.appendChild(o); });
+  filt.value=(window.provFilter||"all");
+  filt.onchange=function(){ window.provFilter=filt.value; renderProviders($("content")); };
+  h.appendChild(filt);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Providers are upstream API connections (base URL + dialect). Add a model and its provider is created automatically; pre-register one here only to reuse it across many models. The API key lives on the model route, never on the provider."));
-  if(!backends.length){ p.appendChild(emptyBox("No providers yet.")); }
+  p.appendChild(el("p","hint","Connections are upstream endpoints, created automatically when you add a model. Manage enable/disable and safety here. The API key lives on the model route, never on the connection."));
+  var fv=(window.provFilter||"all");
+  var shown=backends.filter(function(b){ return fv==="all" || (fv==="enabled"?b.enabled:!b.enabled); });
+  if(!backends.length){ p.appendChild(emptyBox("No connections yet — add a model and one is created automatically.")); }
+  else if(!shown.length){ p.appendChild(emptyBox("No connections match this filter.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table");
-    t.appendChild(thead(["Provider","Status","W / Max","Base URL",""]));
+    t.appendChild(thead(["Connection","Status","Routes","Usage","Base URL",""]));
     var tb=el("tbody");
-    var usedIds={};
-    routes.forEach(function(r){(r.backend_ids||[]).forEach(function(id){usedIds[id]=(usedIds[id]||0)+1;});});
-    backends.forEach(function(b){
+    shown.forEach(function(b){
       var tr=el("tr"); tr.setAttribute("data-id",b.id);
       var nc=el("td"); nc.appendChild(el("span",null,b.name));
       if(b.format==="anthropic"){ var tg=el("span","muted"," · Anthropic"); nc.appendChild(tg); }
       tr.appendChild(nc);
       var st=el("td");
-      st.appendChild(pill(b.enabled?(b.key_resolved?"Enabled · key ready":"Enabled · no key"):"Disabled", b.enabled?(b.key_resolved?"on":"warn"):"off"));
+      var statusTxt, statusKind;
+      if(!b.can_delete){ statusTxt="Has usage · cannot delete"; statusKind="off"; }
+      else if(!b.enabled){ statusTxt="Disabled"+(b.active_route_count>0?" · affects "+b.active_route_count+" route(s)":""); statusKind="off"; }
+      else if(b.active_route_count>0){ statusTxt="Active · "+b.active_route_count+" route(s)"; statusKind="on"; }
+      else { statusTxt="Template · no routes"; statusKind="info"; }
+      st.appendChild(pill(statusTxt, statusKind));
       tr.appendChild(st);
-      tr.appendChild(el("td","num",(b.weight||1)+" / "+(b.max_inflight?b.max_inflight:"∞")));
-      var bu=el("td","mono"); bu.textContent=b.base_url.replace("https://","").replace("http://",""); bu.style.maxWidth="160px"; bu.style.overflow="hidden"; bu.style.textOverflow="ellipsis"; tr.appendChild(bu);
-      var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px";
+      tr.appendChild(el("td","num",String(b.active_route_count||0)));
+      tr.appendChild(el("td","num",String(b.usage_count||0)));
+      var bu=el("td","mono"); bu.textContent=b.base_url.replace("https://","").replace("http://",""); bu.style.maxWidth="130px"; bu.style.overflow="hidden"; bu.style.textOverflow="ellipsis"; tr.appendChild(bu);
+      var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
+      var cr=el("button","btn sm ghost","Route"); cr.title="Create a model route from this connection"; cr.onclick=function(){ openRouteModalFromConnection(b); };
+      var tg2=el("button","btn sm ghost", b.enabled?"Disable":"Enable"); tg2.onclick=function(){ toggleBackend(b); };
       var e=el("button","btn sm primary","Edit"); e.onclick=function(){openProviderModal(b);};
       var d=el("button","btn sm danger","Delete");
-      if(usedIds[b.id]){ d.disabled=true; d.title="Used by "+usedIds[b.id]+" route(s) — delete routes first"; }
+      if(!b.can_delete){ d.disabled=true; d.title=(b.delete_blockers||[]).join("; ")||"Cannot delete"; }
       else { d.onclick=function(){deleteProvider(b);}; }
-      row.appendChild(e); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
+      row.appendChild(cr); row.appendChild(tg2); row.appendChild(e); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
     t.appendChild(tb); w.appendChild(t); p.appendChild(w);
   }
   c.appendChild(p);
+}
+
+function openRouteModalFromConnection(b){ window.presetConnection=b; openRouteModal(); }
+
+async function toggleBackend(b){
+  try{
+    await api("/admin/backends/"+b.id,"PATCH",{enabled:!b.enabled});
+    toast(b.enabled?"Connection disabled":"Connection enabled");
+    backends=await api("/admin/backends","GET"); routes=await api("/admin/routes","GET"); rerender();
+  }catch(e){ toast("Toggle failed: "+e.message,"err"); }
 }
 async function deleteProvider(b){
   if(!confirm("Delete provider "+b.name+"?")) return;
@@ -484,7 +508,7 @@ function openProviderModal(b){
   // Chọn provider từ catalog hard-coded trong .env (chỉ 2 dialect: openai/anthropic).
   var fp=el("div","field"); fp.appendChild(el("label",null,"Provider"));
   var psel=el("select");
-  (catalog||[]).forEach(function(e){ var o=el("option",null,e.label); o.value=e.key; psel.appendChild(o); });
+  (catalog||[]).forEach(function(e){ var o=el("option",null, e.enabled===false ? e.label+" (coming soon)" : e.label); o.value=e.key; if(e.enabled===false) o.disabled=true; psel.appendChild(o); });
   if(!(catalog||[]).length){ var no=el("option",null,"Custom LLM"); no.value="custom"; psel.appendChild(no); }
   var pre=(catalog||[]).find(function(e){ return b.name && (b.name===e.label || b.name.toLowerCase().indexOf(e.key)>=0); });
   if(pre) psel.value=pre.key;
@@ -552,30 +576,57 @@ function renderModels(c){
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Models"));
   var add=el("button","btn primary sm","Add model"); add.onclick=function(){openRouteModal();};
   h.appendChild(add);
+  var filt=el("select"); filt.style.maxWidth="160px";
+  [["all","All"],["enabled","Enabled only"],["disabled","Disabled only"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; filt.appendChild(o); });
+  filt.value=(window.modelFilter||"all");
+  filt.onchange=function(){ window.modelFilter=filt.value; renderModels($("content")); };
+  h.appendChild(filt);
   p.appendChild(h);
-  p.appendChild(el("p","hint","One guided flow: pick a provider, load its models, choose one, test the connection, then save. The endpoint is created for you."));
+  p.appendChild(el("p","hint","One guided flow: pick a provider, load its models, choose one, test the connection, then save. The connection is created for you."));
+  var fv=(window.modelFilter||"all");
+  var shown=routes.filter(function(r){ return fv==="all" || (fv==="enabled"?r.effective_enabled:!r.effective_enabled); });
   if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
+  else if(!shown.length){ p.appendChild(emptyBox("No models match this filter.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table");
-    t.appendChild(thead(["Public model","Provider","Provider model","Protocol","Auth","Context","Max out","$ in/out","Timeout",""]));
+    t.appendChild(thead(["Public model","Status","Provider","Provider model","Auth","Context","Max out","$ in/out",""]));
     var tb=el("tbody");
-    routes.forEach(function(r){
+    shown.forEach(function(r){
       var tr=el("tr");
       tr.appendChild(el("td","mono",r.model_name));
+      var st=el("td");
+      var statusTxt, statusKind;
+      if(r.effective_enabled){ statusTxt="Enabled"; statusKind="on"; }
+      else if(r.disabled_reason==="provider disabled"){ statusTxt="Disabled by provider"; statusKind="off"; }
+      else { statusTxt="Disabled manually"; statusKind="off"; }
+      st.appendChild(pill(statusTxt, statusKind));
+      tr.appendChild(st);
       tr.appendChild(el("td",null,r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ")));
       tr.appendChild(el("td","mono",r.provider_model_name||"—"));
-      tr.appendChild(el("td",null,protoLabel(r.protocol)));
       tr.appendChild(el("td",null,r.auth_mode||"—"));
       tr.appendChild(el("td","num",r.context_tokens!=null?fmt(r.context_tokens):"—"));
       tr.appendChild(el("td","num",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"));
       tr.appendChild(el("td","num",(r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—")+" / "+(r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—")));
-      tr.appendChild(el("td",null,r.first_byte_timeout+"s"));
-      var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px"; var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openRouteModal(r);}; var d=el("button","btn sm danger","Delete"); d.onclick=function(){deleteRoute(r);}; row.appendChild(b); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
+      var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
+      var tg2=el("button","btn sm ghost", r.enabled?"Disable":"Enable"); tg2.onclick=function(){ toggleRoute(r); };
+      var b=el("button","btn sm primary","Edit"); b.onclick=function(){openRouteModal(r);};
+      var d=el("button","btn sm danger","Delete");
+      if(!r.can_delete){ d.disabled=true; d.title="Has "+r.usage_count+" logged request(s) — disable instead"; }
+      else { d.onclick=function(){deleteRoute(r);}; }
+      row.appendChild(tg2); row.appendChild(b); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
     t.appendChild(tb); w.appendChild(t); p.appendChild(w);
   }
   c.appendChild(p);
+}
+
+async function toggleRoute(r){
+  try{
+    await api("/admin/routes/"+encodeURIComponent(r.model_name)+"/enabled","PATCH",{enabled:!r.enabled});
+    toast(r.enabled?"Model disabled":"Model enabled");
+    routes=await api("/admin/routes","GET"); rerender();
+  }catch(e){ toast("Toggle failed: "+e.message,"err"); }
 }
 function openRouteModal(route){
   route=route||{};
@@ -607,8 +658,17 @@ function openRouteModal(route){
     else if(e.key_env){ keyHint.textContent="No key in .env ("+e.key_env+") — paste the API key (stored per model, write-only)."; }
     else { keyHint.textContent="Paste the API key (stored per model, write-only)."; }
   }
-  ps.onchange=function(){ applyCat(); testState.ok=false; save.disabled=true; stat.textContent=""; stat.style.color="var(--muted)"; };
+  function clearTest(msg){ testState.ok=false; save.disabled=true; save.title="Requires a passing connection test"; stat.textContent=msg||""; stat.style.color="var(--muted)"; }
+  ps.onchange=function(){ applyCat(); clearTest(""); };
   applyCat();
+  url.oninput=function(){ clearTest(""); };
+  pk.oninput=function(){ clearTest(""); };
+  if(window.presetConnection){
+    var pc=window.presetConnection; window.presetConnection=null;
+    var ck=(catalog||[]).find(function(e){ return pc.name===e.label || pc.name.toLowerCase().indexOf(e.key)>=0; });
+    if(ck && ck.enabled!==false){ psel.value=ck.key; applyCat(); }
+    url.value=pc.base_url||url.value;
+  }
 
   var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model"));
   var row=el("div","row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
@@ -618,7 +678,7 @@ function openRouteModal(route){
 
   var f=el("div","field"); f.appendChild(el("label",null,"Public model name (shown to clients)"));
   var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi); m.appendChild(f);
-  ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; };
+  ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; clearTest(""); };
 
   var stat=el("p","hint"); m.appendChild(stat);
   var testState={ok:false};
@@ -634,8 +694,9 @@ function openRouteModal(route){
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var testBtn=el("button","btn","Test connection");
-  var save=el("button","btn primary", route.model_name?"Save":"Save model"); save.disabled=true;
-  act.appendChild(cancel); act.appendChild(testBtn); act.appendChild(save); m.appendChild(act);
+  var saveDraft=el("button","btn","Save draft"); saveDraft.title="Saves as disabled (no test required)";
+  var save=el("button","btn primary","Save enabled"); save.disabled=true; save.title="Requires a passing connection test";
+  act.appendChild(cancel); act.appendChild(testBtn); act.appendChild(saveDraft); act.appendChild(save); m.appendChild(act);
 
   function dialAuth(){
     var e=catEntry(ps.value);
@@ -684,12 +745,12 @@ function openRouteModal(route){
     finally{ testBtn.disabled=false; testBtn.textContent="Test connection"; }
   };
 
-  save.onclick=async function(){
+  async function doSave(enabledFlag){
     var name=mi.value.trim(); if(!name){toast("Public model name is required","err");return;}
     var modelSel=ms.value.trim(); if(!modelSel){toast("Provider model is required","err");return;}
-    if(!testState.ok){toast("Test connection must pass before saving","err");return;}
+    if(enabledFlag && !testState.ok){toast("Test connection must pass before saving enabled","err");return;}
     var da=dialAuth(); var e=catEntry(ps.value);
-    save.disabled=true; save.textContent="Saving…";
+    save.disabled=true; saveDraft.disabled=true;
     try{
       var backend=backends.find(function(b){ return b.base_url===url.value.trim(); });
       var backendId;
@@ -698,7 +759,7 @@ function openRouteModal(route){
         var created=await api("/admin/backends","POST",{name:e.label||"Custom LLM",base_url:url.value.trim(),api_key_ref:"env:NONE",weight:1,max_inflight:0,format:da.dialect,enabled:true});
         backendId=created.id;
       }
-      var payload={model_name:name,backend_ids:[backendId],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel};
+      var payload={model_name:name,backend_ids:[backendId],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel,enabled:enabledFlag};
       payload.auth_mode=da.auth; payload.protocol=da.protocol;
       Object.assign(payload, keyPayload());
       if(ct.value) payload.context_tokens=Number(ct.value);
@@ -710,15 +771,17 @@ function openRouteModal(route){
       var path=isEdit?"/admin/routes/"+encodeURIComponent(route.model_name):"/admin/routes";
       var method=isEdit?"PATCH":"POST";
       await api(path,method,payload);
-      closeModal(); toast("Model saved");
+      closeModal(); toast(enabledFlag?"Model saved (enabled)":"Draft saved (disabled)");
       routes=await api("/admin/routes","GET"); backends=await api("/admin/backends","GET"); rerender();
-    }catch(err){ toast("Save failed: "+err.message,"err"); save.disabled=false; save.textContent=route.model_name?"Save":"Save model"; }
-  };
+    }catch(err){ toast("Save failed: "+err.message,"err"); save.disabled=false; saveDraft.disabled=false; }
+  }
+  save.onclick=function(){ doSave(true); };
+  saveDraft.onclick=function(){ doSave(false); };
 
   if(route.model_name){
     var rb=backends.find(function(x){return x.id===route.backend_ids[0];});
     if(rb){ url.value=rb.base_url; var ck=(catalog||[]).find(function(e){return rb.name===e.label;}); if(ck) ps.value=ck.key; }
-    stat.textContent="Test connection again to re-enable Save."; stat.style.color="var(--muted)";
+    stat.textContent="Test connection again to re-enable Save enabled."; stat.style.color="var(--muted)";
   }
 
   ov.appendChild(m); ov.classList.remove("hidden");
