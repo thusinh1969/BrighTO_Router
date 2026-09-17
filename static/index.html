@@ -974,13 +974,22 @@ function openProviderModal(b){
     if(e.base_url) urlIn.value=e.base_url;
   }
   psel.onchange=applyCat; applyCat();
-  m.appendChild(el("div","section-title","Load control"));
+  var hasLoadControl=!!(b.id&&((b.weight&&b.weight!==1)||(b.max_inflight&&b.max_inflight>0)));
+  var loadOpen=hasLoadControl;
+  var loadWrap=el("div","advanced-wrap");
+  var loadHead=el("button","advanced-toggle");
+  var loadLabel=el("div"); loadLabel.appendChild(el("b",null,"Optional load control")); loadLabel.appendChild(el("span",null,"Leave default for equal routing. Open for provider weight or simultaneous call caps.")); loadHead.appendChild(loadLabel);
+  var loadChevron=el("span","chev",loadOpen?"Hide":"Show"); loadHead.appendChild(loadChevron); loadWrap.appendChild(loadHead);
+  var loadPanel=el("div","advanced-panel"+(loadOpen?"":" hidden"));
+  function redrawLoadControl(){ loadPanel.classList.toggle("hidden",!loadOpen); loadChevron.textContent=loadOpen?"Hide":"Show"; }
+  loadHead.onclick=function(e){ e.preventDefault(); loadOpen=!loadOpen; redrawLoadControl(); };
+  loadPanel.appendChild(el("div","section-title","Load control"));
   var loadGrid=el("div","form-grid");
   var fw=el("div","field"); fw.appendChild(el("label",null,"Weight"));
   var wIn=el("input"); wIn.type="number"; wIn.value=String(b.weight||1); fw.appendChild(wIn); loadGrid.appendChild(fw);
   var fm=el("div","field"); fm.appendChild(el("label",null,"Simultaneous calls (0 = unlimited)"));
   var mxIn=el("input"); mxIn.type="number"; mxIn.value=String(b.max_inflight||0); fm.appendChild(mxIn); loadGrid.appendChild(fm);
-  m.appendChild(loadGrid);
+  loadPanel.appendChild(loadGrid); loadWrap.appendChild(loadPanel); m.appendChild(loadWrap);
   m.appendChild(el("div","section-title","State"));
   var en=el("div","field");
   var lab=el("label","switch-field"+(b.enabled!==false?" selected":"")); var cb=el("input"); cb.type="checkbox"; cb.checked=b.enabled!==false;

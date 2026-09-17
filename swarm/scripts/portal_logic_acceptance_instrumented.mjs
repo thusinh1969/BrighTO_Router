@@ -48,6 +48,12 @@ function modalField(page, label) {
     .first();
 }
 function row(page, text) { return page.locator('tr').filter({ hasText: text }).first(); }
+async function ensureProviderLoadControlOpen(page) {
+  if (!(await modalField(page, 'Weight').isVisible().catch(() => false))) {
+    await page.locator('.modal').getByRole('button', { name: /Optional load control/ }).click({ force: true });
+    await modalField(page, 'Weight').waitFor({ state: 'visible', timeout: 3000 });
+  }
+}
 async function toastText(page, ms = 1600) { await page.waitForTimeout(ms); return await page.locator('#toast').innerText().catch(() => ''); }
 
 async function loginAdmin(page) {
@@ -160,10 +166,11 @@ async function main() {
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
     await modalField(page, 'Name').fill(`${prefix}-provider`);
     await modalField(page, 'Base URL').fill('http://127.0.0.1:65534/v1');
+    await ensureProviderLoadControlOpen(page);
     await modalField(page, 'Weight').fill('1');
     await modalField(page, 'Simultaneous calls').fill('0');
-    await modalField(page, 'Provider Type').selectOption('openai').catch(async () => {
-      await modalField(page, 'Provider Type').selectOption({ label: /OpenAI/i }).catch(() => {});
+    await modalField(page, 'Provider').selectOption('openai').catch(async () => {
+      await modalField(page, 'Provider').selectOption({ label: /OpenAI/i }).catch(() => {});
     });
     await page.locator('.modal').getByRole('button', { name: /Pre-register|Add|Create|Save/ }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
@@ -177,6 +184,7 @@ async function main() {
     await row(page, `${prefix}-provider`).getByRole('button', { name: 'Edit' }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
     await modalField(page, 'Name').fill(`${prefix}-provider-edited`);
+    await ensureProviderLoadControlOpen(page);
     await modalField(page, 'Weight').fill('7');
     await modalField(page, 'Simultaneous calls').fill('3');
     await page.locator('.modal').getByRole('button', { name: 'Save' }).click({ force: true });
