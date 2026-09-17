@@ -904,9 +904,9 @@ function renderProviders(c){
       tr.appendChild(el("td","num",String(b.usage_count||0)));
       var bu=el("td","mono"); var bus=el("span","truncate",b.base_url.replace("https://","").replace("http://","")); bus.title=b.base_url; bu.appendChild(bus); tr.appendChild(bu);
       var td=el("td","actions"); var row=el("div","action-row");
-      var cr=el("button","btn sm ghost","Route"); cr.title="Create a model route from this provider connection"; cr.onclick=function(){ openRouteModalFromConnection(b); };
+      var cr=el("button","btn sm primary","Route"); cr.title="Create a model route from this provider connection"; cr.onclick=function(){ openRouteModalFromConnection(b); };
       var tg2=el("button","btn sm ghost", b.enabled?"Disable":"Enable"); tg2.onclick=function(){ toggleBackend(b); };
-      var e=el("button","btn sm primary","Edit"); e.onclick=function(){openProviderModal(b);};
+      var e=el("button","btn sm ghost","Edit"); e.onclick=function(){openProviderModal(b);};
       var d=el("button","btn sm danger","Delete");
       if(!b.can_delete){ d.disabled=true; d.title=(b.delete_blockers||[]).join("; ")||"Cannot delete"; }
       else { d.onclick=function(){deleteProvider(b);}; }

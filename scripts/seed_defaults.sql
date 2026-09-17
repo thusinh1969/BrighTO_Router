@@ -1,5 +1,5 @@
 -- Default BrighTO-Router provider templates.
--- Safe to rerun. It updates URL/key-ref/format for known provider names and keeps enabled as-is.
+-- Safe to rerun. Inserts missing defaults only; never overwrites user-edited providers.
 
 DO $$
 DECLARE
@@ -22,13 +22,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM teams WHERE name = 'Default Team');
 
   FOR item IN SELECT * FROM jsonb_array_elements(providers) LOOP
-    IF EXISTS (SELECT 1 FROM backends WHERE name = item->>'name') THEN
-      UPDATE backends
-      SET base_url = item->>'base_url',
-          api_key_ref = item->>'api_key_ref',
-          format = item->>'format'
-      WHERE id = (SELECT id FROM backends WHERE name = item->>'name' ORDER BY id LIMIT 1);
-    ELSE
+    IF NOT EXISTS (SELECT 1 FROM backends WHERE name = item->>'name') THEN
       INSERT INTO backends (name, base_url, api_key_ref, weight, max_inflight, format, enabled)
       VALUES (item->>'name', item->>'base_url', item->>'api_key_ref', 1, 0, item->>'format', FALSE);
     END IF;

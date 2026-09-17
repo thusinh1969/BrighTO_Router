@@ -51,15 +51,17 @@ For shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW
 | Command | Meaning |
 |---|---|
 | `./start.sh install` | First-time local install. Safe to rerun. |
-| `./start.sh start` | Start Postgres when local, run migrations/seed, start router. |
+| `./start.sh start` | Start Postgres when local, run migrations/seed, start router. Keeps existing PostgreSQL data. |
 | `./start.sh stop` | Stop the Docker Compose stack. |
-| `./start.sh restart` | Run migrations/seed and recreate router. |
+| `./start.sh restart` | Run migrations/seed and recreate router. Keeps existing PostgreSQL data. |
 | `./start.sh status` | Show containers plus `/healthz` and `/readyz`. |
 | `./start.sh logs` | Follow router logs. |
 | `./start.sh migrate` | Run SQL migrations only. |
-| `./start.sh seed` | Seed default team/demo key and safe defaults. |
+| `./start.sh seed` | Seed default team/demo key and missing provider templates only. It does not overwrite edited providers or model routes. |
 | `./start.sh set-key openai sk-...` | Store a cloud provider key in `.env` and recreate router if running. The Add model wizard can also accept a pasted route key. |
 | `./start.sh smoke` | Run a short non-release benchmark smoke. |
+
+Data safety: `docker build`, `docker compose up -d --force-recreate router`, `./start.sh start`, `./start.sh stop`, and `./start.sh restart` keep the local PostgreSQL volume. Do not run `docker compose down -v`, `docker volume rm brighto-airouter_pg-data`, or manual reset/truncate SQL unless you want to erase local routes, teams, keys, and usage.
 
 ## Add a model route
 

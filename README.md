@@ -54,9 +54,11 @@ Default database records:
 | Team | `Default Team` | Lets a first-time admin create client API keys immediately. |
 | Demo client key | `lc-0123456789abcdef0123456789abcdef` | Local smoke testing only. Replace or disable it before shared use. |
 | Model routes | None | You decide which provider model is exposed to clients. |
-| Provider connections | None on a clean first run | The Portal creates the connection automatically when you save a tested model route. |
+| Provider templates | Disabled presets for OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, and Custom LLM | Friendly defaults for the Portal dropdown. They are not active routes until you save a tested model route. |
 
 The provider catalog is read from `.env` through `PROVIDER_CATALOG`. It gives the Portal a friendly dropdown for OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, and Custom LLM. The catalog is a preset list, not a route by itself.
+
+`./start.sh start`, `./start.sh restart`, and Docker image rebuilds do not wipe PostgreSQL. Local data is kept in the Docker named volume `brighto-airouter_pg-data`. Data is removed only if you explicitly delete the volume, run `docker compose down -v`, or execute a manual reset/truncate SQL. The default seed is safe to rerun: it inserts missing provider templates only and does not overwrite user-edited providers or model routes.
 
 To add a model, open **Models & Routes → Add model**:
 
