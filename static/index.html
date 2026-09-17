@@ -114,6 +114,10 @@ td.actions{white-space:nowrap}
 tbody tr:hover td.actions{background:#111c31}
 td.mono{font-family:var(--mono);font-size:12px}
 .num{text-align:right;font-variant-numeric:tabular-nums}
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;max-width:100%}
+.icon-btn{padding:3px 6px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+table.models-table{min-width:1180px}
+table.conn-table{min-width:900px}
 
 /* ---------- Pills ---------- */
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px}
@@ -448,12 +452,12 @@ function renderProviders(c){
   if(!backends.length){ p.appendChild(emptyBox("No connections yet — add a model and one is created automatically.")); }
   else if(!shown.length){ p.appendChild(emptyBox("No connections match this filter.")); }
   else{
-    var w=el("div","table-wrap"); var t=el("table");
+    var w=el("div","table-wrap"); var t=el("table","conn-table");
     t.appendChild(thead(["Connection","Status","Routes","Usage","Base URL",""]));
     var tb=el("tbody");
     shown.forEach(function(b){
       var tr=el("tr"); tr.setAttribute("data-id",b.id);
-      var nc=el("td"); nc.appendChild(el("span",null,b.name));
+      var nc=el("td"); var nw=el("span","truncate",b.name); nw.title=b.name; nc.appendChild(nw); nc.style.maxWidth="180px";
       if(b.format==="anthropic"){ var tg=el("span","muted"," · Anthropic"); nc.appendChild(tg); }
       tr.appendChild(nc);
       var st=el("td");
@@ -588,12 +592,14 @@ function renderModels(c){
   if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
   else if(!shown.length){ p.appendChild(emptyBox("No models match this filter.")); }
   else{
-    var w=el("div","table-wrap"); var t=el("table");
+    var w=el("div","table-wrap"); var t=el("table","models-table");
     t.appendChild(thead(["Public model","Status","Provider","Provider model","Auth","Context","Max out","$ in/out",""]));
     var tb=el("tbody");
     shown.forEach(function(r){
       var tr=el("tr");
-      tr.appendChild(el("td","mono",r.model_name));
+      var mn=el("td","mono"); mn.style.maxWidth="300px"; mn.style.display="flex"; mn.style.alignItems="center"; mn.style.gap="6px";
+      var mnw=el("span","truncate",r.model_name); mnw.title=r.model_name; mnw.style.flex="1"; mnw.style.minWidth="0";
+      mn.appendChild(mnw); mn.appendChild(copyIconBtn(r.model_name)); tr.appendChild(mn);
       var st=el("td");
       var statusTxt, statusKind;
       if(r.effective_enabled){ statusTxt="Enabled"; statusKind="on"; }
@@ -602,7 +608,7 @@ function renderModels(c){
       st.appendChild(pill(statusTxt, statusKind));
       tr.appendChild(st);
       tr.appendChild(el("td",null,r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ")));
-      tr.appendChild(el("td","mono",r.provider_model_name||"—"));
+      var pm=el("td","mono"); var pmw=el("span","truncate",r.provider_model_name||"—"); pmw.title=r.provider_model_name||""; pm.appendChild(pmw); tr.appendChild(pm);
       tr.appendChild(el("td",null,r.auth_mode||"—"));
       tr.appendChild(el("td","num",r.context_tokens!=null?fmt(r.context_tokens):"—"));
       tr.appendChild(el("td","num",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"));
