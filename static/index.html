@@ -703,13 +703,15 @@ function openRouteModal(route){
     var anthropic=e.dialect==="anthropic";
     if(anthropic) return { dialect:"anthropic", auth:"anthropic", protocol:"anthropic_messages" };
     var local = isLocalUrl(url.value.trim());
-    if(local && !pk.value.trim() && !(e.key_env && e.key_set)) return { dialect:"openai", auth:"none", protocol:"local_openai_chat" };
+    // Local/private endpoint with blank wizard key -> no auth, regardless of env key.
+    if(local && !pk.value.trim()) return { dialect:"openai", auth:"none", protocol:"local_openai_chat" };
     return { dialect:"openai", auth:"bearer", protocol:"openai_chat" };
   }
   function keyPayload(){
     var e=catEntry(ps.value);
     if(pk.value.trim()) return {provider_key:pk.value.trim()};
-    if(e.key_env && e.key_set) return {provider_key_ref:"env:"+e.key_env};
+    // Only auto-apply the .env key to NON-local (cloud) URLs.
+    if(e.key_env && e.key_set && !isLocalUrl(url.value.trim())) return {provider_key_ref:"env:"+e.key_env};
     return {};
   }
 
@@ -792,7 +794,7 @@ function pickModelModal(models, onPick){
   var m=el("div","modal"); m.style.maxWidth="520px";
   m.appendChild(el("h3",null,"Select a model ("+models.length+")"));
   var search=el("input"); search.placeholder="Search models…"; search.style.marginBottom="12px"; m.appendChild(search);
-  var list=el("div"); list.style.maxHeight="360px"; list.style.overflowY="auto"; list.style.border="1px solid var(--border)"; list.style.borderRadius="10px"; m.appendChild(list);
+  var list=el("div","picker-list"); list.style.maxHeight="360px"; list.style.overflowY="auto"; list.style.border="1px solid var(--border)"; list.style.borderRadius="10px"; m.appendChild(list);
   var chosen=null;
   function draw(q){
     list.innerHTML="";
