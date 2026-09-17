@@ -440,20 +440,20 @@ function renderProviders(c){
   if(!backends.length){ p.appendChild(emptyBox("No providers yet.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table");
-    t.appendChild(thead(["Provider","Type","Status","Weight","Max","Base URL",""]));
+    t.appendChild(thead(["Provider","Status","W / Max","Base URL",""]));
     var tb=el("tbody");
     var usedIds={};
     routes.forEach(function(r){(r.backend_ids||[]).forEach(function(id){usedIds[id]=(usedIds[id]||0)+1;});});
     backends.forEach(function(b){
       var tr=el("tr"); tr.setAttribute("data-id",b.id);
-      tr.appendChild(el("td",null,b.name));
-      tr.appendChild(el("td",null,providerTypeLabel(b)));
+      var nc=el("td"); nc.appendChild(el("span",null,b.name));
+      if(b.format==="anthropic"){ var tg=el("span","muted"," · Anthropic"); nc.appendChild(tg); }
+      tr.appendChild(nc);
       var st=el("td");
       st.appendChild(pill(b.enabled?(b.key_resolved?"Enabled · key ready":"Enabled · no key"):"Disabled", b.enabled?(b.key_resolved?"on":"warn"):"off"));
       tr.appendChild(st);
-      tr.appendChild(el("td","num",String(b.weight||1)));
-      tr.appendChild(el("td","num",b.max_inflight?String(b.max_inflight):"∞"));
-      tr.appendChild(el("td","mono",b.base_url.replace("https://","").replace("http://","")));
+      tr.appendChild(el("td","num",(b.weight||1)+" / "+(b.max_inflight?b.max_inflight:"∞")));
+      var bu=el("td","mono"); bu.textContent=b.base_url.replace("https://","").replace("http://",""); bu.style.maxWidth="160px"; bu.style.overflow="hidden"; bu.style.textOverflow="ellipsis"; tr.appendChild(bu);
       var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px";
       var e=el("button","btn sm primary","Edit"); e.onclick=function(){openProviderModal(b);};
       var d=el("button","btn sm danger","Delete");
