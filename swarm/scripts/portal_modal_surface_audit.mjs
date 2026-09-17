@@ -94,6 +94,10 @@ async function inspectModal(page) {
       const label = node.closest('.field')?.querySelector('label')?.innerText?.trim() || node.placeholder || node.tagName;
       return { label, top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width) };
     });
+    const wizardSteps = [...modal.querySelectorAll('.wizard-step')].map((node) => {
+      const r = node.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), text: (node.innerText || '').trim().replace(/\s+/g, ' ') };
+    });
     const footerCoveredInputs = footerRect
       ? inputs.filter((i) => i.bottom > footerRect.top + 4 && i.top < footerRect.bottom - 4)
       : [];
@@ -107,6 +111,7 @@ async function inspectModal(page) {
       overlayScrollHeight: overlay ? overlay.scrollHeight : null,
       footer: footerRect ? { top: Math.round(footerRect.top), bottom: Math.round(footerRect.bottom), height: Math.round(footerRect.height) } : null,
       footerCoveredInputs,
+      wizardSteps,
       switches,
       text: modal.innerText.slice(0, 2400),
       clipped: clipped.slice(0, 25),
@@ -137,6 +142,13 @@ async function capture(page, name) {
     if (/Fallback backend/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes backend jargon`, metrics);
     if (!/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must make disabled save explicit`, metrics);
     if (/Save draft/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes ambiguous Save draft action`, metrics);
+    if (name.startsWith('mobile-')) {
+      const steps = metrics.wizardSteps || [];
+      const firstRow = steps.filter((r) => steps[0] && Math.abs(r.y - steps[0].y) <= 4);
+      if (steps.length !== 3 || firstRow.length !== 3) fail(`${name}: Add model wizard steps must stay compact on one mobile row`, metrics);
+      const cramped = steps.filter((r) => r.width < 90 || r.height > 72);
+      if (cramped.length) fail(`${name}: Add model wizard step chips are cramped on mobile`, { cramped, metrics });
+    }
   }
   if (name.endsWith('new-key')) {
     if (!/Model access|All models|Restrict to selected models/i.test(metrics.text || '')) fail(`${name}: New key modal missing guided model access picker`, metrics);
