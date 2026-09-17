@@ -26,29 +26,7 @@ fingerprint() {
 }
 
 portal_static_gate() {
-  python3 - <<'PY'
-from pathlib import Path
-import re
-p = Path('static/index.html')
-text = p.read_text() if p.exists() else ''
-checks = []
-
-def check(name, ok, evidence=''):
-    checks.append((name, ok, evidence))
-
-check('has Portal preferences settings', 'Portal preferences' in text, 'missing marker')
-check('has font-size preference state', ('data-font' in text or 'dataset.font' in text) and re.search(r'Small|Normal|Large', text, re.I), 'missing data-font/Small/Normal/Large')
-check('has density preference state', ('data-density' in text or 'dataset.density' in text) and re.search(r'Compact|Comfortable', text, re.I), 'missing data-density/Compact/Comfortable')
-check('has compact count formatter', ('fmtCount' in text or 'formatCompact' in text), 'missing fmtCount/formatCompact')
-check('chart formatter uses uppercase K', not re.search(r'\+"k"|\+\'k\'|"k"\s*;', text), 'lowercase k marker present')
-for fn in ['renderProviders', 'renderModels', 'renderTeams', 'renderKeys', 'renderUsage']:
-    pattern = f'{fn}($("content"))'
-    check(f'no direct post-action {fn} append', pattern not in text, pattern)
-failures = [c for c in checks if not c[1]]
-print('PORTAL_STATIC_GATE', 'PASS' if not failures else f'FAIL {len(failures)}')
-for name, ok, evidence in checks:
-    print(('PASS ' if ok else 'FAIL ') + name + ('' if ok else f' :: {evidence}'))
-PY
+  python3 swarm/scripts/portal_static_gate.py
 }
 
 echo "[$(date -Is)] audit poller started interval=${INTERVAL}s pid=$$" >> "$LOG"
@@ -68,9 +46,16 @@ while true; do
       echo '[cargo check]'
       cargo check --locked --all-targets 2>&1 || true
       echo '[portal static gate]'
-      portal_static_gate || true
+      static_status=0
+      portal_static_gate || static_status=$?
       echo '[portal runtime health]'
       curl -ksS --max-time 5 -w '\nHTTP %{http_code}\n' https://127.0.0.1:18443/healthz || true
+      echo '[portal runtime polish gate]'
+      if [[ "$static_status" -eq 0 ]]; then
+        bash swarm/scripts/portal_polish_audit.sh || true
+      else
+        echo "SKIP: static gate failed; fix source blockers before running browser acceptance"
+      fi
       echo '[portal js endpoints]'
       python3 - <<'PY'
 from pathlib import Path
