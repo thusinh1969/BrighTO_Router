@@ -111,6 +111,8 @@ th{background:#111827;color:var(--muted);font-weight:700;font-size:11px;text-tra
 tr:last-child td{border-bottom:none}
 tbody tr:hover{background:#111c31}
 td.actions{position:sticky;right:0;background:#0b1220;box-shadow:-10px 0 12px -12px rgba(0,0,0,.6)}
+tr.flash td{animation:flashrow 1.6s ease}
+@keyframes flashrow{0%{background:#1d4ed8}100%{background:transparent}}
 tbody tr:hover td.actions{background:#111c31}
 td.mono{font-family:var(--mono);font-size:12px}
 .num{text-align:right;font-variant-numeric:tabular-nums}
@@ -437,7 +439,7 @@ function renderProviders(c){
     t.appendChild(thead(["Provider","Type","Status","Weight","Max","Base URL",""]));
     var tb=el("tbody");
     backends.forEach(function(b){
-      var tr=el("tr");
+      var tr=el("tr"); tr.setAttribute("data-id",b.id);
       tr.appendChild(el("td",null,b.name));
       tr.appendChild(el("td",null,providerTypeLabel(b)));
       var st=el("td");
@@ -457,6 +459,7 @@ function renderProviders(c){
   }
   c.appendChild(p);
 }
+async function flashRow(id){ var r=document.querySelector('tr[data-id="'+id+'"]'); if(r){ r.classList.add("flash"); setTimeout(function(){r.classList.remove("flash");},1600); } }
 async function deleteProvider(b){
   if(!confirm("Delete provider "+b.name+"?")) return;
   try{
@@ -496,6 +499,7 @@ function openProviderModal(b){
       if(b.id){ await api("/admin/backends/"+b.id,"PATCH",payload); }
       else { await api("/admin/backends","POST",payload); }
       closeModal(); toast("Provider saved"); backends=await api("/admin/backends","GET"); rerender();
+      if(b.id) flashRow(b.id);
     }catch(e){ toast("Save failed: "+e.message,"err"); }
   };
   act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
@@ -562,9 +566,17 @@ function openRouteModal(route){
 
   var f0=el("div","field"); f0.appendChild(el("label",null,"Provider"));
   var ps=el("select");
-  backends.forEach(function(b){ var o=el("option",null,b.name); o.value=b.id; ps.appendChild(o); });
-  if(route.backend_ids && route.backend_ids.length) ps.value=route.backend_ids[0];
-  f0.appendChild(ps); m.appendChild(f0);
+  function fillProviders(showDisabled){
+    ps.innerHTML="";
+    var shown=backends.filter(function(b){return showDisabled||b.enabled;});
+    if(!shown.length){ var no=el("option",null,"No providers"); no.value=""; ps.appendChild(no); }
+    shown.forEach(function(b){ var o=el("option",null,b.name+" (id "+b.id+")"); o.value=b.id; ps.appendChild(o); });
+    if(route.backend_ids && route.backend_ids.length) ps.value=route.backend_ids[0];
+  }
+  fillProviders(false);
+  var sd=el("label","chip"); var sdcb=el("input"); sdcb.type="checkbox"; sdcb.checked=false; sd.appendChild(sdcb); sd.appendChild(document.createTextNode("Show disabled"));
+  sdcb.onchange=function(){ fillProviders(sdcb.checked); populateProtocols(); };
+  f0.appendChild(ps); f0.appendChild(sd); m.appendChild(f0);
 
   var fp=el("div","field"); fp.appendChild(el("label",null,"Provider API protocol"));
   var pcol=el("select");
