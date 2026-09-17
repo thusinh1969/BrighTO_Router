@@ -84,3 +84,43 @@ Expected:
 
 - All pass.
 - Gate evidence route for Custom LLM blank-key shows `auth_mode=none`, `protocol=local_openai_chat`.
+
+## Additional live-route evidence
+
+Existing local route after current setup:
+
+```json
+{
+  "model_name": "qwen3.8-flash-next-local",
+  "provider_model_name": "qwen3.8-flash-next",
+  "auth_mode": "bearer",
+  "protocol": "openai_chat",
+  "enabled": true,
+  "effective_enabled": true,
+  "backend_ids": [10]
+}
+```
+
+Associated backend:
+
+```json
+{
+  "name": "Custom LLM",
+  "base_url": "http://127.0.0.1:8088/v1",
+  "api_key_ref": "env:NONE",
+  "key_resolved": false
+}
+```
+
+This is internally inconsistent: the route says Bearer auth, while the backend has no key. The llama.cpp smoke still returned HTTP 200, but that is not proof the route is correct; it only proves this local server tolerates the request. The saved configuration should be corrected to no-auth local semantics.
+
+Required data migration/repair after code fix:
+
+```sql
+UPDATE model_routes
+SET auth_mode = 'none', protocol = 'local_openai_chat'
+WHERE model_name = 'qwen3.8-flash-next-local'
+  AND provider_model_name = 'qwen3.8-flash-next';
+```
+
+Or repair through the Admin UI after the UI logic is fixed. Do not leave V1.0 with an internally inconsistent route.
