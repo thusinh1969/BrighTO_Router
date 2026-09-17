@@ -52,7 +52,8 @@ code{font-family:var(--mono);background:rgba(30,41,59,.6);padding:2px 7px;border
   display:flex;align-items:center;justify-content:center;font-weight:800;font-size:21px;color:#fff;flex:0 0 auto}
 .brand h1{font-size:21px;margin:0;letter-spacing:-.02em;font-weight:800}
 .brand .sub{font-size:12px;color:var(--accent-text);font-weight:600}
-.subtitle{color:var(--muted);margin:0 0 24px;font-size:13.5px}
+.subtitle{color:var(--muted);margin:0 0 14px;font-size:13.5px}
+.login-help{color:var(--muted);font-size:12.5px;line-height:1.45;margin:-4px 0 18px}
 .field{margin-bottom:16px}
 .field label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 input,select,textarea{width:100%;background:#111827;border:1px solid var(--border2);border-radius:10px;color:var(--text);
@@ -387,16 +388,17 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
         <div class="logo">B</div>
         <div><h1>BrighTO</h1><div class="sub">Router</div></div>
       </div>
-      <p class="subtitle" id="login-sub">Sign in to manage your LLM gateway.</p>
+      <p class="subtitle" id="login-sub">Admin signs in with the master key from .env.</p>
       <div class="seg">
         <button id="seg-admin" class="active" onclick="setMode('admin')">Admin</button>
         <button id="seg-user" onclick="setMode('user')">User</button>
       </div>
+      <p class="login-help" id="login-help">Use username <code>admin</code> and the <code>ADMIN_MASTER_KEY</code> value.</p>
       <div id="admin-fields">
         <div class="field"><label>Username</label><input id="login-user" value="admin" autocomplete="username"></div>
-        <div class="field"><label>Password</label><input id="login-pass" type="password" placeholder="ADMIN_MASTER_KEY" autocomplete="current-password"></div>
+        <div class="field"><label>Admin key</label><input id="login-pass" type="password" placeholder="ADMIN_MASTER_KEY" autocomplete="current-password"></div>
       </div>
-      <div class="field hidden" id="user-field"><label>API key</label><input id="login-apikey" type="password" placeholder="lc-..." autocomplete="off"></div>
+      <div class="field hidden" id="user-field"><label>Client API key</label><input id="login-apikey" type="password" placeholder="lc-..." autocomplete="off"></div>
       <button class="btn primary btn-block" onclick="login()">Sign in</button>
       <div class="warn-note hidden" id="login-error"></div>
     </div>
@@ -468,7 +470,8 @@ function setMode(m){
   $("seg-user").classList.toggle("active",m==="user");
   $("admin-fields").classList.toggle("hidden",m!=="admin");
   $("user-field").classList.toggle("hidden",m==="admin");
-  $("login-sub").textContent = m==="admin" ? "Sign in with admin credentials." : "Sign in with your client API key.";
+  $("login-sub").textContent = m==="admin" ? "Admin signs in with the master key from .env." : "User signs in with a client API key.";
+  $("login-help").innerHTML = m==="admin" ? "Use username <code>admin</code> and the <code>ADMIN_MASTER_KEY</code> value." : "Paste the visible <code>lc-...</code> key issued from the API Keys screen.";
 }
 async function login(){
   var err=$("login-error"); err.classList.add("hidden");
