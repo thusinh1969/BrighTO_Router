@@ -105,18 +105,27 @@ async function main() {
       bug(`Chart formatter must use uppercase K: fmtNum(1000)=${result.evidence.formatters.fmtNum1000}`);
     }
 
-    result.evidence.dashboardDensity = await page.evaluate(() => ({
-      bodyFont: getComputedStyle(document.body).fontSize,
-      titleFont: getComputedStyle(document.querySelector('.topbar h2')).fontSize,
-      cardBig: getComputedStyle(document.querySelector('.card .big')).fontSize,
-      panelPadding: getComputedStyle(document.querySelector('.panel')).padding,
-      panelMargin: getComputedStyle(document.querySelector('.panel')).marginBottom,
-      cardHeight: Math.round(document.querySelector('.card').getBoundingClientRect().height),
-    }));
-    if (parseFloat(result.evidence.dashboardDensity.cardBig) >= 30) {
+    await page.locator('.card .big').first().waitFor({ state: 'visible', timeout: 7000 }).catch(() => null);
+    result.evidence.dashboardDensity = await page.evaluate(() => {
+      const title = document.querySelector('.topbar h2');
+      const cardBig = document.querySelector('.card .big');
+      const panel = document.querySelector('.panel');
+      const card = document.querySelector('.card');
+      return {
+        bodyFont: getComputedStyle(document.body).fontSize,
+        titleFont: title ? getComputedStyle(title).fontSize : null,
+        cardBig: cardBig ? getComputedStyle(cardBig).fontSize : null,
+        panelPadding: panel ? getComputedStyle(panel).padding : null,
+        panelMargin: panel ? getComputedStyle(panel).marginBottom : null,
+        cardHeight: card ? Math.round(card.getBoundingClientRect().height) : null,
+      };
+    });
+    if (!result.evidence.dashboardDensity.cardBig) fail('Dashboard did not render metric cards after login.');
+    else if (parseFloat(result.evidence.dashboardDensity.cardBig) >= 30) {
       bug(`Dashboard big-number font too large for compact admin view: ${result.evidence.dashboardDensity.cardBig}`);
     }
-    if (parseFloat(result.evidence.dashboardDensity.panelPadding) >= 20) {
+    if (!result.evidence.dashboardDensity.panelPadding) fail('Dashboard did not render any panel after login.');
+    else if (parseFloat(result.evidence.dashboardDensity.panelPadding) >= 20) {
       bug(`Panel padding too airy for compact admin view: ${result.evidence.dashboardDensity.panelPadding}`);
     }
 
