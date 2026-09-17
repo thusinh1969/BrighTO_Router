@@ -205,6 +205,36 @@ async function verifyModelPickerPreview(page, name) {
   }
 }
 
+
+async function verifyRouteAdvancedDrawerAutoscroll(page, name) {
+  await page.locator('.modal').evaluate((node) => { node.scrollTop = 75; });
+  await page.waitForTimeout(120);
+  await page.getByRole('button', { name: /Optional limits and pricing/ }).click({ force: true });
+  await page.waitForTimeout(500);
+  const state = await page.evaluate(() => {
+    const modal = document.querySelector('#modal-overlay .modal');
+    const footer = modal?.querySelector('.actions');
+    const panel = modal?.querySelector('.advanced-panel:not(.hidden)');
+    const firstField = panel?.querySelector('.field');
+    function rect(node) {
+      if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) };
+    }
+    return {
+      scrollTop: Math.round(modal?.scrollTop || 0),
+      footer: rect(footer),
+      panel: rect(panel),
+      firstField: rect(firstField),
+      text: (modal?.innerText || '').slice(0, 2200),
+    };
+  });
+  result.metrics[`${name}-advanced-autoscroll`] = state;
+  if (!/Context window \(tokens, optional\)/i.test(state.text || '') || !state.firstField || !state.footer || state.firstField.bottom > state.footer.top - 4) {
+    fail(`${name}: opening Optional limits must scroll first advanced field above sticky actions`, state);
+  }
+}
+
 async function capture(page, name) {
   const shot = `${OUT}/${name}.png`;
   await page.screenshot({ path: shot, fullPage: true });
@@ -244,6 +274,7 @@ async function capture(page, name) {
       }
       const visibleGateCopy = (metrics.gateCopyRects || []).some((r) => r.top >= 0 && r.bottom <= (metrics.footer ? metrics.footer.top - 4 : metrics.clientH));
       if (!visibleGateCopy) fail(`${name}: Add model Save enabled gate copy must be visible above sticky actions on mobile`, metrics);
+      await verifyRouteAdvancedDrawerAutoscroll(page, name);
     }
   }
   if (name.endsWith('new-key')) {
