@@ -116,7 +116,8 @@ async function runViewport(browser, seed, name, width, height) {
     const settings = await inspect(page);
     result.evidence[`${name}-settings`] = settings;
     if (!/Portal preferences|Font size|Density/i.test(settings.content)) fail(`${name}: user settings missing Portal preferences`, settings);
-    if (/Router address|Database|Config reload/i.test(settings.content)) fail(`${name}: user settings leaks admin runtime details`, settings);
+    if (!/Session|Model scope/i.test(settings.content) || !settings.content.includes(seed.prefix)) fail(`${name}: user settings missing key session summary`, settings);
+    if (/Settings are admin-only|Router address|Database|Config reload/i.test(settings.content)) fail(`${name}: user settings leaks admin-only/runtime language`, settings);
     if (settings.bodyScrollWidth > settings.clientWidth + 8) fail(`${name}: user settings horizontal overflow`, settings);
   } finally {
     await page.close().catch(() => {});
