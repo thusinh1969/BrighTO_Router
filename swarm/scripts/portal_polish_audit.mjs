@@ -231,8 +231,8 @@ async function main() {
     if (providerSummary < 4) bug(`Providers page must show operational summary cards; got ${providerSummary}.`);
     const providerButtons = await page.locator('#content button').evaluateAll((nodes) => nodes.map((b) => (b.innerText || '').trim()).filter(Boolean));
     result.evidence.providerButtons = providerButtons;
-    if (!providerButtons.includes('Pre-register provider')) bug('Providers page must label manual provider creation as Pre-register provider.');
-    if (providerButtons.includes('Add provider')) bug('Providers page primary CTA must not imply admins need to add providers before models.');
+    if (!providerButtons.includes('Prepare connection')) bug('Providers page must label manual provider creation as Prepare connection.');
+    if (providerButtons.includes('Add provider') || providerButtons.includes('Pre-register provider')) bug('Providers page primary CTA must not imply admins need to add providers before models or expose pre-registration jargon.');
     const providerActionPriority = await page.locator('#content tbody tr').first().evaluate((tr) => {
       const out = {};
       for (const b of tr.querySelectorAll('button')) out[(b.innerText || '').trim()] = b.className;
@@ -243,16 +243,16 @@ async function main() {
     if (providerActionPriority.Edit && /\bprimary\b/.test(providerActionPriority.Edit)) bug('Provider row Edit action must not be visually primary.');
     const providerName = `pw-polish-provider-${stamp}`;
     const providerEdit = `${providerName}-edited`;
-    await page.getByRole('button', { name: /Pre-register provider|Add provider/ }).first().click({ force: true });
+    await page.getByRole('button', { name: /Prepare connection|Pre-register provider|Add provider/ }).first().click({ force: true });
     await fill(page, 'Name', providerName);
     await fill(page, 'Base URL', 'http://127.0.0.1:65531/v1');
     const providerModalText = await page.locator('.modal').innerText();
-    if (!/Pre-register provider/i.test(providerModalText)) bug('Provider modal must explain manual creation as pre-registration.');
+    if (!/Prepare provider connection|Prepare a connection/i.test(providerModalText)) bug('Provider modal must explain manual creation as optional connection preparation.');
     if (/Provider Type/i.test(providerModalText)) bug('Provider modal must not expose stale Provider Type jargon.');
     await page.locator('.modal').getByRole('button', { name: /Optional load control/ }).click({ force: true });
     await fill(page, 'Weight', '1');
     await fill(page, 'Simultaneous calls', '0');
-    await (await modalButton(page, 'Pre-register')).click({ force: true });
+    await (await modalButton(page, 'Prepare connection')).click({ force: true });
     await (await row(page, providerName)).waitFor({ state: 'visible', timeout: 8000 });
     let providerPanels = await panels(page, 'Provider connections');
     result.evidence.providerPanelsAfterCreate = providerPanels;
