@@ -245,6 +245,11 @@ async function runViewport(browser, name, width, height) {
       if (view === 'usage') {
         if (!(metrics.visibleButtons || []).includes('Show filters')) fail(`${name}/${view}: mobile Usage should default to collapsed filters with a Show filters action`, metrics);
         if (metrics.visibleUsageFilterFields > 0) fail(`${name}/${view}: mobile Usage default filter panel renders too many fields before data`, metrics);
+        const breakdown = (metrics.diagnosticDetails || []).filter((d) => /Usage breakdowns/i.test(d.text || ''));
+        if (!breakdown.length || breakdown.some((d) => d.open)) fail(`${name}/${view}: mobile Usage breakdowns should default collapsed`, metrics);
+        const logsY = (metrics.sectionPositions || []).find((s) => s.text === 'Request logs')?.y;
+        const breakdownY = (metrics.sectionPositions || []).find((s) => s.text === 'Usage breakdowns')?.y;
+        if (logsY == null || breakdownY == null || logsY > breakdownY) fail(`${name}/${view}: mobile Request logs should appear before usage breakdowns`, metrics);
         await page.getByRole('button', { name: 'Show filters' }).click({ force: true });
         await page.waitForTimeout(250);
         const expandedFilterFields = await page.evaluate(() => [...document.querySelectorAll('#content .usage-filter-panel .filter-grid input, #content .usage-filter-panel .filter-grid select')].filter((n) => n.offsetParent !== null).length);
