@@ -267,8 +267,8 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .chart-wrap{width:100%;max-width:100%;min-width:0;overflow-x:auto}
 .chart-wrap svg{display:block}
 .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px}
-.legend span{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.legend span{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--muted);max-width:100%;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.35}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:0 0 auto;margin-top:3px}
 
 .empty{color:var(--faint);text-align:center;padding:40px 16px;font-size:13px}
 .empty svg{width:36px;height:36px;margin-bottom:8px;opacity:.4}
