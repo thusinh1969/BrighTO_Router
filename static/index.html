@@ -1411,7 +1411,8 @@ function openKeyModal(k){
     if(ex.value) payload.expires_at=Math.floor(new Date(ex.value+"T23:59:59").getTime()/1000);
     if(rpm.value) payload.rpm_limit=Number(rpm.value);
     if(conc.value) payload.concurrency_limit=Number(conc.value);
-    if(bud.value.trim()){ try{payload.budget=JSON.parse(bud.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
+    if(kbm.value==="inherit"){ payload.budget=null; }
+    else if(bud.style.display!=="none" && bud.value.trim()){ try{payload.budget=JSON.parse(bud.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
     else if(kbm.value==="token"){ var amt=Number(kba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;} payload.budget={period:kbp.value,max_tokens:amt,per_model:{}}; }
     else { payload.budget=null; }
     if(isEdit) payload.enabled=ecb.checked;

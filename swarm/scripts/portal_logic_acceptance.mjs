@@ -208,7 +208,28 @@ async function main() {
     if (keyMatch && key && key.revealable) pass('keys', 'key create + revealable', { owner: key.owner, prefix: key.prefix });
     else fail('keys', 'key create/reveal missing', { key });
 
-    const createdKeyRow = row(page, prefix + '-owner');
+    let createdKeyRow = row(page, prefix + '-owner');
+    await createdKeyRow.getByRole('button', { name: 'Edit' }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
+    await modalField(page, 'Budget').selectOption('token');
+    await modalField(page, 'Token amount').fill('1234');
+    await page.locator('.modal').getByRole('button', { name: 'Save' }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
+    let budgetKey = (await adminFetch('/admin/keys')).find((k) => k.id === keyId);
+    if (budgetKey && budgetKey.budget && budgetKey.budget.max_tokens === 1234) pass('keys', 'Edit key can set token budget', { budget: budgetKey.budget });
+    else fail('keys', 'Edit key did not set token budget', { key: budgetKey });
+
+    createdKeyRow = row(page, prefix + '-owner');
+    await createdKeyRow.getByRole('button', { name: 'Edit' }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
+    await modalField(page, 'Budget').selectOption('inherit');
+    await page.locator('.modal').getByRole('button', { name: 'Save' }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
+    budgetKey = (await adminFetch('/admin/keys')).find((k) => k.id === keyId);
+    if (budgetKey && budgetKey.budget === null) pass('keys', 'Edit key can clear budget back to team inherit', { id: keyId });
+    else fail('keys', 'Edit key did not clear hidden advanced budget value', { key: budgetKey });
+
+    createdKeyRow = row(page, prefix + '-owner');
     await createdKeyRow.getByRole('button', { name: 'Reveal' }).waitFor({ state: 'visible', timeout: 8000 });
     await createdKeyRow.getByRole('button', { name: 'Reveal' }).click({ force: true });
     await page.locator('.modal').filter({ hasText: key.prefix }).waitFor({ state: 'visible', timeout: 8000 });
