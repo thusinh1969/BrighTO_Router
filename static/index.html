@@ -1662,6 +1662,9 @@ async function toggleKey(k){
 
 /* ===== Usage ===== */
 var usageFilter={model:"",status:"all",team:"",backend:"",key:"",from:"",to:"",days:"30"};
+var usageFiltersOpen=null;
+function usageFilterActive(){ return !!(usageFilter.model || usageFilter.status!=="all" || usageFilter.team || usageFilter.backend || usageFilter.key || usageFilter.from || usageFilter.to || usageFilter.days!=="30"); }
+function usageFilterSummary(){ var parts=[]; parts.push((usageFilter.days||"30")+" days"); if(usageFilter.status!=="all") parts.push(usageFilter.status); if(usageFilter.model) parts.push("model: "+usageFilter.model); if(usageFilter.backend) parts.push("provider selected"); if(usageFilter.team) parts.push("team selected"); if(usageFilter.key) parts.push("key selected"); if(usageFilter.from||usageFilter.to) parts.push("custom dates"); return parts.join(" · "); }
 async function renderUsage(c,seq){
   c.innerHTML="";
   var qs="days="+usageFilter.days;
@@ -1674,39 +1677,51 @@ async function renderUsage(c,seq){
   if(usageFilter.to) qs+="&to="+usageFilter.to;
 
   if(mode==="admin"){
-    var bar=el("div","panel");
+    var activeUsageFilter=usageFilterActive();
+    var mobileUsage=window.innerWidth<=820;
+    var filtersOpen=usageFiltersOpen;
+    if(filtersOpen==null) filtersOpen=!(mobileUsage && !activeUsageFilter);
+    if(activeUsageFilter && usageFiltersOpen==null) filtersOpen=true;
+    var bar=el("div","panel usage-filter-panel"+(filtersOpen?"":" collapsed"));
     var h=el("div","panel-head"); h.appendChild(el("h3",null,"Filters"));
+    var ha=el("div","panel-head-actions");
+    var toggle=el("button","btn sm ghost",filtersOpen?"Hide filters":"Show filters");
+    toggle.onclick=function(){ usageFiltersOpen=!filtersOpen; rerender(); };
+    ha.appendChild(toggle); h.appendChild(ha);
     bar.appendChild(h);
-    bar.appendChild(el("p","hint","Narrow request history by model, status, provider, team, or key. Tokens/sec is shown for every request with token usage; * marks a very short sample."));
-    var row=el("div","filter-grid");
-    function fld(lbl, input){ var box=el("div","field"); box.appendChild(el("label",null,lbl)); box.appendChild(input); row.appendChild(box); }
-    var mi=el("input"); mi.placeholder="model name"; mi.value=usageFilter.model; fld("Model",mi);
-    var st=el("select"); [["all","All statuses"],["success","Success"],["error","Error"]].forEach(function(s){var o=el("option",null,s[1]);o.value=s[0];st.appendChild(o);}); st.value=usageFilter.status; fld("Status",st);
-    var bk=el("select"); var bo=el("option",null,"All providers"); bo.value=""; bk.appendChild(bo); backends.forEach(function(b){var o=el("option",null,b.name);o.value=b.id;bk.appendChild(o);}); bk.value=usageFilter.backend; fld("Provider",bk);
-    var ts=el("select"); var to=el("option",null,"All teams"); to.value=""; ts.appendChild(to); teams.forEach(function(tm){var o=el("option",null,tm.name);o.value=tm.id;ts.appendChild(o);}); ts.value=usageFilter.team; fld("Team",ts);
-    var ks=el("select"); var ko=el("option",null,"All keys"); ko.value=""; ks.appendChild(ko); keys.forEach(function(k){var o=el("option",null,k.prefix);o.value=k.id;ks.appendChild(o);}); ks.value=usageFilter.key; fld("Key",ks);
-    var fr=el("input"); fr.type="date"; fr.value=usageFilter.from; fld("From",fr);
-    var td=el("input"); td.type="date"; td.value=usageFilter.to; fld("To",td);
-    var dy=el("select"); ["7","30","90"].forEach(function(d){var o=el("option",null,d+" days");o.value=d;dy.appendChild(o);}); dy.value=usageFilter.days; fld("Range",dy);
-    var ap=el("button","btn primary btn-block","Apply"); ap.onclick=function(){
-      usageFilter={model:mi.value,status:st.value,team:ts.value,backend:bk.value,key:ks.value,
-        from:fr.value?Math.floor(new Date(fr.value+"T00:00:00Z").getTime()/1000):"",
-        to:td.value?Math.floor(new Date(td.value+"T23:59:59Z").getTime()/1000):"",
-        days:dy.value};
-      rerender();
-    }; row.appendChild(ap);
-    bar.appendChild(row);
-    var quick=el("div","range-pills");
-    ["7","30","90"].forEach(function(d){
-      var b=el("button","btn sm ghost",d+"d");
-      b.classList.toggle("active", usageFilter.days===d && !usageFilter.from && !usageFilter.to);
-      b.onclick=function(){ usageFilter.days=d; usageFilter.from=""; usageFilter.to=""; rerender(); };
-      quick.appendChild(b);
-    });
-    var reset=el("button","btn sm ghost","Reset filters");
-    reset.onclick=function(){ usageFilter={model:"",status:"all",team:"",backend:"",key:"",from:"",to:"",days:"30"}; rerender(); };
-    quick.appendChild(reset);
-    bar.appendChild(quick);
+    bar.appendChild(el("p","hint",(filtersOpen?"Narrow request history by model, status, provider, team, or key. ":"Showing "+usageFilterSummary()+". ")+"Tokens/sec is shown for every request with token usage; * marks a very short sample."));
+    if(filtersOpen){
+      var row=el("div","filter-grid");
+      function fld(lbl, input){ var box=el("div","field"); box.appendChild(el("label",null,lbl)); box.appendChild(input); row.appendChild(box); }
+      var mi=el("input"); mi.placeholder="model name"; mi.value=usageFilter.model; fld("Model",mi);
+      var st=el("select"); [["all","All statuses"],["success","Success"],["error","Error"]].forEach(function(s){var o=el("option",null,s[1]);o.value=s[0];st.appendChild(o);}); st.value=usageFilter.status; fld("Status",st);
+      var bk=el("select"); var bo=el("option",null,"All providers"); bo.value=""; bk.appendChild(bo); backends.forEach(function(b){var o=el("option",null,b.name);o.value=b.id;bk.appendChild(o);}); bk.value=usageFilter.backend; fld("Provider",bk);
+      var ts=el("select"); var to=el("option",null,"All teams"); to.value=""; ts.appendChild(to); teams.forEach(function(tm){var o=el("option",null,tm.name);o.value=tm.id;ts.appendChild(o);}); ts.value=usageFilter.team; fld("Team",ts);
+      var ks=el("select"); var ko=el("option",null,"All keys"); ko.value=""; ks.appendChild(ko); keys.forEach(function(k){var o=el("option",null,k.prefix);o.value=k.id;ks.appendChild(o);}); ks.value=usageFilter.key; fld("Key",ks);
+      var fr=el("input"); fr.type="date"; fr.value=usageFilter.from; fld("From",fr);
+      var td=el("input"); td.type="date"; td.value=usageFilter.to; fld("To",td);
+      var dy=el("select"); ["7","30","90"].forEach(function(d){var o=el("option",null,d+" days");o.value=d;dy.appendChild(o);}); dy.value=usageFilter.days; fld("Range",dy);
+      var ap=el("button","btn primary btn-block","Apply"); ap.onclick=function(){
+        usageFilter={model:mi.value,status:st.value,team:ts.value,backend:bk.value,key:ks.value,
+          from:fr.value?Math.floor(new Date(fr.value+"T00:00:00Z").getTime()/1000):"",
+          to:td.value?Math.floor(new Date(td.value+"T23:59:59Z").getTime()/1000):"",
+          days:dy.value};
+        usageFiltersOpen=usageFilterActive();
+        rerender();
+      }; row.appendChild(ap);
+      bar.appendChild(row);
+      var quick=el("div","range-pills");
+      ["7","30","90"].forEach(function(d){
+        var b=el("button","btn sm ghost",d+"d");
+        b.classList.toggle("active", usageFilter.days===d && !usageFilter.from && !usageFilter.to);
+        b.onclick=function(){ usageFilter.days=d; usageFilter.from=""; usageFilter.to=""; usageFiltersOpen=false; rerender(); };
+        quick.appendChild(b);
+      });
+      var reset=el("button","btn sm ghost","Reset filters");
+      reset.onclick=function(){ usageFilter={model:"",status:"all",team:"",backend:"",key:"",from:"",to:"",days:"30"}; usageFiltersOpen=false; rerender(); };
+      quick.appendChild(reset);
+      bar.appendChild(quick);
+    }
     c.appendChild(bar);
   }
 
