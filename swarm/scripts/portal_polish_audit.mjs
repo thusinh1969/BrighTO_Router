@@ -191,6 +191,12 @@ async function main() {
         cardHeight: card ? Math.round(card.getBoundingClientRect().height) : null,
       };
     });
+    const dashboardText = await page.locator('#content').innerText();
+    result.evidence.dashboardText = dashboardText.slice(0, 1600);
+    if (!/Speed|Tokens\/sec/i.test(dashboardText)) bug('Dashboard hero must surface request speed / Tokens/sec, not hide it in logs only.');
+    const clippedHeroSubtexts = await page.evaluate(() => [...document.querySelectorAll('.ops-status .cell-sub')].filter((n) => n.scrollWidth > n.clientWidth + 4).map((n) => ({ text: n.innerText, scrollWidth: n.scrollWidth, clientWidth: n.clientWidth })));
+    result.evidence.clippedHeroSubtexts = clippedHeroSubtexts;
+    if (clippedHeroSubtexts.length) bug('Dashboard hero KPI subtext must wrap cleanly instead of truncating.');
     if (!result.evidence.dashboardDensity.cardBig) fail('Dashboard did not render metric cards after login.');
     else if (parseFloat(result.evidence.dashboardDensity.cardBig) >= 30) bug(`Dashboard big-number font too large: ${result.evidence.dashboardDensity.cardBig}`);
     if (!result.evidence.dashboardDensity.panelPadding) fail('Dashboard did not render any panel after login.');
