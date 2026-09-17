@@ -130,6 +130,27 @@ async function main() {
     else fail('providers', 'Provider Type missing in Provider modal', { labels }, 'Add Provider Type dropdown.');
     await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click({ force: true });
 
+
+    const routesForDeleteGuard = await adminFetch('/admin/routes');
+    const usedBackendId = routesForDeleteGuard.flatMap((r) => r.backend_ids || [])[0];
+    if (usedBackendId) {
+      const usedBackend = (await adminFetch('/admin/backends')).find((b) => b.id === usedBackendId);
+      if (usedBackend) {
+        const usedRow = row(page, usedBackend.name);
+        await usedRow.waitFor({ state: 'visible', timeout: 10000 });
+        const deleteButton = usedRow.getByRole('button', { name: 'Delete' });
+        const disabled = await deleteButton.isDisabled().catch(() => false);
+        if (disabled) {
+          pass('providers', 'Delete is disabled for provider used by routes', { provider: usedBackend.name, id: usedBackend.id });
+        } else {
+          await page.locator('#toast').evaluate((e) => { e.innerHTML = ''; }).catch(() => {});
+          await deleteButton.click({ force: true });
+          const t = await toastText(page, 1200);
+          fail('providers', 'in-use Provider Delete is clickable and only fails after confirm', { provider: usedBackend.name, id: usedBackend.id, toast: t }, 'Disable Delete for providers referenced by routes, or show Used by N routes with links.');
+        }
+      }
+    }
+
     const created = await adminFetch('/admin/backends', 'POST', { name: `${prefix}-provider`, base_url: 'http://127.0.0.1:65534/v1', api_key_ref: 'env:NONE', weight: 1, max_inflight: 0, format: 'openai', enabled: true });
     providerId = created.id;
     await page.evaluate(() => refresh());
@@ -236,6 +257,39 @@ async function main() {
       key = (await adminFetch('/admin/keys')).find((k) => k.id === keyId);
       if (key?.owner === `${prefix}-owner-edited` && key?.rpm_limit === 11 && key?.concurrency_limit === 3) pass('keys', 'API key edit persists metadata', { api: key });
       else fail('keys', 'API key edit did not persist metadata', { api: key }, 'PATCH /admin/keys/{id} must update metadata without regenerating secret.');
+    }
+
+
+    if (process.env.BRIGHTO_SKIP_ROUTE_SMOKE !== '1') {
+      const routesToSmoke = (await adminFetch('/admin/routes')).filter((r) => r.enabled !== false && !(r.model_name || '').startsWith(prefix));
+      const keysForSmoke = (await adminFetch('/admin/keys')).filter((k) => k.enabled && k.revealable !== false);
+      for (const r of routesToSmoke) {
+        const keyMeta = keysForSmoke.find((k) => !(k.allowed_models || []).length || (k.allowed_models || []).includes(r.model_name));
+        if (!keyMeta) {
+          fail('routes', 'enabled route has no enabled revealable client key for smoke test', { model: r.model_name }, 'Do not enable a route unless it has a usable test client key or create one during install.');
+          continue;
+        }
+        const revealed = await adminFetch(`/admin/keys/${keyMeta.id}/reveal`);
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), Number(process.env.BRIGHTO_ROUTE_SMOKE_TIMEOUT_MS || 45000));
+        let smoke;
+        try {
+          const resp = await fetch(BASE + '/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${revealed.key}` },
+            body: JSON.stringify({ model: r.model_name, messages: [{ role: 'user', content: 'Reply with exactly OK.' }], max_tokens: 8, stream: false }),
+            signal: ctrl.signal,
+          });
+          const text = await resp.text();
+          smoke = { status: resp.status, body: text.slice(0, 240), key_prefix: keyMeta.prefix };
+        } catch (e) {
+          smoke = { error: e.name === 'AbortError' ? 'timeout' : (e.stack || e.message), key_prefix: keyMeta.prefix };
+        } finally {
+          clearTimeout(timer);
+        }
+        if (smoke.status === 200) pass('routes', `enabled route smoke works: ${r.model_name}`, { model: r.model_name, key_prefix: keyMeta.prefix });
+        else fail('routes', `enabled route smoke failed: ${r.model_name}`, { model: r.model_name, route: r, smoke }, 'Enabled routes must be smoke-tested through the router before being marked enabled/done. Save draft disabled until endpoint test passes.');
+      }
     }
 
     // User portal smoke with an existing enabled revealable key, preferably not this disposable key.
