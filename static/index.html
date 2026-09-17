@@ -1178,7 +1178,7 @@ function logsTable(rows){
     tr.appendChild(el("td",null,r.model));
     var st=el("td"); st.appendChild(pill(String(r.status),r.status===200?"on":(r.status>=500?"off":"warn"))); tr.appendChild(st);
     tr.appendChild(el("td","num",fmt(r.input_tokens)+" / "+fmt(r.output_tokens)));
-    tr.appendChild(el("td","num",r.total_tokens_per_second!=null?Math.round(r.total_tokens_per_second):"—"));
+    tr.appendChild(el("td","num",r.total_tokens_per_second!=null?fmt(Math.round(r.total_tokens_per_second)):"—"));
     tr.appendChild(el("td","num",fmtCost(r.estimated_cost_usd)));
     if(admin) tr.appendChild(el("td","num",r.router_overhead_display));
     tr.appendChild(el("td","num",r.duration_display));
