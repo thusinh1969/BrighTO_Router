@@ -158,6 +158,12 @@ textarea{resize:vertical;min-height:72px}
 .status-tile{background:#111827;border:1px solid rgba(51,65,85,.75);border-radius:12px;padding:12px;min-width:0}
 .status-tile .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:4px}
 .status-tile .v{display:block;color:var(--text);font-weight:850;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.summary-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:0 0 16px}
+.summary-card{background:linear-gradient(145deg,rgba(17,28,49,.95),rgba(11,18,32,.95));border:1px solid var(--border);border-radius:16px;padding:14px 16px;min-width:0;box-shadow:0 14px 36px rgba(0,0,0,.16)}
+.summary-card .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:850;margin-bottom:5px}
+.summary-card .v{display:block;color:var(--text);font-size:22px;line-height:1.1;font-weight:900;letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.summary-card .s{display:block;color:var(--muted);font-size:11.5px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.summary-card.ok{border-color:rgba(34,197,94,.32)} .summary-card.warn{border-color:rgba(245,158,11,.35)} .summary-card.bad{border-color:rgba(248,113,113,.35)} .summary-card.info{border-color:rgba(56,189,248,.28)}
 
 /* ---------- Tables ---------- */
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:#0b1220;contain:layout}
@@ -172,6 +178,7 @@ td.mono,.mono{font-family:var(--mono);font-size:12px}
 .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;max-width:100%}
 .stack-cell{display:grid;gap:4px;min-width:0}
+.stack-cell>.pill{justify-self:start}
 .cell-main{font-weight:760;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell-sub{font-size:11.5px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;color:var(--muted);font-size:11.5px}
@@ -196,8 +203,10 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .metric-table td:first-child{overflow-wrap:anywhere}
 
 /* ---------- Pills ---------- */
-.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px}
-.pill .dot{width:6px;height:6px;border-radius:50%}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;max-width:100%;white-space:normal;line-height:1.25}
+.pill .dot{width:6px;height:6px;border-radius:50%;flex:0 0 auto}
+.pill.compact{padding:3px 9px;white-space:nowrap}
+.status-note{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.35}
 .pill.on{background:rgba(34,197,94,.14);color:var(--green)} .pill.on .dot{background:var(--green)}
 .pill.off{background:rgba(248,113,113,.14);color:var(--red)} .pill.off .dot{background:var(--red)}
 .pill.warn{background:rgba(245,158,11,.14);color:var(--amber)} .pill.warn .dot{background:var(--amber)}
@@ -326,6 +335,9 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
   .table-wrap td{display:flex;width:100%!important;max-width:100%;min-width:0!important;justify-content:space-between;align-items:flex-start;gap:12px;padding:8px 0!important;border-bottom:1px solid var(--border);white-space:normal;text-align:right;overflow:hidden}
   .table-wrap td:last-child{border-bottom:none}
   .table-wrap td::before{content:attr(data-label);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;flex:0 0 112px;text-align:left}
+  .summary-strip{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-bottom:14px}
+  .summary-card{padding:12px;border-radius:14px}
+  .summary-card .v{font-size:19px}
   .table-wrap td[data-label=""]::before{display:none}
   .table-wrap td.actions{display:block;text-align:left}
   .table-wrap td.actions .row,.table-wrap td.actions .action-row{justify-content:flex-start;flex-wrap:wrap!important;gap:7px!important}
@@ -767,6 +779,12 @@ async function renderDashboard(c,seq){
 /* ===== Providers ===== */
 function renderProviders(c){
   c.innerHTML="";
+  c.appendChild(summaryStrip([
+    ["Connections",fmt(backends.length),"total upstream endpoints","info"],
+    ["Active",fmt(backends.filter(function(b){return b.enabled;}).length),"available to routes","ok"],
+    ["Locked",fmt(backends.filter(function(b){return !b.can_delete;}).length),"has routes or usage","warn"],
+    ["Disabled",fmt(backends.filter(function(b){return !b.enabled;}).length),"cannot receive traffic",backends.some(function(b){return !b.enabled;})?"bad":"info"]
+  ]));
   var p=el("div","panel");
   var h=el("div","panel-head");
   h.appendChild(el("h3",null,"Connections"));
@@ -799,12 +817,12 @@ function renderProviders(c){
       nc.appendChild(ns);
       tr.appendChild(nc);
       var st=el("td");
-      var statusTxt, statusKind;
-      if(!b.can_delete){ statusTxt="Has usage · cannot delete"; statusKind="off"; }
-      else if(!b.enabled){ statusTxt="Disabled"+(b.active_route_count>0?" · affects "+b.active_route_count+" route(s)":""); statusKind="off"; }
-      else if(b.active_route_count>0){ statusTxt="Active · "+b.active_route_count+" route(s)"; statusKind="on"; }
-      else { statusTxt="Template · no routes"; statusKind="info"; }
-      st.appendChild(pill(statusTxt, statusKind));
+      var statusTxt, statusKind, statusNote;
+      if(!b.can_delete){ statusTxt="Locked"; statusKind="warn"; statusNote=(b.usage_count||0)>0?"usage logged; disable instead":"used by active route"; }
+      else if(!b.enabled){ statusTxt="Disabled"; statusKind="off"; statusNote=(b.active_route_count>0?"affects "+b.active_route_count+" route(s)":"no active traffic"); }
+      else if(b.active_route_count>0){ statusTxt="Active"; statusKind="on"; statusNote=b.active_route_count+" routed model"+(b.active_route_count===1?"":"s"); }
+      else { statusTxt="Template"; statusKind="info"; statusNote="ready for a route"; }
+      var ss=el("div","stack-cell"); var sp=pill(statusTxt, statusKind); sp.classList.add("compact"); ss.appendChild(sp); ss.appendChild(el("div","status-note",statusNote)); st.appendChild(ss);
       tr.appendChild(st);
       tr.appendChild(el("td","num",String(b.active_route_count||0)));
       tr.appendChild(el("td","num",String(b.usage_count||0)));
@@ -923,6 +941,16 @@ async function fetchModels(b){
 /* ===== Models & Routes ===== */
 function renderModels(c){
   c.innerHTML="";
+  var liveRoutes=routes.filter(function(r){return r.effective_enabled;}).length;
+  var draftRoutes=routes.filter(function(r){return !r.enabled;}).length;
+  var providerDisabled=routes.filter(function(r){return r.enabled && !r.effective_enabled;}).length;
+  var routeProviders={}; routes.forEach(function(r){(r.backend_ids||[]).forEach(function(id){routeProviders[id]=true;});});
+  c.appendChild(summaryStrip([
+    ["Live routes",fmt(liveRoutes),"callable by clients",liveRoutes?"ok":"warn"],
+    ["Drafts",fmt(draftRoutes),"saved but disabled",draftRoutes?"warn":"info"],
+    ["Provider-blocked",fmt(providerDisabled),"provider disabled",providerDisabled?"bad":"ok"],
+    ["Providers used",fmt(Object.keys(routeProviders).length),"backends behind routes","info"]
+  ]));
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Models"));
   var add=el("button","btn primary sm","Add model"); add.onclick=function(){openRouteModal();};
@@ -1305,6 +1333,13 @@ function openTeamModal(tm){
 /* ===== API Keys ===== */
 function renderKeys(c){
   c.innerHTML="";
+  var now=Math.floor(Date.now()/1000), week=7*24*3600;
+  c.appendChild(summaryStrip([
+    ["Client keys",fmt(keys.length),"issued for apps","info"],
+    ["Enabled",fmt(keys.filter(function(k){return k.enabled;}).length),"can call routes","ok"],
+    ["Scoped",fmt(keys.filter(function(k){return (k.allowed_models||[]).length>0;}).length),"restricted to models","info"],
+    ["Expiring soon",fmt(keys.filter(function(k){return k.expires_at && k.expires_at>=now && k.expires_at<=now+week;}).length),"next 7 days",keys.some(function(k){return k.expires_at && k.expires_at>=now && k.expires_at<=now+week;})?"warn":"info"]
+  ]));
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"API keys"));
   var add=el("button","btn primary sm","New key"); add.onclick=openKeyModal;
@@ -1555,7 +1590,7 @@ async function renderSettings(c,seq){
   var grid=el("div","settings-grid");
 
   var display=el("div","setting-card");
-  display.appendChild(el("h4",null,"Display"));
+  display.appendChild(el("h4",null,"Portal preferences"));
   display.appendChild(el("p","hint","Stored only in this browser."));
   var prow=el("div","form-grid");
   var fld1=el("div","field"); fld1.appendChild(el("label",null,"Font size"));
@@ -1618,7 +1653,7 @@ function fmtNum(v){ return fmt(v); }
 /* ===== Logs table ===== */
 function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
 function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
-function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
+function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1) return "<1 ms"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
 function reliableTokRate(r){ var rate=Number(r&&r.total_tokens_per_second); var dur=Number(r&&r.total_ms); return Number.isFinite(rate) && rate>=0 && Number.isFinite(dur) && dur>=100; }
 function tokRateDisplay(r){ return reliableTokRate(r)?fmt(Math.round(Number(r.total_tokens_per_second))):"—"; }
 function tokRateTitle(r){ return reliableTokRate(r)?"Total tokens per second":"Hidden because duration is below 100 ms; too short to be a useful production speed signal."; }
@@ -1647,8 +1682,8 @@ function logsTable(rows){
     kpi("In / Out",fmt(r.input_tokens)+" / "+fmt(r.output_tokens));
     var before=kpis.children.length; kpi("Tok/s",tokRateDisplay(r),true); kpis.children[before].title=tokRateTitle(r);
     kpi("Cost",fmtCost(r.estimated_cost_usd));
-    if(admin) kpi("Router",r.router_overhead_display);
-    kpi("Duration",r.duration_display);
+    if(admin) kpi("Router",fmtDur(Number(r.router_overhead_ms)));
+    kpi("Duration",fmtDur(Number(r.total_ms)));
     if(admin && r.error_class) kpi("Error",r.error_class);
     card.appendChild(kpis);
     w.appendChild(card);
@@ -1657,6 +1692,17 @@ function logsTable(rows){
 }
 
 /* ===== shared ===== */
+function summaryStrip(items){
+  var wrap=el("div","summary-strip");
+  items.forEach(function(it){
+    var card=el("div","summary-card "+(it[3]||"info"));
+    card.appendChild(el("span","k",it[0]));
+    var v=el("span","v",String(it[1])); v.title=String(it[1]); card.appendChild(v);
+    if(it[2]){ var sub=el("span","s",it[2]); sub.title=String(it[2]); card.appendChild(sub); }
+    wrap.appendChild(card);
+  });
+  return wrap;
+}
 function thead(cols){ var tr=el("tr"); cols.forEach(function(h){tr.appendChild(el("th",null,h));}); var th=document.createElement("thead"); th.appendChild(tr); return th; }
 function decorateTables(){
   document.querySelectorAll("#content table").forEach(function(t){
