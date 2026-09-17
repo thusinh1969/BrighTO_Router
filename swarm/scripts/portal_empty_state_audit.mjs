@@ -72,8 +72,10 @@ async function main() {
     if (!/add route pricing/i.test(dash.text) || !/created with model/i.test(dash.text)) fail('dashboard first-run readiness copy should explain the next setup actions', dash);
     if (!dash.hasLaunch || dash.launchSteps !== 3) fail('dashboard empty state must show a 3-step launch checklist', dash);
     if (dash.launchPanels !== 1) fail('dashboard empty state must not render duplicate launch panels', dash);
-    if (dash.addFirstModelButtons !== 1) fail('dashboard empty state must show exactly one Add first model CTA', dash);
+    if (dash.addFirstModelButtons !== 1) fail('dashboard empty state must show exactly one Add first model CTA in the hero', dash);
+    if (!dash.buttons.includes('Open model wizard')) fail('dashboard empty launch checklist must include Open model wizard CTA', dash);
     if (!dash.buttons.includes('View API keys')) fail('dashboard empty state must include View API keys CTA', dash);
+    if (dash.buttons.includes('Inspect usage')) fail('dashboard empty hero must not promote usage before the first route/request', dash);
     if (dash.emptyPanels !== 0) fail('dashboard first-run should not render repeated empty chart/log panels below the launch checklist', dash);
     if (dash.sectionTitles.some((t) => ['Tokens by model — last 30 days', 'Top consumers', 'Top models', 'Recent requests', 'Technical diagnostics'].includes(t))) {
       fail('dashboard first-run should stop at Launch checklist instead of showing empty analytics sections', dash);
@@ -106,7 +108,7 @@ async function main() {
 	    if (!usage.text.includes('No usage data for this filter.')) fail('usage empty chart must explain no data', usage);
 	    if (!usage.text.includes('No data for this filter yet.')) fail('usage empty group panels must show empty-state copy', usage);
 	    if (!usage.text.includes('Launch checklist') || usage.launchSteps !== 3) fail('usage empty state must show launch checklist before repeated empty panels', usage);
-	    if (usage.addFirstModelButtons !== 1) fail('usage empty state must include one Add first model CTA', usage);
+	    if (!usage.text.includes('Open model wizard')) fail('usage empty state must include Open model wizard CTA', usage);
 	    if (usage.emptyTables > 0) fail('usage empty state must not render naked empty tables', usage);
   } finally {
     await browser.close().catch(() => {});
