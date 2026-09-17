@@ -279,6 +279,8 @@ pub fn router(runtime: Arc<AppState>) -> Router {
         .route("/backends/{id}/models", get(fetch_backend_models))
         .route("/routes", get(list_routes).post(upsert_route))
         .route("/routes/preview-models", post(preview_models))
+        .route("/provider-catalog", get(list_provider_catalog))
+        .route("/test-connection", post(test_connection))
         .route(
             "/routes/{model_name}",
             patch(patch_route).delete(delete_route),
@@ -424,6 +426,8 @@ struct PreviewModelsRequest {
     protocol: String,
     auth_mode: Option<String>,
     provider_key: Option<String>,
+    /// env:NAME | file:/path — key hard-coded trong .env, resolve server-side.
+    provider_key_ref: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -442,6 +446,8 @@ struct UpsertRoute {
     enabled: Option<bool>,
     /// Plaintext provider key (write-only). Ghi ra file secrets + lưu provider_key_ref.
     provider_key: Option<String>,
+    /// env:NAME | file:/path — tham chiếu key hard-coded trong .env (không ghi plaintext).
+    provider_key_ref: Option<String>,
     /// bearer | anthropic | none
     auth_mode: Option<String>,
     /// openai_chat | openai_completions | openai_embeddings | anthropic_messages | local_openai_chat | custom_openai_chat
@@ -1025,12 +1031,7 @@ async fn preview_models(
         .unwrap_or("bearer")
         .trim()
         .to_string();
-    let key = payload
-        .provider_key
-        .as_deref()
-        .unwrap_or("")
-        .trim()
-        .to_string();
+    let key = resolve_route_key(payload.provider_key.as_deref(), payload.provider_key_ref.as_deref())?;
     // Blank key cho auth bắt buộc -> chặn ngay (không gọi provider rồi dính 401/502).
     if auth_mode != "none" && key.is_empty() {
         return Err(ApiError::new(
@@ -1087,6 +1088,230 @@ async fn preview_models(
         models,
     }))
 }
+
+// ===== Provider catalog (hard-coded trong .env) =====
+
+#[derive(Serialize)]
+struct ProviderCatalogEntry {
+    key: String,
+    label: String,
+    base_url: String,
+    /// "openai" | "anthropic" — API dialect duy nhất mà router cần biết.
+    dialect: String,
+    /// Tên env var chứa key (vd OPENAI_API_KEY); rỗng = phải paste key thủ công.
+    key_env: String,
+    /// true nếu env var đã set giá trị (UI hiện "dùng key từ .env", không lộ plaintext).
+    key_set: bool,
+}
+
+/// Danh sách provider cố định, hard-coded trong .env qua PROVIDER_CATALOG.
+/// Định dạng mỗi entry: key|label|base_url|dialect|key_env, phân tách bằng ';'.
+/// Chỉ 2 dialect (openai/anthropic); phần còn lại (OpenAI/DeepSeek/Gemini/...) chỉ là
+/// base URL khác nhau của cùng 1 dialect. "Custom LLM" = base_url rỗng để Admin tự điền.
+fn provider_catalog_from_env() -> Vec<ProviderCatalogEntry> {
+    let raw = std::env::var("PROVIDER_CATALOG").unwrap_or_else(|_| {
+        "openai|OpenAI|https://api.openai.com/v1|openai|OPENAI_API_KEY;         anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY;         gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY;         deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY;         moonshot|Moonshot (Kimi)|https://api.moonshot.ai/v1|openai|KIMI_API_KEY;         qwen|Qwen (DashScope)|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY;         openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY;         custom|Custom LLM||openai|CUSTOM_LLM_API_KEY"
+            .to_string()
+    });
+    raw.split(';')
+        .filter_map(|part| {
+            let mut it = part.split('|');
+            let key = it.next()?.trim().to_string();
+            let label = it.next()?.trim().to_string();
+            let base_url = it.next()?.trim().to_string();
+            let dialect = it.next()?.trim().to_string();
+            let key_env = it.next().map(str::trim).unwrap_or("").to_string();
+            if key.is_empty() || label.is_empty() {
+                return None;
+            }
+            let key_set = if key_env.is_empty() {
+                false
+            } else {
+                std::env::var(&key_env)
+                    .map(|v| !v.trim().is_empty())
+                    .unwrap_or(false)
+            };
+            Some(ProviderCatalogEntry {
+                key,
+                label,
+                base_url,
+                dialect: if dialect == "anthropic" { "anthropic".into() } else { "openai".into() },
+                key_env,
+                key_set,
+            })
+        })
+        .collect()
+}
+
+async fn list_provider_catalog(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<ProviderCatalogEntry>>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    Ok(Json(provider_catalog_from_env()))
+}
+
+// ===== Test connection =====
+
+/// Resolve key cho preview/test/route: plaintext ưu tiên; nếu không có thì resolve ref (env:/file:).
+fn resolve_route_key(plain: Option<&str>, r#ref: Option<&str>) -> Result<String, ApiError> {
+    if let Some(p) = plain.map(str::trim).filter(|s| !s.is_empty()) {
+        return Ok(p.to_string());
+    }
+    if let Some(r) = r#ref.map(str::trim).filter(|s| !s.is_empty()) {
+        return resolve_backend_key(r).ok_or_else(|| {
+            ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!("cannot resolve provider key reference: {r}"),
+            )
+        });
+    }
+    Ok(String::new())
+}
+
+#[derive(Deserialize)]
+struct TestConnectionRequest {
+    base_url: String,
+    /// "openai" | "anthropic"
+    dialect: String,
+    /// "bearer" | "anthropic" | "none"
+    auth_mode: String,
+    provider_key: Option<String>,
+    provider_key_ref: Option<String>,
+    provider_model_name: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TestConnectionResponse {
+    ok: bool,
+    latency_ms: u64,
+    status: u16,
+    model_ok: Option<bool>,
+    error: Option<String>,
+}
+
+/// 1-token completion để chứng minh key + model thật sự hoạt động. Trả status (None = lỗi network).
+async fn test_completion(
+    state: &Arc<AdminState>,
+    base_url: &str,
+    dialect: &str,
+    key: &str,
+    model: &str,
+) -> Option<u16> {
+    let anthropic = dialect == "anthropic";
+    let url = if anthropic {
+        join_provider_url(base_url, "/v1/messages")
+    } else {
+        join_provider_url(base_url, "/v1/chat/completions")
+    };
+    let body = if anthropic {
+        serde_json::json!({"model": model, "max_tokens": 1, "messages": [{"role":"user","content":"ping"}]})
+    } else {
+        serde_json::json!({"model": model, "max_tokens": 1, "stream": false, "messages": [{"role":"user","content":"ping"}]})
+    };
+    let mut req = state
+        .runtime
+        .client
+        .post(url)
+        .timeout(Duration::from_secs(20))
+        .json(&body);
+    if !key.is_empty() {
+        if anthropic {
+            req = req
+                .header("x-api-key", key)
+                .header("anthropic-version", "2023-06-01");
+        } else {
+            req = req.bearer_auth(key);
+        }
+    }
+    req.send().await.ok().map(|r| r.status().as_u16())
+}
+
+/// Test connection: GET /v1/models (reachability + auth) + 1-token completion nếu có model.
+/// "passed thì cho save lại" — UI chỉ bật Save khi endpoint này trả ok=true.
+async fn test_connection(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(payload): Json<TestConnectionRequest>,
+) -> Result<Json<TestConnectionResponse>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let base_url = non_empty_trimmed(payload.base_url, "base_url")?;
+    let dialect = normalize_backend_format(&payload.dialect)?;
+    let auth_mode = payload.auth_mode.trim().to_string();
+    let key = resolve_route_key(payload.provider_key.as_deref(), payload.provider_key_ref.as_deref())?;
+    let started = std::time::Instant::now();
+
+    let url = join_provider_url(&base_url, "/v1/models");
+    let mut req = state
+        .runtime
+        .client
+        .get(url)
+        .timeout(Duration::from_secs(15));
+    match dialect {
+        "openai" => {
+            if !key.is_empty() {
+                req = req.bearer_auth(&key);
+            }
+        }
+        "anthropic" => {
+            if !key.is_empty() {
+                req = req
+                    .header("x-api-key", &key)
+                    .header("anthropic-version", "2023-06-01");
+            }
+        }
+        _ => {}
+    }
+    let resp = req.send().await;
+    let latency_ms = started.elapsed().as_millis() as u64;
+    match resp {
+        Ok(r) if r.status().is_success() => {
+            let model_ok = match payload
+                .provider_model_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|m| !m.is_empty())
+            {
+                Some(model) => test_completion(&state, &base_url, dialect, &key, model)
+                    .await
+                    .map(|s| s < 400),
+                None => None,
+            };
+            Ok(Json(TestConnectionResponse {
+                ok: true,
+                latency_ms,
+                status: r.status().as_u16(),
+                model_ok,
+                error: None,
+            }))
+        }
+        Ok(r) => Ok(Json(TestConnectionResponse {
+            ok: false,
+            latency_ms,
+            status: r.status().as_u16(),
+            model_ok: None,
+            error: Some(format!(
+                "endpoint returned HTTP {} ({})",
+                r.status().as_u16(),
+                if auth_mode == "none" && r.status().as_u16() == 401 {
+                    "provider likely requires an API key"
+                } else {
+                    "check base URL and key"
+                }
+            )),
+        })),
+        Err(e) => Ok(Json(TestConnectionResponse {
+            ok: false,
+            latency_ms,
+            status: 0,
+            model_ok: None,
+            error: Some(e.to_string()),
+        })),
+    }
+}
+
 
 async fn list_routes(
     Extension(state): Extension<Arc<AdminState>>,
@@ -1224,7 +1449,23 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
                 .map_err(|e| ApiError::internal(format!("write provider key: {e}")))?;
             Some(format!("file:{}", path.display()))
         }
-        None => None,
+        None => match payload
+            .provider_key_ref
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(r) => {
+                if !(r.starts_with("env:") || r.starts_with("file:")) {
+                    return Err(ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        "provider_key_ref must be env:NAME or file:/path",
+                    ));
+                }
+                Some(r.to_string())
+            }
+            None => None,
+        },
     };
     let backend_ids_json = serde_json::to_string(&payload.backend_ids)?;
     Ok(ValidatedRoute {
