@@ -141,6 +141,10 @@ async function capture(page, name) {
     if (!/Model access|All models|Restrict to selected models/i.test(metrics.text || '')) fail(`${name}: New key modal missing guided model access picker`, metrics);
     if (/comma-separated|empty = all/i.test(metrics.text || '')) fail(`${name}: New key modal still exposes comma-separated model entry`, metrics);
   }
+  if (name.endsWith('new-key') || name.endsWith('new-team')) {
+    if (/Advanced JSON/i.test(metrics.text || '')) fail(`${name}: budget advanced action exposes JSON jargon`, metrics);
+    if (!/Advanced budget rules/i.test(metrics.text || '')) fail(`${name}: advanced budget action missing friendly label`, metrics);
+  }
   if (name.endsWith('add-provider') || name.endsWith('new-team')) {
     const badSwitches = (metrics.switches || []).filter((s) => s.display !== 'flex' || s.justifyContent !== 'space-between' || s.textTransform !== 'none');
     if (!(metrics.switches || []).length) fail(`${name}: state switch missing`, metrics);
