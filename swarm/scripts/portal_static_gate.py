@@ -31,6 +31,16 @@ check(
     not bool(re.search(r'\+\s*["\']k["\']|["\']k["\']\s*;', text)),
     'lowercase k marker present',
 )
+check(
+    'short token-rate samples show Too short',
+    'Too short' in text and 'Sample*' not in text,
+    'Portal must show Too short, not Sample*, for sub-1s token-rate samples',
+)
+check(
+    'token-rate formatter does not star-mark inflated samples',
+    '?"*"' not in text and '?"*"' not in text and '+"*"' not in text,
+    'star-marked token-rate sample formatter still present',
+)
 def render_clears_container(fn: str) -> bool:
     # Direct renderX($("content")) calls are acceptable only if renderX clears
     # the target container before appending fresh DOM. This matches DeepSeek's

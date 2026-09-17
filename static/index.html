@@ -808,12 +808,12 @@ function userHero(me,stats,logs,inT,outT,req,errRate){
   var right=el("div","user-card");
   right.appendChild(el("div","ops-kicker","Last 30 days"));
   var g=el("div","user-metrics");
-  var tokLabel=avgTok==null?(latestShort?"Sample*":"—"):fmt(avgTok);
-  [["Requests",fmt(req)], ["Tokens",fmt(inT+outT)], ["Error rate",errRate+"%"], ["Tokens/sec",tokLabel,latestShort?"Short request; see logs for the measured sample rate.":""]].forEach(function(x){
+  var tokLabel=avgTok==null?(latestShort?"Too short":"—"):fmt(avgTok);
+  [["Requests",fmt(req)], ["Tokens",fmt(inT+outT)], ["Error rate",errRate+"%"], ["Tokens/sec",tokLabel,latestShort?"Request finished in under 1 second; run a longer call for reliable speed.":""]].forEach(function(x){
     var m=el("div","user-metric"); m.appendChild(el("span",null,x[0])); var v=el("b",null,x[1]); if(x[2]) v.title=x[2]; m.appendChild(v); g.appendChild(m);
   });
   right.appendChild(g);
-  right.appendChild(el("p","hint",latest?("Latest request: "+fmtTs(latest.ts)+" · status "+latest.status+(latestShort?" · short sample; use a longer call for speed":"")):"No requests yet. Send one request, then refresh this dashboard."));
+  right.appendChild(el("p","hint",latest?("Latest request: "+fmtTs(latest.ts)+" · status "+latest.status+(latestShort?" · too short for stable speed":"")):"No requests yet. Send one request, then refresh this dashboard."));
   hero.appendChild(right);
   return hero;
 }
@@ -1908,7 +1908,7 @@ async function renderUsage(c,seq){
     toggle.onclick=function(){ usageFiltersOpen=!filtersOpen; rerender(); };
     ha.appendChild(toggle); h.appendChild(ha);
     bar.appendChild(h);
-    bar.appendChild(el("p","hint",(filtersOpen?"Narrow request history by model, status, provider, team, or key. ":"Showing "+usageFilterSummary()+". ")+"Tokens/sec is shown for every request with token usage; * marks a very short sample."));
+    bar.appendChild(el("p","hint",(filtersOpen?"Narrow request history by model, status, provider, team, or key. ":"Showing "+usageFilterSummary()+". ")+"Tokens/sec is shown for sustained requests. Very short requests show Too short instead of an inflated rate."));
     if(filtersOpen){
       var row=el("div","filter-grid");
       function fld(lbl, input){ var box=el("div","field"); box.appendChild(el("label",null,lbl)); box.appendChild(input); row.appendChild(box); }
@@ -2106,16 +2106,16 @@ function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(functi
 function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
 function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1) return "<1 ms"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
 function reliableTokRate(r){ var rate=Number(r&&r.total_tokens_per_second); return Number.isFinite(rate) && rate>=0; }
-function shortTokSample(r){ var dur=Number(r&&r.total_ms); return reliableTokRate(r) && Number.isFinite(dur) && dur<100; }
+function shortTokSample(r){ var dur=Number(r&&r.total_ms); return reliableTokRate(r) && Number.isFinite(dur) && dur<1000; }
 function sustainedTokRate(r){ return reliableTokRate(r) && !shortTokSample(r); }
-function tokRateDisplay(r){ return reliableTokRate(r)?fmt(Math.round(Number(r.total_tokens_per_second)))+(shortTokSample(r)?"*":""):"—"; }
-function tokRateTitle(r){ return reliableTokRate(r)?(shortTokSample(r)?"Tokens per second from a very short request; use sustained tests for benchmark claims.":"Observed total tokens per second."):"No token speed was recorded for this request."; }
+function tokRateDisplay(r){ if(!reliableTokRate(r)) return "—"; return shortTokSample(r)?"Too short":fmt(Math.round(Number(r.total_tokens_per_second))); }
+function tokRateTitle(r){ return reliableTokRate(r)?(shortTokSample(r)?"Request finished in under 1 second; do not use this as a production speed sample.":"Observed total tokens per second from a sustained request."):"No token speed was recorded for this request."; }
 function dashboardSpeed(logs){
   var rows=(logs||[]);
   var sustained=rows.find(function(r){return sustainedTokRate(r);});
   if(sustained) return {value:tokRateDisplay(sustained), note:"latest sustained request", tone:"ok"};
   var anyRate=rows.find(function(r){return reliableTokRate(r);});
-  if(anyRate&&shortTokSample(anyRate)) return {value:"Needs sample", note:"run a longer request", tone:"warn"};
+  if(anyRate&&shortTokSample(anyRate)) return {value:"Needs sample", note:"run ≥1s request", tone:"warn"};
   return {value:"—", note:"no token rate yet", tone:"warn"};
 }
 

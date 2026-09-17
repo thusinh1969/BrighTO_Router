@@ -319,9 +319,13 @@ async function main() {
       ? compact(result.evidence.usageSmokeRow.total_tokens_per_second)
       : null;
     result.evidence.expectedTokS = expectedTokS || 'missing-api-token-rate';
-    if (expectedTokS && !usageText.includes(expectedTokS)) bug(`Usage page did not render compact Tokens/sec value ${expectedTokS}.`);
-    if (expectedTokS && Number.isFinite(rowMs) && rowMs < 100 && !usageText.includes(expectedTokS + '*')) bug('Usage page must mark sub-100ms Tokens/sec as a short sample with * instead of hiding it.');
-    if (expectedTokS && /TOKENS\/SEC\s+—/.test(usageText)) bug('Usage page hides Tokens/sec as — even though the API returned a token-rate value.');
+    if (expectedTokS && Number.isFinite(rowMs) && rowMs < 1000) {
+      if (!/TOKENS\/SEC\s+Too short/i.test(usageText) && !usageText.includes('Too short')) bug('Usage page must show Too short for sub-1s token-rate samples instead of an inflated Tokens/sec number.');
+      if (usageText.includes(expectedTokS + '*')) bug('Usage page must not show star-marked inflated Tokens/sec for very short requests.');
+    } else if (expectedTokS && !usageText.includes(expectedTokS)) {
+      bug(`Usage page did not render compact Tokens/sec value ${expectedTokS}.`);
+    }
+    if (expectedTokS && Number.isFinite(rowMs) && rowMs >= 1000 && /TOKENS\/SEC\s+—/.test(usageText)) bug('Usage page hides Tokens/sec as — even though the API returned a sustained token-rate value.');
     if (/\b(ROUTER|DURATION)\s+0 ms\b/.test(usageText)) bug('Usage log must show <1 ms instead of 0 ms for sub-millisecond timings.');
     if (/\b\d{1,3},\d{3}\b/.test(usageText)) bug('Usage still shows comma-formatted large counts; expected compact K/M/B display.');
     if (result.consoleErrors.length) bug(`Browser console errors: ${JSON.stringify(result.consoleErrors)}`);
