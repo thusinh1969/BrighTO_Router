@@ -99,6 +99,10 @@ async function inspectModal(page) {
       const r = node.getBoundingClientRect();
       return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), text: (node.innerText || '').trim().replace(/\s+/g, ' ') };
     });
+    const gateCopyRects = [...modal.querySelectorAll('.hint')].filter((node) => /Test connection to enable Save enabled/i.test(node.innerText || node.textContent || '')).map((node) => {
+      const r = node.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height), text: (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ') };
+    });
     const footerCoveredInputs = footerRect
       ? inputs.filter((i) => i.bottom > footerRect.top + 4 && i.top < footerRect.bottom - 4)
       : [];
@@ -114,6 +118,7 @@ async function inspectModal(page) {
       footerCoveredInputs,
       visibleInputLabels,
       wizardSteps,
+      gateCopyRects,
       switches,
       text: modal.innerText.slice(0, 2400),
       clipped: clipped.slice(0, 25),
@@ -143,6 +148,7 @@ async function capture(page, name) {
     if (!/Optional limits and pricing|fallback provider/i.test(metrics.text || '')) fail(`${name}: Add model modal missing optional limits/pricing drawer`, metrics);
     if (/Fallback backend/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes backend jargon`, metrics);
     if (!/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must make disabled save explicit`, metrics);
+    if (!/Test connection to enable Save enabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must explain the Save enabled gate`, metrics);
     if (/Save draft/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes ambiguous Save draft action`, metrics);
     if (name.startsWith('mobile-')) {
       const steps = metrics.wizardSteps || [];
@@ -153,6 +159,8 @@ async function capture(page, name) {
       if (!metrics.footer || metrics.footer.top < 0 || metrics.footer.bottom > metrics.clientH + 3) {
         fail(`${name}: Add model Test/Save actions must stay visible on mobile`, metrics);
       }
+      const visibleGateCopy = (metrics.gateCopyRects || []).some((r) => r.top >= 0 && r.bottom <= (metrics.footer ? metrics.footer.top - 4 : metrics.clientH));
+      if (!visibleGateCopy) fail(`${name}: Add model Save enabled gate copy must be visible above sticky actions on mobile`, metrics);
     }
   }
   if (name.endsWith('new-key')) {

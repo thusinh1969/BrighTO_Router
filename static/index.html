@@ -241,7 +241,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .modal h3{margin:0 0 16px;font-size:18px;font-weight:800}
 .modal .hint{color:var(--muted);font-size:12.5px;margin:6px 0 12px;line-height:1.45}
 .modal .field{margin-bottom:13px}
-.route-modal{max-width:760px!important}
+.route-modal,.wide-modal{max-width:760px!important}
 .wizard-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:-2px 0 16px}
 .wizard-step{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:10px 12px;color:var(--muted);font-size:12px}
 .wizard-step b{display:block;color:var(--text);font-size:12.5px;margin-bottom:2px}
@@ -1192,8 +1192,8 @@ function openRouteModal(route){
     else if(e.key_env){ keyHint.textContent="No key in .env ("+e.key_env+") — paste the API key (stored per model, write-only)."; }
     else { keyHint.textContent="Paste the API key (stored per model, write-only)."; }
   }
-  function clearTest(msg){ testState.ok=false; save.disabled=true; save.title="Requires a passing connection test"; stat.textContent=msg||""; stat.style.color="var(--muted)"; }
-  ps.onchange=function(){ applyCat(); clearTest(""); };
+  function clearTest(msg){ testState.ok=false; save.disabled=true; save.title="Requires a passing connection test"; stat.textContent=msg||"Test connection to enable Save enabled."; stat.style.color="var(--muted)"; }
+  ps.onchange=function(){ applyCat(); clearTest("Provider changed — test connection again before saving enabled."); };
   applyCat();
   url.oninput=function(){ clearTest(""); };
   pk.oninput=function(){ clearTest(""); };
@@ -1205,6 +1205,7 @@ function openRouteModal(route){
   }
 
   m.appendChild(el("div","section-title","Model"));
+  var stat=el("p","hint","Test connection to enable Save enabled."); m.appendChild(stat);
   var modelGrid=el("div","form-grid route-model-grid");
   var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model"));
   var row=el("div","row model-picker-row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
@@ -1232,7 +1233,6 @@ function openRouteModal(route){
 	  mi.oninput=function(){ clearTest(""); updateModelMap(); };
 	  updateModelMap();
 
-  var stat=el("p","hint"); m.appendChild(stat);
   var testState={ok:false};
 
 	  var optionalOpen=!!(route.context_tokens||route.max_output_tokens||route.price_input_per_mtok_usd||route.price_output_per_mtok_usd||route.fallback_backend_id||(route.first_byte_timeout&&route.first_byte_timeout!==180));
@@ -1588,7 +1588,7 @@ function openKeyModal(k){
   k=k||{};
   var isEdit=!!k.id;
   var ov=$("modal-overlay"); ov.innerHTML="";
-  var m=el("div","modal route-modal");
+  var m=el("div","modal wide-modal");
   m.appendChild(el("h3",null,isEdit?"Edit API key · "+k.prefix:"Create API key"));
   m.appendChild(el("div","section-title","Owner"));
   var ident=el("div","form-grid");
