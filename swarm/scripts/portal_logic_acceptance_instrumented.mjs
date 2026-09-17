@@ -162,7 +162,7 @@ async function main() {
     }
 
     // Full Provider CRUD through the Portal UI. This catches regressions where Edit creates a new row or Delete only fails after click.
-    await page.getByRole('button', { name: /Pre-register provider|Add provider/ }).click({ force: true });
+    await page.getByRole('button', { name: /Prepare connection|Pre-register provider|Add provider/ }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
     await modalField(page, 'Name').fill(`${prefix}-provider`);
     await modalField(page, 'Base URL').fill('http://127.0.0.1:65534/v1');
@@ -172,7 +172,7 @@ async function main() {
     await modalField(page, 'Provider').selectOption('openai').catch(async () => {
       await modalField(page, 'Provider').selectOption({ label: /OpenAI/i }).catch(() => {});
     });
-    await page.locator('.modal').getByRole('button', { name: /Pre-register|Add|Create|Save/ }).click({ force: true });
+    await page.locator('.modal').getByRole('button', { name: /Prepare connection|Pre-register|Add|Create|Save/ }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
     await row(page, `${prefix}-provider`).waitFor({ state: 'visible', timeout: 10000 });
     backends = await adminFetch('/admin/backends');

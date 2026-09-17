@@ -1035,7 +1035,7 @@ function renderProviders(c){
   var h=el("div","panel-head");
   h.appendChild(el("h3",null,"Provider connections"));
   var hActions=el("div","panel-head-actions providers-actions");
-  var add=el("button","btn primary sm","Pre-register provider"); add.onclick=openProviderModal;
+  var add=el("button","btn primary sm","Prepare connection"); add.onclick=openProviderModal;
   hActions.appendChild(add);
   var filt=el("select"); filt.style.maxWidth="160px";
   [["all","All"],["enabled","Enabled only"],["disabled","Disabled only"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; filt.appendChild(o); });
@@ -1112,10 +1112,10 @@ function openProviderModal(b){
   b=b||{};
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
-  m.appendChild(el("h3",null, b.id?"Edit provider · "+b.name:"Pre-register provider"));
+  m.appendChild(el("h3",null, b.id?"Edit connection · "+b.name:"Prepare provider connection"));
   m.appendChild(el("p","hint",b.id
     ?"This edits the provider connection only. API keys live on model routes."
-    :"Most teams should use Models & Routes → Add model. Pre-register a provider only when you need to prepare or disable an upstream endpoint before adding routes."));
+    :"Most teams should use Models & Routes → Add model. Prepare a connection only when you need to set up or disable an upstream endpoint before adding routes."));
   m.appendChild(el("div","section-title","Provider preset"));
   // Chọn provider từ catalog hard-coded trong .env (chỉ 2 dialect: openai/anthropic).
   var fp=el("div","field"); fp.appendChild(el("label",null,"Provider"));
@@ -1161,7 +1161,7 @@ function openProviderModal(b){
   lab.appendChild(copy); lab.appendChild(cb); en.appendChild(lab); m.appendChild(en);
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
-  var save=el("button","btn primary", b.id?"Save":"Pre-register");
+  var save=el("button","btn primary", b.id?"Save":"Prepare connection");
   save.onclick=async function(){
     var e=catEntry(psel.value);
     var payload={name:(nameIn.value.trim()||e.label),base_url:urlIn.value.trim(),format:e.dialect,weight:Number(wIn.value)||1,max_inflight:Number(mxIn.value)||0,enabled:cb.checked};
