@@ -386,6 +386,12 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .user-card h3{margin:0 0 8px;font-size:20px;letter-spacing:-.02em}
 .user-card p{margin:0;color:var(--muted)}
 .user-card .key-line{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.allowed-models{margin-top:13px;background:rgba(11,18,32,.68);border:1px solid rgba(51,65,85,.72);border-radius:14px;padding:11px 12px;min-width:0}
+.allowed-models-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.allowed-models-head b{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.065em}
+.allowed-models-head span{font-size:11px;color:var(--accent-text);font-weight:850;white-space:nowrap}
+.allowed-model-list{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.allowed-model-pill{display:inline-flex;align-items:center;max-width:100%;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.20);border-radius:999px;padding:4px 9px;color:var(--text);font-family:var(--mono);font-size:11.5px;line-height:1.25;overflow-wrap:anywhere;word-break:break-word}
 .user-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .user-metric{background:#0b1220;border:1px solid rgba(51,65,85,.78);border-radius:14px;padding:12px;min-width:0}
 .user-metric span{display:block;color:var(--muted);font-size:10.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
@@ -817,11 +823,21 @@ function userHero(me,stats,logs,inT,outT,req,errRate){
   if(me&&me.key){ line.appendChild(pill("Key "+me.key.prefix,"info")); line.appendChild(pill(me.key.enabled?"Enabled":"Disabled",me.key.enabled?"on":"off")); }
   if(me&&me.team) line.appendChild(pill("Team: "+me.team.name,"info"));
   left.appendChild(line);
-  if(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length){
-    left.appendChild(el("p","hint","Allowed models: "+me.key.allowed_models.slice(0,6).join(", ")+(me.key.allowed_models.length>6?" +"+(me.key.allowed_models.length-6)+" more":"")));
+  var allowedBox=el("div","allowed-models");
+  var allowedHead=el("div","allowed-models-head");
+  allowedHead.appendChild(el("b",null,"Allowed models"));
+  var allowed=(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length)?me.key.allowed_models:[];
+  allowedHead.appendChild(el("span",null,allowed.length?fmt(allowed.length)+" allowed":"All enabled routes"));
+  allowedBox.appendChild(allowedHead);
+  var allowedList=el("div","allowed-model-list");
+  if(allowed.length){
+    allowed.slice(0,6).forEach(function(name){ var item=el("span","allowed-model-pill",name); item.title=name; allowedList.appendChild(item); });
+    if(allowed.length>6) allowedList.appendChild(el("span","allowed-model-pill","+"+fmt(allowed.length-6)+" more"));
   }else{
-    left.appendChild(el("p","hint","Allowed models: all enabled routes."));
+    allowedList.appendChild(el("span","allowed-model-pill","All enabled routes"));
   }
+  allowedBox.appendChild(allowedList);
+  left.appendChild(allowedBox);
   hero.appendChild(left);
   var right=el("div","user-card");
   right.appendChild(el("div","ops-kicker","Last 30 days"));
