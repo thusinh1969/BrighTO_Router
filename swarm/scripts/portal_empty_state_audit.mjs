@@ -67,6 +67,9 @@ async function main() {
       sectionTitles: [...document.querySelectorAll('#content h3, #content .diagnostic-details summary b')].map((n) => (n.textContent || '').trim()),
     }));
     result.evidence.dashboard = dash;
+    if (!/Ready to set up/i.test(dash.text) || /Needs attention/i.test(dash.text)) fail('dashboard first-run hero should be onboarding, not an alarm state', dash);
+    if (/priced routes ready/i.test(dash.text)) fail('dashboard first-run must not claim pricing is ready before any route exists', dash);
+    if (!/add route pricing/i.test(dash.text) || !/created with model/i.test(dash.text)) fail('dashboard first-run readiness copy should explain the next setup actions', dash);
     if (!dash.hasLaunch || dash.launchSteps !== 3) fail('dashboard empty state must show a 3-step launch checklist', dash);
     if (dash.launchPanels !== 1) fail('dashboard empty state must not render duplicate launch panels', dash);
     if (dash.addFirstModelButtons !== 1) fail('dashboard empty state must show exactly one Add first model CTA', dash);

@@ -794,22 +794,29 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
   var activeTeams=teams.filter(function(t){return t.enabled}).length;
   var badProviders=sum&&sum.by_backend?sum.by_backend.filter(function(b){return (b.errors||0)>0 || (b.rate_limited||0)>0 || (b.server_errors||0)>0 || (b.timeouts||0)>0;}).length:0;
   var missingPrices=routes.filter(function(r){return r.enabled && (r.price_input_per_mtok_usd==null || r.price_output_per_mtok_usd==null);}).length;
-  var healthOk=enabledRoutes>0 && activeProviders>0 && errRate===0 && badProviders===0;
+  var onboarding=configuredRoutes===0;
+  var healthOk=!onboarding && enabledRoutes>0 && activeProviders>0 && errRate===0 && badProviders===0;
   var speed=dashboardSpeed(logs);
+  var costValue=onboarding?"—":fmtCost(cost);
+  var costNote=onboarding?"add route pricing":(missingPrices?missingPrices+" unpriced route(s)":"priced routes ready");
+  var costTone=onboarding?"warn":tone(missingPrices===0,missingPrices>0);
+  var errorNote=req>0?(badProviders?badProviders+" provider issue(s)":"no provider errors"):"no traffic yet";
   var hero=el("div","ops-hero");
 
   var left=el("div","ops-primary");
   left.appendChild(el("div","ops-kicker","Router overview"));
-  left.appendChild(el("div","ops-title",healthOk?"Gateway ready":"Needs attention"));
-  left.appendChild(el("p","ops-copy",healthOk
-    ? "Routes are enabled, providers are available, and recent traffic has no recorded errors."
-    : "Check route readiness, provider state, pricing, and recent request errors before sending production traffic."));
+  left.appendChild(el("div","ops-title",onboarding?"Ready to set up":(healthOk?"Gateway ready":"Needs attention")));
+  left.appendChild(el("p","ops-copy",onboarding
+    ? "Add one tested model route. BrighTO will create the provider connection and then clients can send traffic."
+    : (healthOk
+      ? "Routes are enabled, providers are available, and recent traffic has no recorded errors."
+      : "Check route readiness, provider state, pricing, and recent request errors before sending production traffic.")));
   var stats=el("div","ops-status-row");
   [
     ["Traffic",fmt(req)+" req",req>0?"last 30 days":"no requests yet",tone(req>0,true)],
     ["Speed",speed.value,speed.note,speed.tone],
-    ["Cost",fmtCost(cost),missingPrices?missingPrices+" unpriced route(s)":"priced routes ready",tone(missingPrices===0,missingPrices>0)],
-    ["Errors",errRate+"%",badProviders?badProviders+" provider issue(s)":"no provider errors",tone(errRate===0 && badProviders===0,errRate<5)]
+    ["Cost",costValue,costNote,costTone],
+    ["Errors",errRate+"%",errorNote,tone(errRate===0 && badProviders===0,errRate<5)]
   ].forEach(function(x){
     var b=el("div","ops-status "+x[3]);
     b.appendChild(el("span","k",x[0]));
@@ -829,10 +836,10 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
   var right=el("div","ops-side");
   right.appendChild(el("h3",null,"Readiness"));
   var list=el("div","readiness-list");
-  list.appendChild(readinessItem("Routes",enabledRoutes+"/"+configuredRoutes+" enabled",enabledRoutes>0?"":"bad"));
-  list.appendChild(readinessItem("Provider connections",activeProviders+"/"+backends.length+" active",activeProviders>0?"":"bad"));
+  list.appendChild(readinessItem("Routes",onboarding?"add first model":enabledRoutes+"/"+configuredRoutes+" enabled",enabledRoutes>0?"":(onboarding?"warn":"bad")));
+  list.appendChild(readinessItem("Provider connections",onboarding?"created with model":activeProviders+"/"+backends.length+" active",activeProviders>0?"":(onboarding?"warn":"bad")));
   list.appendChild(readinessItem("Teams",activeTeams+"/"+teams.length+" active",activeTeams>0?"":"bad"));
-  list.appendChild(readinessItem("Pricing",missingPrices?missingPrices+" missing":"complete",missingPrices?"warn":""));
+  list.appendChild(readinessItem("Pricing",onboarding?"set per route later":(missingPrices?missingPrices+" missing":"complete"),onboarding||missingPrices?"warn":""));
   list.appendChild(readinessItem("Provider health",badProviders?badProviders+" warning(s)":"clean",badProviders?"warn":""));
   right.appendChild(list);
   hero.appendChild(right);
