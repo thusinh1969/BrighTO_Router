@@ -137,9 +137,9 @@ td.mono{font-family:var(--mono);font-size:12px}
 .chip input{margin:0;accent-color:var(--sky)}
 
 /* ---------- Toast ---------- */
-#toast{position:fixed;bottom:22px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:100}
-.toast{background:#111827;border:1px solid var(--border);border-left:3px solid var(--sky);border-radius:10px;
-  padding:13px 17px;font-size:13px;box-shadow:0 12px 34px rgba(0,0,0,.5);max-width:380px;animation:slide .2s ease}
+#toast{position:fixed;top:70px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:100;pointer-events:none}
+.toast{background:#111827;border:1px solid var(--border);border-left:3px solid var(--sky);border-radius:10px;pointer-events:auto;
+  padding:13px 17px;font-size:13px;box-shadow:0 12px 34px rgba(0,0,0,.5);max-width:380px}
 .toast.ok{border-left-color:var(--green)} .toast.err{border-left-color:var(--red)}
 @keyframes slide{from{transform:translateX(18px);opacity:0}to{transform:none;opacity:1}}
 
