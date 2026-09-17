@@ -86,6 +86,7 @@ async function inspect(page) {
       panelCount: document.querySelectorAll('#content .panel').length,
       cardCount: document.querySelectorAll('#content .card').length,
       callItems: [...document.querySelectorAll('.call-item')].map((n) => (n.innerText || n.textContent || '').trim()),
+      callButtons: [...document.querySelectorAll('.call-panel button')].map((b) => ({ text: (b.innerText || b.textContent || '').trim(), title: b.title || '', copy: b.dataset.copy || '' })),
       callCodeStats: [...document.querySelectorAll('.call-item code')].map((n) => {
         const st = getComputedStyle(n);
         return {
@@ -125,6 +126,12 @@ async function runViewport(browser, seed, name, width, height) {
     if (!/Call endpoint|POST|\/v1\/chat\/completions|Authorization: Bearer <your API key>/i.test(dash.content)) fail(`${name}: user dashboard missing call endpoint quick start`, dash);
     if (!dash.content.includes(seed.model)) fail(`${name}: user dashboard missing allowed/used model`, dash);
     if (dash.callItems.length < 4) fail(`${name}: user call endpoint panel missing fields`, dash);
+    const curlButton = (dash.callButtons || []).find((b) => b.text === 'Copy cURL');
+    const endpointButton = (dash.callButtons || []).find((b) => b.text === 'Copy endpoint');
+    if (!endpointButton || !endpointButton.copy.includes('/v1/chat/completions')) fail(`${name}: user call endpoint copy URL action missing`, dash);
+    if (!curlButton || !curlButton.copy.includes('/v1/chat/completions') || !curlButton.copy.includes('Authorization: Bearer <your API key>') || !curlButton.copy.includes(seed.model) || !curlButton.copy.includes('Reply OK')) {
+      fail(`${name}: user call endpoint copy cURL action is incomplete`, { callButtons: dash.callButtons, model: seed.model });
+    }
     const clippedCallCodes = (dash.callCodeStats || []).filter((c) => c.scrollWidth > c.clientWidth + 4 || c.whiteSpace === 'nowrap' || c.textOverflow === 'ellipsis');
     if (clippedCallCodes.length) fail(`${name}: user call endpoint code is clipped`, { clippedCallCodes, dash });
     if (dash.bodyScrollWidth > dash.clientWidth + 8) fail(`${name}: user dashboard horizontal overflow`, dash);

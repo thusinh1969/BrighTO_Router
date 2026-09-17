@@ -116,6 +116,7 @@ textarea{resize:vertical;min-height:72px}
 .panel .hint{color:var(--muted);font-size:12.5px;margin:0 0 16px}
 .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:10px;flex-wrap:wrap}
 .panel-head h3{margin:0}
+.panel-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .ops-hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:16px;margin-bottom:18px}
 .ops-primary,.ops-side{background:linear-gradient(145deg,rgba(17,28,49,.96),rgba(15,23,42,.96));border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;box-shadow:0 18px 50px rgba(0,0,0,.22);min-width:0}
 .ops-primary{position:relative;overflow:hidden}
@@ -274,7 +275,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .user-metric{background:#0b1220;border:1px solid rgba(51,65,85,.78);border-radius:14px;padding:12px;min-width:0}
 .user-metric span{display:block;color:var(--muted);font-size:10.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
 .user-metric b{display:block;font-size:20px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.call-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px}
+.call-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-top:12px}
 .call-item{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:11px 12px;min-width:0}
 .call-item .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:6px}
 .call-item code{display:block;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;background:transparent;padding:0;color:var(--text)}
@@ -643,10 +644,24 @@ function userHero(me,stats,logs,inT,outT,req,errRate){
 }
 function userCallPanel(me,logs){
   var p=el("div","panel call-panel");
+  var endpoint=location.origin+"/v1/chat/completions";
+  var firstModel=(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length)?me.key.allowed_models[0]:((logs&&logs.length&&logs[0].model)||"<model>");
+  var curlBody=JSON.stringify({model:firstModel,messages:[{role:"user",content:"Reply OK"}],max_tokens:16});
+  var curl=[
+    "curl -k "+shQuote(endpoint)+" \\",
+    "  -H "+shQuote("Authorization: Bearer <your API key>")+" \\",
+    "  -H "+shQuote("Content-Type: application/json")+" \\",
+    "  -d "+shQuote(curlBody)
+  ].join("\n");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Call endpoint"));
+  var actions=el("div","panel-head-actions");
   var copy=el("button","btn sm ghost","Copy endpoint");
-  copy.onclick=function(){navigator.clipboard.writeText(location.origin+"/v1/chat/completions").then(function(){toast("Endpoint copied");});};
-  h.appendChild(copy); p.appendChild(h);
+  copy.title="Copy the OpenAI-compatible endpoint URL"; copy.dataset.copy=endpoint;
+  copy.onclick=function(){navigator.clipboard.writeText(endpoint).then(function(){toast("Endpoint copied");});};
+  var copyCurl=el("button","btn sm primary","Copy cURL");
+  copyCurl.title="Copy a complete test command for this key and model"; copyCurl.dataset.copy=curl;
+  copyCurl.onclick=function(){navigator.clipboard.writeText(curl).then(function(){toast("cURL copied");});};
+  actions.appendChild(copy); actions.appendChild(copyCurl); h.appendChild(actions); p.appendChild(h);
   p.appendChild(el("p","hint","Use the same client API key you used to sign in. BrighTO accepts OpenAI-compatible chat completion calls at this endpoint."));
   var grid=el("div","call-grid");
   function item(k,v){ var box=el("div","call-item"); box.appendChild(el("span","k",k)); var val=el("code",null,v); val.title=v; box.appendChild(val); grid.appendChild(box); }
@@ -1728,7 +1743,8 @@ function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1) return "<1 ms";
 function reliableTokRate(r){ var rate=Number(r&&r.total_tokens_per_second); var dur=Number(r&&r.total_ms); return Number.isFinite(rate) && rate>=0 && Number.isFinite(dur) && dur>=100; }
 function tokRateDisplay(r){ return reliableTokRate(r)?fmt(Math.round(Number(r.total_tokens_per_second))):"—"; }
 function tokRateTitle(r){ return reliableTokRate(r)?"Total tokens per second":"Hidden because duration is below 100 ms; too short to be a useful production speed signal."; }
-function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
+function shQuote(s){ return "'"+String(s).replace(/'/g,"'\"'\"'")+"'"; }
+function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.dataset.copy=text; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
 var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]];
 function catEntry(key){ return (catalog||[]).find(function(e){return e.key===key;}) || {key:key,label:key,base_url:"",dialect:"openai",key_env:"",key_set:false}; }
