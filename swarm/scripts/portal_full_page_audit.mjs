@@ -55,6 +55,18 @@ async function login(page) {
   await page.evaluate(() => login());
   await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
 }
+async function verifyAdminReload(page, name) {
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
+  const state = await page.evaluate(() => ({
+    loginHidden: document.querySelector('#login-view')?.classList.contains('hidden') || false,
+    appVisible: !(document.querySelector('#app-view')?.classList.contains('hidden') || false),
+    modePill: document.querySelector('#mode-pill')?.textContent || '',
+    visibleNav: [...document.querySelectorAll('.nav')].filter((n) => getComputedStyle(n).display !== 'none').map((n) => (n.innerText || n.textContent || '').trim()),
+    title: document.querySelector('#page-title')?.textContent || '',
+  }));
+  if (!state.loginHidden || !state.appVisible || !/Admin/i.test(state.modePill) || !state.visibleNav.includes('Providers') || !state.visibleNav.includes('API Keys')) fail(`${name}: F5 reload should keep verified admin session`, state);
+}
 async function go(page, view, mobile) {
   if (mobile) {
     await page.locator('.hamburger').click({ force: true });
@@ -319,6 +331,7 @@ async function runViewport(browser, name, width, height) {
   page.on('console', (m) => { if (m.type() === 'error' && !/ERR_NETWORK_CHANGED/i.test(m.text())) result.consoleErrors.push(`${name}: ${m.text()}`); });
   page.on('pageerror', (e) => result.consoleErrors.push(`${name}: pageerror ${e.message}`));
   await login(page);
+  await verifyAdminReload(page, name);
   const mobile = width <= 820;
   if (mobile) await verifyMobileSidebar(page, name);
   result.pages[name] = {};

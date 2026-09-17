@@ -56,6 +56,20 @@ async function loginUser(page, key) {
   await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
   await page.getByRole('heading', { name: 'Dashboard' }).waitFor({ state: 'visible', timeout: 12000 });
 }
+async function verifyUserReload(page, name) {
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
+  await waitUserView(page, 'dashboard');
+  const state = await page.evaluate(() => ({
+    loginHidden: document.querySelector('#login-view')?.classList.contains('hidden') || false,
+    appVisible: !(document.querySelector('#app-view')?.classList.contains('hidden') || false),
+    modePill: document.querySelector('#mode-pill')?.textContent || '',
+    visibleNav: [...document.querySelectorAll('.nav')].filter((n) => getComputedStyle(n).display !== 'none').map((n) => (n.innerText || n.textContent || '').trim()),
+    title: document.querySelector('#page-title')?.textContent || '',
+  }));
+  const adminNav = ['Providers', 'Models & Routes', 'Teams', 'API Keys'].filter((n) => state.visibleNav.includes(n));
+  if (!state.loginHidden || !state.appVisible || !/User/i.test(state.modePill) || state.title !== 'Dashboard' || adminNav.length) fail(`${name}: F5 reload should keep verified user session without admin menus`, { ...state, adminNav });
+}
 async function waitUserView(page, view) {
   const expected = {
     dashboard: ['Your API access', 'Call endpoint', '/v1/chat/completions'],
@@ -112,6 +126,7 @@ async function runViewport(browser, seed, name, width, height) {
   const mobile = width <= 820;
   try {
     await loginUser(page, seed.key);
+    await verifyUserReload(page, name);
     await waitUserView(page, 'dashboard');
     const dashShot = `${OUT}/${name}-user-dashboard.png`;
     await page.screenshot({ path: dashShot, fullPage: true });
