@@ -400,6 +400,10 @@ async function runViewport(browser, name, width, height) {
     if (jsTruncatedLabels.length) fail(`${name}/${view}: data labels are shortened in JavaScript instead of CSS/title`, { jsTruncatedLabels, metrics });
     const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
     if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });
+    if (['dashboard', 'usage'].includes(view)) {
+      const badLegendLabels = (metrics.primaryDataLabels || []).filter((l) => /legend-label/.test(l.className || '') && l.text && (/nowrap/i.test(l.whiteSpace) || /ellipsis/i.test(l.textOverflow) || l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
+      if (badLegendLabels.length) fail(`${name}/${view}: chart legend labels should wrap instead of truncating`, { badLegendLabels, metrics });
+    }
     if (['dashboard', 'usage'].includes(view) && (metrics.legendStats || []).length && !(metrics.chartValueLabels || []).some((l) => /^\d|[KMB]/.test(l.text))) {
       fail(`${name}/${view}: sparse chart bars need visible value labels`, metrics);
     }

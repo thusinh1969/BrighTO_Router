@@ -389,7 +389,7 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .legend{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:12px;min-width:0;max-width:100%}
 .legend span{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);max-width:min(100%,420px);min-width:0;line-height:1.35;background:rgba(15,23,42,.52);border:1px solid rgba(51,65,85,.55);border-radius:999px;padding:4px 9px}
 .legend i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:0 0 auto}
-.legend-label{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-style:normal;flex:1 1 auto}
+.legend-label{display:block;min-width:0;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;word-break:break-word;font-style:normal;flex:1 1 auto}
 
 .empty{color:var(--faint);text-align:center;padding:40px 16px;font-size:13px}
 .empty svg{width:36px;height:36px;margin-bottom:8px;opacity:.4}
