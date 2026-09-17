@@ -92,8 +92,9 @@ async function inspectModal(page) {
     const inputs = [...modal.querySelectorAll('input,select,textarea')].map((node) => {
       const r = node.getBoundingClientRect();
       const label = node.closest('.field')?.querySelector('label')?.innerText?.trim() || node.placeholder || node.tagName;
-      return { label, top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width) };
+      return { label, top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width), visible: node.offsetParent !== null };
     });
+    const visibleInputLabels = inputs.filter((i) => i.visible).map((i) => i.label);
     const wizardSteps = [...modal.querySelectorAll('.wizard-step')].map((node) => {
       const r = node.getBoundingClientRect();
       return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), text: (node.innerText || '').trim().replace(/\s+/g, ' ') };
@@ -111,6 +112,7 @@ async function inspectModal(page) {
       overlayScrollHeight: overlay ? overlay.scrollHeight : null,
       footer: footerRect ? { top: Math.round(footerRect.top), bottom: Math.round(footerRect.bottom), height: Math.round(footerRect.height) } : null,
       footerCoveredInputs,
+      visibleInputLabels,
       wizardSteps,
       switches,
       text: modal.innerText.slice(0, 2400),
@@ -152,7 +154,19 @@ async function capture(page, name) {
   }
   if (name.endsWith('new-key')) {
     if (!/Model access|All models|Restrict to selected models/i.test(metrics.text || '')) fail(`${name}: New key modal missing guided model access picker`, metrics);
+    if (!/Optional limits and budget/i.test(metrics.text || '')) fail(`${name}: New key modal missing collapsed optional limits/budget drawer`, metrics);
     if (/comma-separated|empty = all/i.test(metrics.text || '')) fail(`${name}: New key modal still exposes comma-separated model entry`, metrics);
+    const visibleLabels = (metrics.visibleInputLabels || []).map((x) => String(x).toLowerCase());
+    const optionalLabels = ['expiry date (optional)', 'requests per minute (optional)', 'simultaneous request limit (optional)', 'budget', 'period', 'token amount'];
+    const hiddenByDefault = optionalLabels.filter((label) => visibleLabels.includes(label));
+    if (hiddenByDefault.length) fail(`${name}: New key optional limit fields must be collapsed by default`, { hiddenByDefault, metrics });
+    await page.getByRole('button', { name: /Optional limits and budget/ }).click({ force: true });
+    await page.waitForTimeout(200);
+    const expanded = await inspectModal(page);
+    result.metrics[`${name}-expanded`] = expanded;
+    const expandedLabels = (expanded.visibleInputLabels || []).map((x) => String(x).toLowerCase());
+    const missingExpanded = optionalLabels.filter((label) => !expandedLabels.includes(label));
+    if (missingExpanded.length) fail(`${name}: New key optional drawer did not reveal all limit/budget fields`, { missingExpanded, expanded });
   }
   if (name.endsWith('new-key') || name.endsWith('new-team')) {
     if (/Advanced JSON/i.test(metrics.text || '')) fail(`${name}: budget advanced action exposes JSON jargon`, metrics);

@@ -37,6 +37,12 @@ async function adminFetch(path, method = 'GET', body) {
 function modalField(page, label) {
   return page.locator('.modal .field').filter({ has: page.locator('label', { hasText: label }) }).locator('input,select,textarea').first();
 }
+async function ensureKeyLimitsOpen(page) {
+  if (!(await modalField(page, 'Budget').isVisible().catch(() => false))) {
+    await page.locator('.modal').getByRole('button', { name: /Optional limits and budget/ }).click({ force: true });
+    await modalField(page, 'Budget').waitFor({ state: 'visible', timeout: 3000 });
+  }
+}
 function row(page, text) { return page.locator('tr').filter({ hasText: text }).first(); }
 
 async function main() {
@@ -232,6 +238,7 @@ async function main() {
     let createdKeyRow = row(page, prefix + '-owner');
     await createdKeyRow.getByRole('button', { name: 'Edit' }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
+    await ensureKeyLimitsOpen(page);
     await modalField(page, 'Budget').selectOption('token');
     await modalField(page, 'Token amount').fill('1234');
     await page.locator('.modal').getByRole('button', { name: 'Save' }).click({ force: true });
@@ -243,6 +250,7 @@ async function main() {
     createdKeyRow = row(page, prefix + '-owner');
     await createdKeyRow.getByRole('button', { name: 'Edit' }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
+    await ensureKeyLimitsOpen(page);
     await modalField(page, 'Budget').selectOption('inherit');
     await page.locator('.modal').getByRole('button', { name: 'Save' }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
