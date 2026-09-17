@@ -133,6 +133,18 @@ textarea{resize:vertical;min-height:72px}
 .focus-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
 .focus-value{text-align:right;font-weight:900;color:var(--accent-text)}
 .focus-value span{display:block;color:var(--muted);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+.filter-grid .field{margin:0}
+.range-pills{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+.range-pills .btn.active{background:rgba(56,189,248,.16);border-color:var(--sky);color:var(--accent-text)}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.setting-card{background:#0b1220;border:1px solid var(--border);border-radius:16px;padding:16px;min-width:0}
+.setting-card h4{margin:0 0 10px;font-size:14px}
+.setting-card .hint{margin-bottom:12px}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.status-tile{background:#111827;border:1px solid rgba(51,65,85,.75);border-radius:12px;padding:12px;min-width:0}
+.status-tile .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:4px}
+.status-tile .v{display:block;color:var(--text);font-weight:850;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ---------- Tables ---------- */
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:#0b1220;contain:layout}
@@ -249,6 +261,7 @@ table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:an
   .ops-hero,.dash-split,.ops-status-row{grid-template-columns:1fr;max-width:100%;min-width:0}
   .ops-primary,.ops-side,.focus-row,.request-card,.dash-split>*,.chart-wrap,.legend{max-width:100%;min-width:0;overflow:hidden}
   .panel{max-width:100%}
+  .filter-grid,.settings-grid,.status-grid{grid-template-columns:1fr}
   .ops-primary::after{display:none}
   .quick-actions .btn{flex:1 1 120px;min-width:0;padding-left:9px;padding-right:9px}
   .grid{grid-template-columns:1fr;gap:10px;margin-bottom:14px}
@@ -737,6 +750,10 @@ function openProviderModal(b){
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
   m.appendChild(el("h3",null, b.id?"Edit provider · "+b.name:"Add provider"));
+  m.appendChild(el("p","hint",b.id
+    ?"This edits the upstream connection only. Provider API keys live on model routes."
+    :"Most teams should use Models & Routes → Add model. Create a provider here only when you need to pre-register or disable an upstream endpoint."));
+  m.appendChild(el("div","section-title","Connection preset"));
   // Chọn provider từ catalog hard-coded trong .env (chỉ 2 dialect: openai/anthropic).
   var fp=el("div","field"); fp.appendChild(el("label",null,"Provider"));
   var psel=el("select");
@@ -746,6 +763,7 @@ function openProviderModal(b){
   if(pre) psel.value=pre.key;
   else if(b.name && (catalog||[]).length) psel.value=(catalog[0].key||"custom");
   fp.appendChild(psel); m.appendChild(fp);
+  m.appendChild(el("div","section-title","Endpoint"));
   var fname=el("div","field"); fname.appendChild(el("label",null,"Name"));
   var nameIn=el("input"); nameIn.value=b.name||""; fname.appendChild(nameIn); m.appendChild(fname);
   var fu=el("div","field"); fu.appendChild(el("label",null,"Base URL"));
@@ -756,10 +774,14 @@ function openProviderModal(b){
     if(e.base_url) urlIn.value=e.base_url;
   }
   psel.onchange=applyCat; applyCat();
+  m.appendChild(el("div","section-title","Load control"));
+  var loadGrid=el("div","form-grid");
   var fw=el("div","field"); fw.appendChild(el("label",null,"Weight"));
-  var wIn=el("input"); wIn.type="number"; wIn.value=String(b.weight||1); fw.appendChild(wIn); m.appendChild(fw);
+  var wIn=el("input"); wIn.type="number"; wIn.value=String(b.weight||1); fw.appendChild(wIn); loadGrid.appendChild(fw);
   var fm=el("div","field"); fm.appendChild(el("label",null,"Max concurrent (0 = unlimited)"));
-  var mxIn=el("input"); mxIn.type="number"; mxIn.value=String(b.max_inflight||0); fm.appendChild(mxIn); m.appendChild(fm);
+  var mxIn=el("input"); mxIn.type="number"; mxIn.value=String(b.max_inflight||0); fm.appendChild(mxIn); loadGrid.appendChild(fm);
+  m.appendChild(loadGrid);
+  m.appendChild(el("div","section-title","State"));
   var en=el("div","field");
   var lab=el("label","chip"+(b.enabled!==false?" selected":"")); var cb=el("input"); cb.type="checkbox"; cb.checked=b.enabled!==false;
   lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); en.appendChild(lab); m.appendChild(en);
@@ -1339,8 +1361,9 @@ async function renderUsage(c,seq){
     var bar=el("div","panel");
     var h=el("div","panel-head"); h.appendChild(el("h3",null,"Filters"));
     bar.appendChild(h);
-    var row=el("div","row"); row.style.flexWrap="wrap"; row.style.alignItems="end";
-    function fld(lbl, input){ var box=el("div","field"); box.style.margin="0"; box.appendChild(el("label",null,lbl)); box.appendChild(input); row.appendChild(box); }
+    bar.appendChild(el("p","hint","Narrow request history by model, status, provider, team, or key. Use short ranges while debugging live traffic."));
+    var row=el("div","filter-grid");
+    function fld(lbl, input){ var box=el("div","field"); box.appendChild(el("label",null,lbl)); box.appendChild(input); row.appendChild(box); }
     var mi=el("input"); mi.placeholder="model name"; mi.value=usageFilter.model; fld("Model",mi);
     var st=el("select"); [["all","All statuses"],["success","Success"],["error","Error"]].forEach(function(s){var o=el("option",null,s[1]);o.value=s[0];st.appendChild(o);}); st.value=usageFilter.status; fld("Status",st);
     var bk=el("select"); var bo=el("option",null,"All providers"); bo.value=""; bk.appendChild(bo); backends.forEach(function(b){var o=el("option",null,b.name);o.value=b.id;bk.appendChild(o);}); bk.value=usageFilter.backend; fld("Provider",bk);
@@ -1349,14 +1372,26 @@ async function renderUsage(c,seq){
     var fr=el("input"); fr.type="date"; fr.value=usageFilter.from; fld("From",fr);
     var td=el("input"); td.type="date"; td.value=usageFilter.to; fld("To",td);
     var dy=el("select"); ["7","30","90"].forEach(function(d){var o=el("option",null,d+" days");o.value=d;dy.appendChild(o);}); dy.value=usageFilter.days; fld("Range",dy);
-    var ap=el("button","btn primary sm","Apply"); ap.onclick=function(){
+    var ap=el("button","btn primary btn-block","Apply"); ap.onclick=function(){
       usageFilter={model:mi.value,status:st.value,team:ts.value,backend:bk.value,key:ks.value,
         from:fr.value?Math.floor(new Date(fr.value+"T00:00:00Z").getTime()/1000):"",
         to:td.value?Math.floor(new Date(td.value+"T23:59:59Z").getTime()/1000):"",
         days:dy.value};
       rerender();
     }; row.appendChild(ap);
-    bar.appendChild(row); c.appendChild(bar);
+    bar.appendChild(row);
+    var quick=el("div","range-pills");
+    ["7","30","90"].forEach(function(d){
+      var b=el("button","btn sm ghost",d+"d");
+      b.classList.toggle("active", usageFilter.days===d && !usageFilter.from && !usageFilter.to);
+      b.onclick=function(){ usageFilter.days=d; usageFilter.from=""; usageFilter.to=""; rerender(); };
+      quick.appendChild(b);
+    });
+    var reset=el("button","btn sm ghost","Reset filters");
+    reset.onclick=function(){ usageFilter={model:"",status:"all",team:"",backend:"",key:"",from:"",to:"",days:"30"}; rerender(); };
+    quick.appendChild(reset);
+    bar.appendChild(quick);
+    c.appendChild(bar);
   }
 
   var stats=[], sum=null, logs=[];
@@ -1396,30 +1431,40 @@ function groupPanel(title,cols,rows){
 /* ===== Settings ===== */
 async function renderSettings(c,seq){
   var pp=el("div","panel");
-  pp.appendChild(el("h3",null,"Portal preferences"));
-  pp.appendChild(el("p","hint","Personal display settings — stored in this browser only."));
-  var prow=el("div","row"); prow.style.alignItems="end";
-  var fld1=el("div","field"); fld1.style.margin="0"; fld1.appendChild(el("label",null,"Font size"));
-  var fsel=el("select"); [["small","Small"],["normal","Normal"],["large","Large"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];fsel.appendChild(o);}); fsel.value=document.documentElement.dataset.font||"normal"; fsel.onchange=function(){setPref("font",fsel.value);}; fld1.appendChild(fsel); prow.appendChild(fld1);
-  var fld2=el("div","field"); fld2.style.margin="0"; fld2.appendChild(el("label",null,"Density"));
-  var dsel=el("select"); [["compact","Compact (default)"],["comfortable","Comfortable"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];dsel.appendChild(o);}); dsel.value=document.documentElement.dataset.density||"compact"; dsel.onchange=function(){setPref("density",dsel.value);}; fld2.appendChild(dsel); prow.appendChild(fld2);
-  pp.appendChild(prow);
-  c.appendChild(pp);
+  pp.appendChild(el("h3",null,"Settings"));
+  pp.appendChild(el("p","hint","Runtime health and personal display preferences. Runtime values are read-only; change them in environment config and restart."));
+  var grid=el("div","settings-grid");
 
-  var p=el("div","panel");
-  p.appendChild(el("h3",null,"Runtime settings"));
-  p.appendChild(el("p","hint","Read-only. Change these via environment variables and restart."));
+  var display=el("div","setting-card");
+  display.appendChild(el("h4",null,"Display"));
+  display.appendChild(el("p","hint","Stored only in this browser."));
+  var prow=el("div","form-grid");
+  var fld1=el("div","field"); fld1.appendChild(el("label",null,"Font size"));
+  var fsel=el("select"); [["small","Small"],["normal","Normal"],["large","Large"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];fsel.appendChild(o);}); fsel.value=document.documentElement.dataset.font||"normal"; fsel.onchange=function(){setPref("font",fsel.value);}; fld1.appendChild(fsel); prow.appendChild(fld1);
+  var fld2=el("div","field"); fld2.appendChild(el("label",null,"Density"));
+  var dsel=el("select"); [["compact","Compact (default)"],["comfortable","Comfortable"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];dsel.appendChild(o);}); dsel.value=document.documentElement.dataset.density||"compact"; dsel.onchange=function(){setPref("density",dsel.value);}; fld2.appendChild(dsel); prow.appendChild(fld2);
+  display.appendChild(prow);
+  grid.appendChild(display);
+
+  var runtime=el("div","setting-card");
+  runtime.appendChild(el("h4",null,"Runtime"));
+  runtime.appendChild(el("p","hint","Current process state."));
   if(mode==="admin"){
     try{
       var s=await api("/admin/settings","GET");
       if(!isCurrentRender(c,seq)) return;
-      var rows=[["Router address",s.listen_addr],["Database",s.database_ok?"connected":"unreachable"],["Config reload",s.config_reload_ok?"healthy":"stale"],["Max body bytes",fmt(s.max_body_bytes)],["Version",s.version]];
-      rows.forEach(function(r){ var kv=el("div","kv"); kv.appendChild(el("span","k",r[0])); kv.appendChild(el("span","v",r[1])); p.appendChild(kv); });
-    }catch(e){ if(!isCurrentRender(c,seq)) return; p.appendChild(el("div","warn-note","Could not load settings: "+e.message)); }
+      var sg=el("div","status-grid");
+      [["Router address",s.listen_addr],["Database",s.database_ok?"connected":"unreachable"],["Config reload",s.config_reload_ok?"healthy":"stale"],["Max body bytes",fmt(s.max_body_bytes)],["Version",s.version]].forEach(function(r){
+        var tile=el("div","status-tile"); tile.appendChild(el("span","k",r[0])); var v=el("span","v",r[1]); v.title=String(r[1]||""); tile.appendChild(v); sg.appendChild(tile);
+      });
+      runtime.appendChild(sg);
+    }catch(e){ if(!isCurrentRender(c,seq)) return; runtime.appendChild(el("div","warn-note","Could not load settings: "+e.message)); }
   }else{
-    p.appendChild(el("div","empty","Settings are admin-only."));
+    runtime.appendChild(el("div","empty","Settings are admin-only."));
   }
-  c.appendChild(p);
+  grid.appendChild(runtime);
+  pp.appendChild(grid);
+  c.appendChild(pp);
 }
 
 /* ===== Charts ===== */
