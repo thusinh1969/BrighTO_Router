@@ -794,14 +794,14 @@ function focusPanel(title,rows,empty){
   p.appendChild(list);
   return p;
 }
-function diagnosticDetails(nodes){
+function detailsBlock(title, subtitle, nodes, open, extraClass){
   var d=document.createElement("details");
-  d.className="diagnostic-details";
-  d.open=(document.documentElement.clientWidth||1024)>820;
+  d.className="diagnostic-details"+(extraClass?" "+extraClass:"");
+  d.open=!!open;
   var s=document.createElement("summary");
   var copy=el("div");
-  copy.appendChild(el("b",null,"Technical diagnostics"));
-  copy.appendChild(el("span",null,"Provider health, router overhead, and latency buckets."));
+  copy.appendChild(el("b",null,title));
+  copy.appendChild(el("span",null,subtitle));
   s.appendChild(copy);
   s.appendChild(el("i"));
   d.appendChild(s);
@@ -809,6 +809,9 @@ function diagnosticDetails(nodes){
   nodes.forEach(function(n){ body.appendChild(n); });
   d.appendChild(body);
   return d;
+}
+function diagnosticDetails(nodes){
+  return detailsBlock("Technical diagnostics", "Provider health, router overhead, and latency buckets.", nodes, (document.documentElement.clientWidth||1024)>820, "dashboard-diagnostics");
 }
 
 /* ===== Dashboard ===== */
@@ -1815,13 +1818,22 @@ async function renderUsage(c,seq){
   if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage data for this filter."));
   c.appendChild(p);
 
+  var p2=el("div","panel"); p2.appendChild(el("h3",null,"Request logs")); p2.appendChild(logsTable(logs));
+  var mobileBreakdowns=(document.documentElement.clientWidth||1024)<=820;
   if(sum){
-    c.appendChild(groupPanel("By model",["Model","Requests","Input","Output","Errors"],sum.by_model.map(function(r){return [r.model,fmt(r.requests),fmt(r.input_tokens),fmt(r.output_tokens),fmt(r.errors)];})));
-    c.appendChild(groupPanel("By team",["Team","Requests","Input","Output","Errors"],sum.by_team.map(function(r){return [r.team_name,fmt(r.requests),fmt(r.input_tokens),fmt(r.output_tokens),fmt(r.errors)];})));
-    c.appendChild(groupPanel("By API key",["Key","Requests","Input","Output","Errors"],sum.by_key.map(function(r){return [r.key_prefix,fmt(r.requests),fmt(r.input_tokens),fmt(r.output_tokens),fmt(r.errors)];})));
+    var breakdowns=[
+      groupPanel("By model",["Model","Requests","Input","Output","Errors"],sum.by_model.map(function(r){return [r.model,fmt(r.requests),fmt(r.input_tokens),fmt(r.output_tokens),fmt(r.errors)];})),
+      groupPanel("By team",["Team","Requests","Input","Output","Errors"],sum.by_team.map(function(r){return [r.team_name,fmt(r.requests),fmt(r.input_tokens),fmt(r.output_tokens),fmt(r.errors)];})),
+      groupPanel("By API key",["Key","Requests","Input","Output","Errors"],sum.by_key.map(function(r){return [r.key_prefix,fmt(r.requests),fmt(r.input_tokens),fmt(r.output_tokens),fmt(r.errors)];}))
+    ];
+    if(mobileBreakdowns){
+      c.appendChild(p2);
+      c.appendChild(detailsBlock("Usage breakdowns","Model, team, and API-key totals for this range.",breakdowns,false,"usage-breakdowns"));
+      return;
+    }
+    breakdowns.forEach(function(panel){ c.appendChild(panel); });
   }
-
-  var p2=el("div","panel"); p2.appendChild(el("h3",null,"Request logs")); p2.appendChild(logsTable(logs)); c.appendChild(p2);
+  c.appendChild(p2);
 }
 function groupPanel(title,cols,rows){
   var p=el("div","panel"); p.appendChild(el("h3",null,title));
