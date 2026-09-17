@@ -219,6 +219,22 @@ async function inspectPage(page, label) {
         whiteSpace: st.whiteSpace,
       };
     });
+    const requestKpis = [...document.querySelectorAll('#content .request-kpi')].map((n) => {
+      const label = (n.querySelector('.k')?.textContent || '').trim();
+      const value = n.querySelector('.v');
+      const st = value ? getComputedStyle(value) : null;
+      return {
+        label,
+        value: value ? (value.innerText || value.textContent || '').trim() : '',
+        scrollWidth: value ? value.scrollWidth : 0,
+        clientWidth: value ? value.clientWidth : 0,
+        scrollHeight: value ? value.scrollHeight : 0,
+        clientHeight: value ? value.clientHeight : 0,
+        whiteSpace: st ? st.whiteSpace : '',
+        overflow: st ? st.overflow : '',
+        textOverflow: st ? st.textOverflow : '',
+      };
+    });
     return {
       title: document.querySelector('#page-title')?.textContent || '',
       panelCount,
@@ -237,6 +253,7 @@ async function inspectPage(page, label) {
       jsTruncatedLabels,
       primaryDataLabels,
       requestStatusPills,
+      requestKpis,
       disabledDangerButtons: [...document.querySelectorAll('button.btn.danger:disabled')].filter((b) => b.offsetParent !== null).map((b) => {
         const st = getComputedStyle(b);
         return { text: b.innerText.trim(), title: b.title || '', color: st.color, borderColor: st.borderColor, opacity: st.opacity };
@@ -358,6 +375,7 @@ async function inspectPage(page, label) {
       }),
       visibleUsageFilterFields: [...document.querySelectorAll('#content .usage-filter-panel .filter-grid input, #content .usage-filter-panel .filter-grid select')].filter((n) => n.offsetParent !== null).length,
       visibleButtons: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => b.innerText.trim()).filter(Boolean).slice(0, 30),
+      visibleButtonDetails: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => ({ text: b.innerText.trim(), copy: b.dataset.copy || '', title: b.title || '' })).filter((b) => b.text).slice(0, 40),
     };
   });
 }
@@ -396,6 +414,10 @@ async function runViewport(browser, name, width, height) {
       const diag = metrics.diagnosticDetails || [];
       if (!diag.length || diag.some((d) => d.open)) fail(`${name}/${view}: desktop dashboard technical diagnostics should default collapsed`, metrics);
     }
+    if (view === 'dashboard') {
+      const endpointButton = (metrics.visibleButtonDetails || []).find((b) => b.text === 'Copy endpoint');
+      if (!endpointButton || !/\/v1\/chat\/completions$/.test(endpointButton.copy || '')) fail(`${name}/${view}: dashboard must expose a Copy endpoint action with the OpenAI-compatible URL`, { endpointButton, metrics });
+    }
     const jsTruncatedLabels = metrics.jsTruncatedLabels || [];
     if (jsTruncatedLabels.length) fail(`${name}/${view}: data labels are shortened in JavaScript instead of CSS/title`, { jsTruncatedLabels, metrics });
     const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
@@ -420,6 +442,8 @@ async function runViewport(browser, name, width, height) {
         if (clippedPrimaryLabels.length) fail(`${name}/${view}: mobile primary data labels should wrap instead of truncating`, { clippedPrimaryLabels, metrics });
         const stretchedStatusPills = (metrics.requestStatusPills || []).filter((p) => p.text && (p.width > 86 || !/start|auto/i.test(String(p.justifySelf))));
         if (stretchedStatusPills.length) fail(`${name}/${view}: mobile request status should be a compact pill, not a stretched bar`, { stretchedStatusPills, metrics });
+        const clippedSpeedKpis = (metrics.requestKpis || []).filter((p) => /tokens\/sec/i.test(p.label || '') && p.value && (/ellipsis/i.test(p.textOverflow || '') || p.scrollWidth > p.clientWidth + 4 || p.scrollHeight > p.clientHeight + 4));
+        if (clippedSpeedKpis.length) fail(`${name}/${view}: mobile request Tokens/sec value must be fully readable`, { clippedSpeedKpis, metrics });
       }
     }
     const redDisabledDanger = (metrics.disabledDangerButtons || []).filter((b) => /248, 113, 113/.test(b.color) || /248, 113, 113/.test(b.borderColor));
