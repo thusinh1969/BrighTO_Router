@@ -483,6 +483,7 @@ body.nav-open{overflow:hidden}
   .key-reveal{display:block}
   .key-reveal .btn{margin-top:10px}
 }
+.compact-line,.route-list-table .compact-line,.provider-list-table .compact-line,.team-list-table .compact-line,.key-list-table .compact-line,.table-wrap .compact-line,table.conn-table td:first-child .compact-line,table.models-table td:first-child .compact-line,table.models-table td:nth-child(3) .compact-line,table.models-table td:nth-child(4) .compact-line{display:block!important;min-width:0!important;max-width:100%!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;overflow-wrap:normal!important;word-break:normal!important}
 </style>
 </head>
 <body>
@@ -1019,7 +1020,7 @@ function renderProviders(c){
       var tr=el("tr"); tr.setAttribute("data-id",b.id);
       var nc=el("td");
       var ns=el("div","stack-cell");
-      ns.appendChild(nameNode("div","cell-main",b.name,26));
+      ns.appendChild(nameNode("div","cell-main compact-line",b.name,26));
       ns.appendChild(el("div","cell-sub",b.format==="anthropic"?"Anthropic Messages":"OpenAI-compatible"));
       nc.appendChild(ns);
       tr.appendChild(nc);
@@ -1033,7 +1034,7 @@ function renderProviders(c){
       tr.appendChild(st);
       tr.appendChild(el("td","num",String(b.active_route_count||0)));
       tr.appendChild(el("td","num",String(b.usage_count||0)));
-      var bu=el("td","mono"); var bus=el("span","truncate",b.base_url.replace("https://","").replace("http://","")); bus.title=b.base_url; bu.appendChild(bus); tr.appendChild(bu);
+      var bu=el("td","mono"); var bus=el("span","truncate compact-line",b.base_url.replace("https://","").replace("http://","")); bus.title=b.base_url; bu.appendChild(bus); tr.appendChild(bu);
       var td=el("td","actions"); var row=el("div","action-row");
       var cr=el("button","btn sm primary","Route"); cr.title="Create a model route from this provider connection"; cr.onclick=function(){ openRouteModalFromConnection(b); };
       var tg2=el("button","btn sm ghost", b.enabled?"Disable":"Enable"); tg2.onclick=function(){ toggleBackend(b); };
@@ -1211,8 +1212,8 @@ function renderModels(c){
       st.appendChild(pill(statusTxt, statusKind));
       tr.appendChild(st);
       var providerName=r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ");
-      var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=el("div","cell-main",providerName||"—"); pvw.title=providerName||""; pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s"))); pv.appendChild(pvs); tr.appendChild(pv);
-      var pm=el("td"); var pms=el("div","stack-cell"); var pmw=el("div","cell-main mono",r.provider_model_name||"—"); pmw.title=r.provider_model_name||""; pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
+      var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=nameNode("div","cell-main compact-line",providerName||"—",30); pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s"))); pv.appendChild(pvs); tr.appendChild(pv);
+      var pm=el("td"); var pms=el("div","stack-cell"); var pmw=nameNode("div","cell-main mono compact-line",r.provider_model_name||"—",30); pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
       var meta=el("td");
       var mg=el("div","model-meta-grid");
       [["Auth",r.auth_mode||"—"],["Context",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Max output",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["Input $/1M",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["Output $/1M",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){

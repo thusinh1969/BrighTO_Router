@@ -89,19 +89,19 @@ async function clickRowButton(page, rowText, buttonName) {
 }
 
 async function seedUsage(page) {
-  const model = `pw-polish-usage-${stamp}`;
+  const model = `pw-polish-usage-public-route-with-long-readable-name-${stamp}`;
   let backendId = null;
   let keyId = null;
   try {
     try { await adminFetch('/admin/routes/' + encodeURIComponent(model), 'DELETE'); } catch {}
     const existing = await adminFetch('/admin/backends');
     for (const b of existing) {
-      if (String(b.name || '').startsWith('pw-polish-usage-backend-') && b.can_delete !== false) {
+      if (String(b.name || '').startsWith('pw-polish-usage-') && b.can_delete !== false) {
         try { await adminFetch('/admin/backends/' + b.id, 'DELETE'); } catch {}
       }
     }
     const backend = await adminFetch('/admin/backends', 'POST', {
-      name: `pw-polish-usage-backend-${stamp}`,
+      name: `pw-polish-usage-provider-connection-with-long-readable-name-${stamp}`,
       base_url: 'http://127.0.0.1:9000/v1',
       api_key_ref: 'env:NONE',
       weight: 1,
@@ -120,7 +120,7 @@ async function seedUsage(page) {
       chars_per_token: 4,
       first_byte_timeout: 180,
     });
-    const key = await adminFetch('/admin/keys', 'POST', { team_id: 1, owner: `pw-polish-usage-owner-${stamp}`, budget: null, expires_at: null });
+    const key = await adminFetch('/admin/keys', 'POST', { team_id: 1, owner: `pw-polish-usage-owner-with-long-readable-name-${stamp}`, budget: null, expires_at: null });
     keyId = key.id;
     const revealed = await adminFetch('/admin/keys/' + keyId + '/reveal');
     const resp = await clientFetch('/v1/chat/completions', revealed.key, 'POST', {
@@ -275,12 +275,34 @@ async function main() {
     if (providerPanels !== 1) bug(`Provider delete leaves ${providerPanels} Provider connections panels; expected exactly 1.`);
 
     usageSeed = await seedUsage(page);
+    await page.evaluate(() => refresh());
+    await page.waitForTimeout(800);
+    await nav(page, 'Models & Routes');
+    result.evidence.modelCompactLines = await page.evaluate(() => [...document.querySelectorAll('.route-list-table .compact-line')].map((n) => {
+      const r = n.getBoundingClientRect();
+      const cs = getComputedStyle(n);
+      return { text: (n.textContent || '').trim(), title: n.getAttribute('title') || '', height: Math.round(r.height), clientWidth: n.clientWidth, scrollWidth: n.scrollWidth, whiteSpace: cs.whiteSpace, overflow: cs.overflow, textOverflow: cs.textOverflow, wordBreak: cs.wordBreak, overflowWrap: cs.overflowWrap };
+    }));
+    const brokenModelCompact = result.evidence.modelCompactLines.filter((n) => n.height > 24 || n.whiteSpace !== 'nowrap' || n.overflow !== 'hidden' || n.textOverflow !== 'ellipsis' || n.wordBreak !== 'normal' || n.overflowWrap !== 'normal');
+    if (brokenModelCompact.length) bug(`Models page long labels must stay one-line ellipsis/copy/title, not broken wraps: ${JSON.stringify(brokenModelCompact.slice(0, 4))}`);
+
+    await nav(page, 'Providers');
+    result.evidence.providerCompactLines = await page.evaluate(() => [...document.querySelectorAll('.provider-list-table .compact-line')].map((n) => {
+      const r = n.getBoundingClientRect();
+      const cs = getComputedStyle(n);
+      return { text: (n.textContent || '').trim(), title: n.getAttribute('title') || '', height: Math.round(r.height), clientWidth: n.clientWidth, scrollWidth: n.scrollWidth, whiteSpace: cs.whiteSpace, overflow: cs.overflow, textOverflow: cs.textOverflow, wordBreak: cs.wordBreak, overflowWrap: cs.overflowWrap };
+    }));
+    const brokenProviderCompact = result.evidence.providerCompactLines.filter((n) => n.height > 24 || n.whiteSpace !== 'nowrap' || n.overflow !== 'hidden' || n.textOverflow !== 'ellipsis' || n.wordBreak !== 'normal' || n.overflowWrap !== 'normal');
+    if (brokenProviderCompact.length) bug(`Providers page long labels must stay one-line ellipsis/copy/title, not broken wraps: ${JSON.stringify(brokenProviderCompact.slice(0, 4))}`);
+
     await nav(page, 'Usage');
     const usageText = await page.locator('#content').innerText();
     result.evidence.usageText = usageText.slice(0, 2500);
     if (!/Tokens\/sec|tokens per second/i.test(usageText)) bug('Usage/logs must visibly prioritize Tokens/sec when requests exist.');
-    if (usageSeed.model && !usageText.includes(usageSeed.model)) bug('Usage page did not show the smoke request model.');
-    const smokeLogLine = usageText.split('\n').find((line) => usageSeed.model && line.includes(usageSeed.model)) || '';
+    const usageModelFound = usageSeed.model ? await page.locator(`[title="${usageSeed.model}"], [aria-label="${usageSeed.model}"]`).count() : 0;
+    result.evidence.usageModelFoundByTitleOrAria = usageModelFound;
+    if (usageSeed.model && !usageText.includes(usageSeed.model) && usageModelFound < 1) bug('Usage page did not show the smoke request model as visible text, title, or aria-label.');
+    const smokeLogLine = usageText.split('\n').find((line) => usageSeed.model && (line.includes(usageSeed.model) || line.includes('pw-polish-usage-public'))) || '';
     result.evidence.usageSmokeLine = smokeLogLine;
     const rowMs = result.evidence.usageSmokeRow ? Number(result.evidence.usageSmokeRow.total_ms) : null;
     const expectedTokS = result.evidence.usageSmokeRow && result.evidence.usageSmokeRow.total_tokens_per_second != null
