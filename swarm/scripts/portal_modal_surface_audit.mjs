@@ -140,7 +140,7 @@ async function capture(page, name) {
 
 async function runViewport(browser, name, width, height) {
   const page = await browser.newPage({ viewport: { width, height }, ignoreHTTPSErrors: true });
-  page.on('console', (m) => { if (m.type() === 'error') result.consoleErrors.push(`${name}: ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/ERR_NETWORK_CHANGED/i.test(m.text())) result.consoleErrors.push(`${name}: ${m.text()}`); });
   page.on('pageerror', (e) => result.consoleErrors.push(`${name}: pageerror ${e.message}`));
   try {
     await login(page);

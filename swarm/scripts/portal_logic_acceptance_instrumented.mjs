@@ -161,7 +161,7 @@ async function main() {
     await modalField(page, 'Name').fill(`${prefix}-provider`);
     await modalField(page, 'Base URL').fill('http://127.0.0.1:65534/v1');
     await modalField(page, 'Weight').fill('1');
-    await modalField(page, 'Max concurrent').fill('0');
+    await modalField(page, 'Simultaneous calls').fill('0');
     await modalField(page, 'Provider Type').selectOption('openai').catch(async () => {
       await modalField(page, 'Provider Type').selectOption({ label: /OpenAI/i }).catch(() => {});
     });
@@ -178,7 +178,7 @@ async function main() {
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
     await modalField(page, 'Name').fill(`${prefix}-provider-edited`);
     await modalField(page, 'Weight').fill('7');
-    await modalField(page, 'Max concurrent').fill('3');
+    await modalField(page, 'Simultaneous calls').fill('3');
     await page.locator('.modal').getByRole('button', { name: 'Save' }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
     await row(page, `${prefix}-provider-edited`).waitFor({ state: 'visible', timeout: 10000 });
@@ -281,7 +281,7 @@ async function main() {
     await modalField(page, 'Owner').fill(`${prefix}-owner`);
     await modalField(page, 'Allowed models').fill(routeName);
     await modalField(page, 'Requests per minute').fill('10');
-    await modalField(page, 'Concurrency limit').fill('2');
+    await modalField(page, 'Simultaneous request limit').fill('2');
     await page.locator('.modal').getByRole('button', { name: 'Create' }).click({ force: true });
     await page.locator('.modal').filter({ hasText: 'Key created' }).waitFor({ state: 'visible', timeout: 10000 });
     const keyText = await page.locator('.modal').innerText();
@@ -303,7 +303,7 @@ async function main() {
       await row(page, `${prefix}-owner`).getByRole('button', { name: 'Edit' }).click({ force: true });
       await modalField(page, 'Owner').fill(`${prefix}-owner-edited`);
       await modalField(page, 'Requests per minute').fill('11');
-      await modalField(page, 'Concurrency limit').fill('3');
+      await modalField(page, 'Simultaneous request limit').fill('3');
       await page.locator('.modal').getByRole('button', { name: 'Save' }).click({ force: true });
       await row(page, `${prefix}-owner-edited`).waitFor({ state: 'visible', timeout: 10000 });
       key = (await adminFetch('/admin/keys')).find((k) => k.id === keyId);
