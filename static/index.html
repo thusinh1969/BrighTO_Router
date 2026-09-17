@@ -758,8 +758,9 @@ function userHero(me,stats,logs,inT,outT,req,errRate){
   var right=el("div","user-card");
   right.appendChild(el("div","ops-kicker","Last 30 days"));
   var g=el("div","user-metrics");
-  [["Requests",fmt(req)], ["Tokens",fmt(inT+outT)], ["Error rate",errRate+"%"], ["Tokens/sec",avgTok==null?"—":fmt(avgTok)]].forEach(function(x){
-    var m=el("div","user-metric"); m.appendChild(el("span",null,x[0])); m.appendChild(el("b",null,x[1])); g.appendChild(m);
+  var tokLabel=avgTok==null?(latestShort?"Sample*":"—"):fmt(avgTok);
+  [["Requests",fmt(req)], ["Tokens",fmt(inT+outT)], ["Error rate",errRate+"%"], ["Tokens/sec",tokLabel,latestShort?"Short request; see logs for the measured sample rate.":""]].forEach(function(x){
+    var m=el("div","user-metric"); m.appendChild(el("span",null,x[0])); var v=el("b",null,x[1]); if(x[2]) v.title=x[2]; m.appendChild(v); g.appendChild(m);
   });
   right.appendChild(g);
   right.appendChild(el("p","hint",latest?("Latest request: "+fmtTs(latest.ts)+" · status "+latest.status+(latestShort?" · short sample; use a longer call for speed":"")):"No requests yet. Send one request, then refresh this dashboard."));

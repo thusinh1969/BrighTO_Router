@@ -139,6 +139,7 @@ async function runViewport(browser, seed, name, width, height) {
     }
     if (!/Your API access and usage/i.test(dash.desc)) fail(`${name}: user dashboard topbar description is not role-aware`, dash);
     if (!/Call endpoint|POST|\/v1\/chat\/completions|Authorization: Bearer <your API key>/i.test(dash.content)) fail(`${name}: user dashboard missing call endpoint quick start`, dash);
+    if (/short sample; use a longer call for speed/i.test(dash.content) && /TOKENS\/SEC\s+—/i.test(dash.content)) fail(`${name}: user dashboard must show Sample* instead of — when a short token-rate sample exists`, dash);
     if (!dash.content.includes(seed.model)) fail(`${name}: user dashboard missing allowed/used model`, dash);
     if (dash.callItems.length < 4) fail(`${name}: user call endpoint panel missing fields`, dash);
     const curlButton = (dash.callButtons || []).find((b) => b.text === 'Copy cURL');
