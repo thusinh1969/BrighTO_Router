@@ -168,9 +168,23 @@ async function capture(page, name) {
     const missingExpanded = optionalLabels.filter((label) => !expandedLabels.includes(label));
     if (missingExpanded.length) fail(`${name}: New key optional drawer did not reveal all limit/budget fields`, { missingExpanded, expanded });
   }
-  if (name.endsWith('new-key') || name.endsWith('new-team')) {
+  if (name.endsWith('new-team')) {
+    if (!/Optional team budget/i.test(metrics.text || '')) fail(`${name}: New team modal missing optional team budget drawer`, metrics);
     if (/Advanced JSON/i.test(metrics.text || '')) fail(`${name}: budget advanced action exposes JSON jargon`, metrics);
-    if (!/Advanced budget rules/i.test(metrics.text || '')) fail(`${name}: advanced budget action missing friendly label`, metrics);
+    const visibleLabels = (metrics.visibleInputLabels || []).map((x) => String(x).toLowerCase());
+    const optionalLabels = ['budget type', 'period', 'token amount'];
+    const hiddenByDefault = optionalLabels.filter((label) => visibleLabels.includes(label));
+    if (hiddenByDefault.length) fail(`${name}: New team budget fields must be collapsed by default`, { hiddenByDefault, metrics });
+    await page.getByRole('button', { name: /Optional team budget/ }).click({ force: true });
+    await page.waitForTimeout(200);
+    const expanded = await inspectModal(page);
+    result.metrics[`${name}-expanded`] = expanded;
+    const expandedLabels = (expanded.visibleInputLabels || []).map((x) => String(x).toLowerCase());
+    const missingExpanded = optionalLabels.filter((label) => !expandedLabels.includes(label));
+    if (missingExpanded.length || !/Advanced budget rules/i.test(expanded.text || '')) fail(`${name}: New team optional budget drawer did not reveal all budget controls`, { missingExpanded, expanded });
+  }
+  if (name.endsWith('new-key')) {
+    if (/Advanced JSON/i.test(metrics.text || '')) fail(`${name}: budget advanced action exposes JSON jargon`, metrics);
   }
   if (name.endsWith('add-provider') || name.endsWith('new-team')) {
     const badSwitches = (metrics.switches || []).filter((s) => s.display !== 'flex' || s.justifyContent !== 'space-between' || s.textTransform !== 'none');
