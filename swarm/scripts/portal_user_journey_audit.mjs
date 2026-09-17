@@ -68,6 +68,7 @@ async function inspect(page) {
     const title = document.querySelector('#page-title')?.textContent || '';
     return {
       title,
+      desc: document.querySelector('#page-desc')?.textContent || '',
       visibleNav,
       content: content.slice(0, 2500),
       panelCount: document.querySelectorAll('#content .panel').length,
@@ -94,6 +95,7 @@ async function runViewport(browser, seed, name, width, height) {
     for (const forbidden of ['Providers', 'Models & Routes', 'Teams', 'API Keys']) {
       if (dash.visibleNav.includes(forbidden)) fail(`${name}: user nav exposes admin menu ${forbidden}`, dash);
     }
+    if (!/Your API access and usage/i.test(dash.desc)) fail(`${name}: user dashboard topbar description is not role-aware`, dash);
     if (!/Call endpoint|POST|\/v1\/chat\/completions|Authorization: Bearer <your API key>/i.test(dash.content)) fail(`${name}: user dashboard missing call endpoint quick start`, dash);
     if (!dash.content.includes(seed.model)) fail(`${name}: user dashboard missing allowed/used model`, dash);
     if (dash.callItems.length < 4) fail(`${name}: user call endpoint panel missing fields`, dash);
@@ -105,6 +107,7 @@ async function runViewport(browser, seed, name, width, height) {
     result.screenshots.push(usageShot);
     const usage = await inspect(page);
     result.evidence[`${name}-usage`] = usage;
+    if (!/Your requests and token usage/i.test(usage.desc)) fail(`${name}: user usage topbar description is not role-aware`, usage);
     if (!usage.content.includes(seed.model) || !/Tok\/s|TOK\/S/i.test(usage.content)) fail(`${name}: user usage missing own model or Tok/s signal`, usage);
     if (/Provider health|By team|By API key/i.test(usage.content)) fail(`${name}: user usage leaked admin-only aggregations`, usage);
     if (usage.bodyScrollWidth > usage.clientWidth + 8) fail(`${name}: user usage horizontal overflow`, usage);
@@ -115,6 +118,7 @@ async function runViewport(browser, seed, name, width, height) {
     result.screenshots.push(settingsShot);
     const settings = await inspect(page);
     result.evidence[`${name}-settings`] = settings;
+    if (!/Portal preferences and session/i.test(settings.desc)) fail(`${name}: user settings topbar description is not role-aware`, settings);
     if (!/Portal preferences|Font size|Density/i.test(settings.content)) fail(`${name}: user settings missing Portal preferences`, settings);
     if (!/Session|Model scope/i.test(settings.content) || !settings.content.includes(seed.prefix)) fail(`${name}: user settings missing key session summary`, settings);
     if (/Settings are admin-only|Router address|Database|Config reload/i.test(settings.content)) fail(`${name}: user settings leaks admin-only/runtime language`, settings);

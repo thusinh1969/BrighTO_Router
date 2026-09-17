@@ -501,7 +501,7 @@ function enterApp(){
     document.querySelectorAll(".nav").forEach(function(n){ n.classList.remove("active"); });
     var d=document.querySelector(".nav[data-view='dashboard']");
     if(d) d.classList.add("active");
-    $("page-title").textContent="Dashboard"; $("page-desc").textContent=descs.dashboard;
+    $("page-title").textContent="Dashboard"; $("page-desc").textContent=pageDesc("dashboard");
   }
 }
 var SESSION_KEY="brigto_session_v1";
@@ -533,9 +533,11 @@ function logout(){ authKey=""; clearSession(); $("app-view").classList.add("hidd
 /* ===== Nav ===== */
 var titles={dashboard:"Dashboard",providers:"Providers",models:"Models & Routes",teams:"Teams",keys:"API Keys",usage:"Usage",settings:"Settings"};
 var descs={dashboard:"Gateway overview",providers:"Connect LLM backends",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client API keys",usage:"Usage and requests",settings:"Runtime configuration"};
+var userDescs={dashboard:"Your API access and usage",usage:"Your requests and token usage",settings:"Portal preferences and session"};
+function pageDesc(view){ return mode==="user" && userDescs[view] ? userDescs[view] : descs[view]; }
 function go(view){
   document.querySelectorAll(".nav").forEach(function(n){ n.classList.toggle("active", n.dataset.view===view); });
-  $("page-title").textContent=titles[view]; $("page-desc").textContent=descs[view];
+  $("page-title").textContent=titles[view]; $("page-desc").textContent=pageDesc(view);
   $("sidebar").classList.remove("open"); // close mobile sidebar after navigation
   render(view);
 }
