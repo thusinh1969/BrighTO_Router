@@ -99,6 +99,10 @@ async function inspectPage(page, label) {
       scrollHeight: node.scrollHeight,
       clientHeight: node.clientHeight,
     }));
+    const chartValueLabels = [...document.querySelectorAll('#content .chart-value-label')].map((node) => {
+      const r = node.getBoundingClientRect();
+      return { text: (node.textContent || '').trim(), x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+    });
     return {
       title: document.querySelector('#page-title')?.textContent || '',
       panelCount,
@@ -109,6 +113,7 @@ async function inspectPage(page, label) {
       contentText: text.slice(0, 1200),
       tableStats,
       legendStats,
+      chartValueLabels,
       disabledDangerButtons: [...document.querySelectorAll('button.btn.danger:disabled')].filter((b) => b.offsetParent !== null).map((b) => {
         const st = getComputedStyle(b);
         return { text: b.innerText.trim(), title: b.title || '', color: st.color, borderColor: st.borderColor, opacity: st.opacity };
@@ -184,6 +189,13 @@ async function runViewport(browser, name, width, height) {
     if (['providers', 'models', 'teams', 'keys'].includes(view) && (metrics.summaryCards || []).length < 4) fail(`${name}/${view}: missing operational summary cards`, metrics);
     const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
     if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });
+    if (['dashboard', 'usage'].includes(view) && (metrics.legendStats || []).length && !(metrics.chartValueLabels || []).some((l) => /^\d|[KMB]/.test(l.text))) {
+      fail(`${name}/${view}: sparse chart bars need visible value labels`, metrics);
+    }
+    if (mobile) {
+      const tinyChartLabels = (metrics.chartValueLabels || []).filter((l) => l.text && l.height < 8);
+      if (tinyChartLabels.length) fail(`${name}/${view}: mobile chart value labels are too small to read`, { tinyChartLabels, metrics });
+    }
     const redDisabledDanger = (metrics.disabledDangerButtons || []).filter((b) => /248, 113, 113/.test(b.color) || /248, 113, 113/.test(b.borderColor));
     if (redDisabledDanger.length) fail(`${name}/${view}: disabled destructive actions still look clickable/red`, { redDisabledDanger, metrics });
     if (view === 'models') {
