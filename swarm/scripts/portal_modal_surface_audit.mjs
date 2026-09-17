@@ -126,6 +126,56 @@ async function inspectModal(page) {
   });
 }
 
+
+async function verifyModelPickerPreview(page, name) {
+  const picked = `${name}-picker-model`;
+  await page.route('**/admin/routes/preview-models', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ models: [picked] }) });
+  });
+  try {
+    await page.evaluate(() => {
+      const modal = document.querySelector('#modal-overlay .modal');
+      const provider = [...modal.querySelectorAll('select')].find((sel) => [...sel.options].some((o) => /Custom LLM/i.test(o.textContent || '')));
+      const opt = provider ? [...provider.options].find((o) => /Custom LLM/i.test(o.textContent || '') && !o.disabled) : null;
+      if (provider && opt) {
+        provider.value = opt.value;
+        provider.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const field = [...modal.querySelectorAll('.field')].find((f) => /^Base URL$/i.test((f.querySelector('label')?.textContent || '').trim()));
+      const input = field?.querySelector('input');
+      if (input) {
+        input.value = 'http://127.0.0.1:9000/v1';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+    await page.getByRole('button', { name: /^Load models$/ }).click({ force: true });
+    await page.locator('.picker-overlay .picker-item').filter({ hasText: picked }).click({ force: true });
+    await page.locator('.picker-overlay').getByRole('button', { name: 'Use this model' }).click({ force: true });
+    await page.waitForTimeout(150);
+    const state = await page.evaluate(() => {
+      const modal = document.querySelector('#modal-overlay .modal');
+      function fieldValue(label) {
+        const field = [...modal.querySelectorAll('.field')].find((f) => (f.querySelector('label')?.textContent || '').trim().toLowerCase() === label.toLowerCase());
+        const input = field?.querySelector('input,select,textarea');
+        return input ? input.value : '';
+      }
+      return {
+        providerModel: fieldValue('Provider model'),
+        publicModel: fieldValue('Public model name (shown to clients)'),
+        mapText: modal.querySelector('.model-map')?.innerText || '',
+        statusText: [...modal.querySelectorAll('.hint')].map((n) => n.innerText || n.textContent || '').join('\n'),
+        pickerStillOpen: !!document.querySelector('.picker-overlay'),
+      };
+    });
+    result.metrics[`${name}-picker-preview`] = state;
+    if (state.pickerStillOpen || state.providerModel !== picked || state.publicModel !== picked || !state.mapText.includes(picked) || !/Model chosen — click Test connection/i.test(state.statusText || '')) {
+      fail(`${name}: choosing a loaded provider model must update inputs, mapping preview, and Save-enabled gate`, state);
+    }
+  } finally {
+    await page.unroute('**/admin/routes/preview-models').catch(() => {});
+  }
+}
+
 async function capture(page, name) {
   const shot = `${OUT}/${name}.png`;
   await page.screenshot({ path: shot, fullPage: true });
@@ -145,6 +195,7 @@ async function capture(page, name) {
     if (!/Client sends|Provider receives/i.test(metrics.text || '')) fail(`${name}: Add model modal missing public-to-provider model mapping preview`, metrics);
     if (!/Gemini \(coming soon\)|Meta Muse \(coming soon\)/i.test(metrics.text || '')) fail(`${name}: Add model provider picker must mark coming-soon providers`, metrics);
     if (name.startsWith('desktop-') && metrics.footer && metrics.footer.bottom > metrics.clientH + 3) fail(`${name}: Add model primary actions must be visible on desktop`, metrics);
+    await verifyModelPickerPreview(page, name);
     if (!/Optional limits and pricing|fallback provider/i.test(metrics.text || '')) fail(`${name}: Add model modal missing optional limits/pricing drawer`, metrics);
     if (/Fallback backend/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes backend jargon`, metrics);
     if (!/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must make disabled save explicit`, metrics);

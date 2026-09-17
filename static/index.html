@@ -1356,6 +1356,15 @@ function openRouteModal(route){
     return {};
   }
 
+  function applyPickedModel(chosen){
+    ms.value=chosen;
+    if(!mi.value) mi.value=chosen;
+    testState.ok=false;
+    save.disabled=true;
+    stat.textContent="Model chosen — click Test connection.";
+    stat.style.color="var(--muted)";
+    updateModelMap();
+  }
   loadBtn.onclick=async function(){
     var da=dialAuth();
     if(!url.value.trim()){ toast("Enter a Base URL first","err"); return; }
@@ -1365,7 +1374,7 @@ function openRouteModal(route){
       var payload=Object.assign({base_url:url.value.trim(), protocol:da.dialect, auth_mode:da.auth}, keyPayload());
       var data=await api("/admin/routes/preview-models","POST",payload);
       if(!data.models || !data.models.length){ toast("No models returned — type the provider model name manually","err"); return; }
-      pickModelModal(data.models, function(chosen){ ms.value=chosen; if(!mi.value) mi.value=chosen; testState.ok=false; save.disabled=true; stat.textContent="Model chosen — click Test connection."; stat.style.color="var(--muted)"; });
+      pickModelModal(data.models, applyPickedModel);
     }catch(e){ toast("Load models: "+e.message,"err"); }
     finally{ loadBtn.disabled=false; loadBtn.textContent="Load models"; }
   };
