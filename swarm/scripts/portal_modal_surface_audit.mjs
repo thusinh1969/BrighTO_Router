@@ -118,6 +118,21 @@ async function inspectModal(page) {
         opacity: style.opacity,
       };
     });
+    const footerCoveredImportant = footerRect
+      ? [...modal.querySelectorAll('.model-map')].filter((node) => node.offsetParent !== null).map((node) => {
+          const r = node.getBoundingClientRect();
+          const overlap = Math.max(0, Math.min(r.bottom, footerRect.bottom) - Math.max(r.top, footerRect.top));
+          return {
+            cls: String(node.className),
+            text: (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 160),
+            top: Math.round(r.top),
+            bottom: Math.round(r.bottom),
+            footerTop: Math.round(footerRect.top),
+            footerBottom: Math.round(footerRect.bottom),
+            overlap: Math.round(overlap),
+          };
+        }).filter((x) => x.overlap > 3)
+      : [];
     return {
       missing: false,
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height), bottom: Math.round(rect.bottom) },
@@ -133,6 +148,7 @@ async function inspectModal(page) {
       gateCopyRects,
       switches,
       disabledPrimaryButtons,
+      footerCoveredImportant,
       text: modal.innerText.slice(0, 2400),
       clipped: clipped.slice(0, 25),
     };
@@ -198,6 +214,7 @@ async function capture(page, name) {
   if (metrics.missing) fail(`${name}: modal missing`, metrics);
   if (metrics.clipped?.length) fail(`${name}: modal has clipped/overflowing content`, metrics);
   if (metrics.footerCoveredInputs?.length) fail(`${name}: sticky footer covers input fields`, metrics);
+  if (name.startsWith('mobile-') && name.endsWith('add-model') && metrics.footerCoveredImportant?.length) fail(`${name}: sticky footer covers the model mapping preview`, metrics);
   const activeLookingDisabledPrimary = (metrics.disabledPrimaryButtons || []).filter((b) => /Save enabled|Use this model|Sign in/i.test(b.text || '') && (/rgb\(29, 78, 216\)|rgb\(30, 64, 175\)/.test(b.backgroundColor || '') || /rgb\(29, 78, 216\)|rgb\(30, 64, 175\)/.test(b.borderColor || '')));
   if (activeLookingDisabledPrimary.length) fail(`${name}: disabled primary buttons still look active`, { activeLookingDisabledPrimary, metrics });
   if (name.startsWith('mobile-')) {
