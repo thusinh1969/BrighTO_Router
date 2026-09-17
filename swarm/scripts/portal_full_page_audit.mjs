@@ -69,6 +69,13 @@ async function inspectPage(page, label) {
         bodyDisplay: table ? getComputedStyle(table.querySelector('tbody') || table).display : '',
       };
     });
+    const legendStats = [...document.querySelectorAll('#content .legend span')].map((node) => ({
+      text: (node.innerText || node.textContent || '').trim(),
+      scrollWidth: node.scrollWidth,
+      clientWidth: node.clientWidth,
+      scrollHeight: node.scrollHeight,
+      clientHeight: node.clientHeight,
+    }));
     return {
       title: document.querySelector('#page-title')?.textContent || '',
       panelCount,
@@ -77,6 +84,7 @@ async function inspectPage(page, label) {
       clientWidth: document.documentElement.clientWidth,
       contentText: text.slice(0, 1200),
       tableStats,
+      legendStats,
       visibleButtons: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => b.innerText.trim()).filter(Boolean).slice(0, 30),
     };
   });
@@ -98,6 +106,8 @@ async function runViewport(browser, name, width, height) {
     if (metrics.bodyScrollWidth > metrics.clientWidth + 8) fail(`${name}/${view}: whole-page horizontal overflow`, metrics);
     if (!metrics.title) fail(`${name}/${view}: missing page title`, metrics);
     if (!metrics.panelCount && view !== 'dashboard') fail(`${name}/${view}: no content panels`, metrics);
+    const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
+    if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });
     if (mobile) {
       const wideTables = metrics.tableStats.filter((t) => t.scrollWidth > t.clientWidth + 8);
       if (wideTables.length) fail(`${name}/${view}: mobile table still scrolls horizontally`, { wideTables, metrics });
