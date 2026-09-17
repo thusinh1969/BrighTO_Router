@@ -209,6 +209,11 @@ async function main() {
     if (result.evidence.rootPrefs.htmlDensity !== 'compact') bug(`Default density must be compact; got ${result.evidence.rootPrefs.htmlDensity}`);
     if (!result.evidence.rootPrefs.localStorageKeys.length) bug('Portal preferences are not persisted in localStorage after initial apply.');
 
+    await nav(page, 'Teams');
+    const teamSummary = await page.locator('.summary-card').count();
+    result.evidence.teamSummaryCards = teamSummary;
+    if (teamSummary < 4) bug(`Teams page must show operational summary cards; got ${teamSummary}.`);
+
     await nav(page, 'Providers');
     const providerSummary = await page.locator('.summary-card').count();
     result.evidence.providerSummaryCards = providerSummary;

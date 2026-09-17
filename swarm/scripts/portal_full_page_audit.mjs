@@ -124,7 +124,7 @@ async function runViewport(browser, name, width, height) {
     if (metrics.bodyScrollWidth > metrics.clientWidth + 8) fail(`${name}/${view}: whole-page horizontal overflow`, metrics);
     if (!metrics.title) fail(`${name}/${view}: missing page title`, metrics);
     if (!metrics.panelCount && view !== 'dashboard') fail(`${name}/${view}: no content panels`, metrics);
-    if (['providers', 'models', 'keys'].includes(view) && (metrics.summaryCards || []).length < 4) fail(`${name}/${view}: missing operational summary cards`, metrics);
+    if (['providers', 'models', 'teams', 'keys'].includes(view) && (metrics.summaryCards || []).length < 4) fail(`${name}/${view}: missing operational summary cards`, metrics);
     const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
     if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });
     if (mobile) {
