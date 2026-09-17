@@ -101,7 +101,8 @@ async function main() {
     else fail('polish', 'formatter/density wrong', fmt, 'Live Docker must serve compact formatter and compact default.');
 
     let backends = await adminFetch('/admin/backends');
-    const preJunk = backends.filter((b) => /^pw-|^crud-|^verify-/.test(b.name || ''));
+    const isExternalTestName = (name) => /^(pw-|crud-|verify-)/.test(name || '') && !(name || '').startsWith(prefix);
+    const preJunk = backends.filter((b) => isExternalTestName(b.name));
     if (preJunk.length) fail('test data', 'test provider rows remain before acceptance', { rows: preJunk.map((b) => ({ id: b.id, name: b.name })) }, 'Acceptance must clean test data before claiming done.');
     else pass('test data', 'no pw/crud/verify provider rows before test');
 
@@ -151,7 +152,7 @@ async function main() {
     let beforeOptions = await providerOptions(page);
     result.evidence.routeProviderOptionsInitial = beforeOptions;
     if (beforeOptions.length === 1 && beforeOptions[0].text === 'No providers') fail('models', 'Route wizard initially says No providers even though templates exist', { beforeOptions }, 'Show templates/disabled by default when active list is empty.');
-    if (beforeOptions.some((o) => /^pw-|^crud-|^verify-/.test(o.text))) fail('models', 'Route wizard initial provider list includes test rows', { beforeOptions }, 'Acceptance data must be clean.');
+    if (beforeOptions.some((o) => isExternalTestName(o.text))) fail('models', 'Route wizard initial provider list includes external test rows', { beforeOptions }, 'Acceptance must clean stale test data before claiming done.');
 
     const showDisabled = page.locator('.modal label').filter({ hasText: 'Show disabled' }).locator('input[type="checkbox"]').first();
     if (await showDisabled.count()) { await showDisabled.check({ force: true }); await page.waitForTimeout(400); }
@@ -163,7 +164,7 @@ async function main() {
     const dupes = Object.entries(counts).filter(([n, c]) => c > 1 && n !== 'No providers');
     if (dupes.length) fail('models', 'Route provider dropdown has duplicate display names', { dupes, allOptions }, 'Deduplicate seeded providers and make option labels unambiguous.');
     else pass('models', 'route provider dropdown has no duplicate display names', { count: allOptions.length });
-    if (allOptions.some((o) => /^pw-|^crud-|^verify-/.test(o.text))) fail('models', 'Route provider dropdown includes test provider rows', { allOptions }, 'Clean test data before done.');
+    if (allOptions.some((o) => isExternalTestName(o.text))) fail('models', 'Route provider dropdown includes external test provider rows', { allOptions }, 'Clean stale test data before done.');
 
     const openaiOption = allOptions.find((o) => /^openai\b/i.test(o.text));
     if (openaiOption) {
@@ -248,8 +249,8 @@ async function main() {
       await page.getByRole('button', { name: 'Sign in' }).click({ force: true });
       await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 10000 });
       const userState = await page.evaluate(() => ({ providers: getComputedStyle(document.querySelector('#nav-providers')).display, models: getComputedStyle(document.querySelector('#nav-models')).display, keys: getComputedStyle(document.querySelector('#nav-keys')).display, title: document.querySelector('#page-title')?.textContent }));
-      if (userState.providers === 'none' && userState.models === 'none' && userState.keys === 'none') pass('user', 'user login hides admin menus', userState);
-      else fail('user', 'user login exposes admin menus', userState, 'Hide admin-only menus in user mode.');
+      if (userState.providers === 'none' && userState.models === 'none' && userState.keys === 'none' && userState.title === 'Dashboard') pass('user', 'user login hides admin menus and lands on Dashboard', userState);
+      else fail('user', 'user login state/title is wrong', userState, 'Hide admin-only menus and reset active view/title to Dashboard on user login.');
     }
 
     if (result.consoleErrors.length) fail('runtime', 'browser console errors observed', { consoleErrors: result.consoleErrors }, 'Normal admin/user flows should have no console errors.');
