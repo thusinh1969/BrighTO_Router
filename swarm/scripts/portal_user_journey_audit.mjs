@@ -114,6 +114,18 @@ async function inspect(page) {
           textOverflow: st.textOverflow,
         };
       }),
+      curlPreviews: [...document.querySelectorAll('.curl-preview pre')].map((n) => {
+        const st = getComputedStyle(n);
+        const r = n.getBoundingClientRect();
+        return {
+          text: (n.innerText || n.textContent || '').trim(),
+          width: Math.round(r.width),
+          scrollWidth: n.scrollWidth,
+          clientWidth: n.clientWidth,
+          overflowX: st.overflowX,
+          whiteSpace: st.whiteSpace,
+        };
+      }),
       allowedModels: [...document.querySelectorAll('.allowed-models')].map((n) => {
         const r = n.getBoundingClientRect();
         return {
@@ -162,6 +174,11 @@ async function runViewport(browser, seed, name, width, height) {
     }
     const clippedCallCodes = (dash.callCodeStats || []).filter((c) => c.scrollWidth > c.clientWidth + 4 || c.whiteSpace === 'nowrap' || c.textOverflow === 'ellipsis');
     if (clippedCallCodes.length) fail(`${name}: user call endpoint code is clipped`, { clippedCallCodes, dash });
+    const curlPreview = (dash.curlPreviews || [])[0];
+    if (!curlPreview || !curlPreview.text.includes('/v1/chat/completions') || !curlPreview.text.includes('Authorization: Bearer <your API key>') || !curlPreview.text.includes(seed.model) || !/Reply OK/i.test(curlPreview.text)) {
+      fail(`${name}: user dashboard should show a ready cURL preview, not only a copy button`, { curlPreview, dash });
+    }
+    if (curlPreview && (curlPreview.whiteSpace !== 'pre-wrap' || !/auto|scroll|hidden|visible/i.test(curlPreview.overflowX || ''))) fail(`${name}: user cURL preview must keep command formatting readable`, { curlPreview, dash });
     if (dash.bodyScrollWidth > dash.clientWidth + 8) fail(`${name}: user dashboard horizontal overflow`, dash);
 
     await nav(page, 'usage', mobile);

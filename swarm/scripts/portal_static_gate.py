@@ -6,7 +6,10 @@ blockers before running heavier Playwright checks.
 """
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 
 text = Path('static/index.html').read_text() if Path('static/index.html').exists() else ''
 checks: list[tuple[str, bool, str]] = []
@@ -51,6 +54,17 @@ check(
     'navigator.clipboard.writeText(endpoint)' not in text and 'navigator.clipboard.writeText(curl)' not in text and 'navigator.clipboard.writeText(text)' not in text,
     'direct clipboard call still present outside copyText helper',
 )
+
+node = shutil.which('node')
+if node:
+    scripts = re.findall(r'<script>([\s\S]*?)</script>', text)
+    with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False) as fh:
+        fh.write('\n'.join(scripts))
+        script_path = fh.name
+    proc = subprocess.run([node, '--check', script_path], text=True, capture_output=True)
+    check('inline Portal JavaScript parses', proc.returncode == 0, (proc.stderr or proc.stdout).strip()[:500])
+else:
+    check('inline Portal JavaScript parses', True, 'node unavailable; Playwright audit covers runtime parsing')
 def render_clears_container(fn: str) -> bool:
     # Direct renderX($("content")) calls are acceptable only if renderX clears
     # the target container before appending fresh DOM. This matches DeepSeek's
