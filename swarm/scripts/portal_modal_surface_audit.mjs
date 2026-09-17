@@ -128,6 +128,8 @@ async function capture(page, name) {
     if (!/model name your apps send/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Public model help text`, metrics);
     if (!/Fallback provider \(optional\)/i.test(metrics.text || '')) fail(`${name}: Add model modal must expose fallback as provider selection`, metrics);
     if (/Fallback backend/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes backend jargon`, metrics);
+    if (!/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must make disabled save explicit`, metrics);
+    if (/Save draft/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes ambiguous Save draft action`, metrics);
   }
   if (name.endsWith('add-provider') || name.endsWith('new-team')) {
     const badSwitches = (metrics.switches || []).filter((s) => s.display !== 'flex' || s.justifyContent !== 'space-between' || s.textTransform !== 'none');

@@ -1145,9 +1145,9 @@ function openRouteModal(route){
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var testBtn=el("button","btn","Test connection");
-  var saveDraft=el("button","btn","Save draft"); saveDraft.title="Saves as disabled (no test required)";
+  var saveDisabled=el("button","btn","Save disabled"); saveDisabled.title="Saves the route disabled; no connection test required";
   var save=el("button","btn primary","Save enabled"); save.disabled=true; save.title="Requires a passing connection test";
-  act.appendChild(cancel); act.appendChild(testBtn); act.appendChild(saveDraft); act.appendChild(save); m.appendChild(act);
+  act.appendChild(cancel); act.appendChild(testBtn); act.appendChild(saveDisabled); act.appendChild(save); m.appendChild(act);
 
   function dialAuth(){
     var e=catEntry(ps.value);
@@ -1203,7 +1203,7 @@ function openRouteModal(route){
     var modelSel=ms.value.trim(); if(!modelSel){toast("Provider model is required","err");return;}
     if(enabledFlag && !testState.ok){toast("Test connection must pass before saving enabled","err");return;}
     var da=dialAuth(); var e=catEntry(ps.value);
-    save.disabled=true; saveDraft.disabled=true;
+    save.disabled=true; saveDisabled.disabled=true;
     try{
       var backend=backends.find(function(b){ return b.base_url===url.value.trim(); });
       var backendId;
@@ -1224,12 +1224,12 @@ function openRouteModal(route){
       var path=isEdit?"/admin/routes/"+encodeURIComponent(route.model_name):"/admin/routes";
       var method=isEdit?"PATCH":"POST";
       await api(path,method,payload);
-      closeModal(); toast(enabledFlag?"Model saved (enabled)":"Draft saved (disabled)");
+      closeModal(); toast(enabledFlag?"Model saved (enabled)":"Model saved (disabled)");
       routes=await api("/admin/routes","GET"); backends=await api("/admin/backends","GET"); rerender();
-    }catch(err){ toast("Save failed: "+err.message,"err"); save.disabled=false; saveDraft.disabled=false; }
+    }catch(err){ toast("Save failed: "+err.message,"err"); save.disabled=false; saveDisabled.disabled=false; }
   }
   save.onclick=function(){ doSave(true); };
-  saveDraft.onclick=function(){ doSave(false); };
+  saveDisabled.onclick=function(){ doSave(false); };
 
   if(route.model_name){
     var rb=backends.find(function(x){return x.id===route.backend_ids[0];});
