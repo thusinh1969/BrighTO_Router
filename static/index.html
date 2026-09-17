@@ -130,6 +130,7 @@ textarea{resize:vertical;min-height:72px}
 .ops-status{background:#0b1220;border:1px solid rgba(51,65,85,.8);border-radius:14px;padding:12px;min-width:0}
 .ops-status .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:5px}
 .ops-status .v{display:block;color:var(--text);font-size:16px;font-weight:850;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ops-status .cell-sub{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25;min-height:28px}
 .ops-status.ok{border-color:rgba(34,197,94,.35)} .ops-status.warn{border-color:rgba(245,158,11,.4)} .ops-status.bad{border-color:rgba(248,113,113,.4)}
 .ops-side h3{margin:0 0 12px;font-size:15px}
 .readiness-list{display:grid;gap:9px}
@@ -697,7 +698,7 @@ function userCallPanel(me,logs){
   p.appendChild(el("p","hint",latest?"Last call: "+latest.model+" · "+fmtTs(latest.ts)+" · status "+latest.status:"After your first request, this page will show tokens, latency, cost if configured, and errors for this key only."));
   return p;
 }
-function dashboardHero(sum,inT,outT,req,errRate,cost){
+function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
   var enabledRoutes=routes.filter(function(r){return r.effective_enabled}).length;
   var configuredRoutes=routes.length;
   var activeProviders=backends.filter(function(b){return b.enabled}).length;
@@ -705,10 +706,13 @@ function dashboardHero(sum,inT,outT,req,errRate,cost){
   var badProviders=sum&&sum.by_backend?sum.by_backend.filter(function(b){return (b.errors||0)>0 || (b.rate_limited||0)>0 || (b.server_errors||0)>0 || (b.timeouts||0)>0;}).length:0;
   var missingPrices=routes.filter(function(r){return r.enabled && (r.price_input_per_mtok_usd==null || r.price_output_per_mtok_usd==null);}).length;
   var healthOk=enabledRoutes>0 && activeProviders>0 && errRate===0 && badProviders===0;
+  var latest=logs&&logs.length?logs[0]:null;
+  var latestSpeed=latest?tokRateDisplay(latest):"—";
+  var latestSpeedNote=latest?(shortTokSample(latest)?"latest request · short sample":"latest request"):"no token rate yet";
   var hero=el("div","ops-hero");
 
   var left=el("div","ops-primary");
-  left.appendChild(el("div","ops-kicker","Production control room"));
+  left.appendChild(el("div","ops-kicker","Router overview"));
   left.appendChild(el("div","ops-title",healthOk?"Gateway ready":"Needs attention"));
   left.appendChild(el("p","ops-copy",healthOk
     ? "Routes are enabled, providers are available, and recent traffic has no recorded errors."
@@ -716,7 +720,7 @@ function dashboardHero(sum,inT,outT,req,errRate,cost){
   var stats=el("div","ops-status-row");
   [
     ["Traffic",fmt(req)+" req",req>0?"last 30 days":"no requests yet",tone(req>0,true)],
-    ["Tokens",fmt(inT+outT),fmt(inT)+" in / "+fmt(outT)+" out",tone((inT+outT)>0,true)],
+    ["Speed",latestSpeed,latestSpeedNote,tone(!!latest,false)],
     ["Cost",fmtCost(cost),missingPrices?missingPrices+" unpriced route(s)":"priced routes ready",tone(missingPrices===0,missingPrices>0)],
     ["Errors",errRate+"%",badProviders?badProviders+" provider issue(s)":"no provider errors",tone(errRate===0 && badProviders===0,errRate<5)]
   ].forEach(function(x){
@@ -782,7 +786,7 @@ async function renderDashboard(c,seq){
   var pricedReqs=(mode==="admin"&&sum)?sum.totals.cost_known_requests:0;
 
   if(mode==="admin"){
-    c.appendChild(dashboardHero(sum,inT,outT,req,errRate,cost));
+    c.appendChild(dashboardHero(sum,inT,outT,req,errRate,cost,logs));
   }else{
     c.appendChild(userHero(me,stats,logs,inT,outT,req,errRate));
     c.appendChild(userCallPanel(me,logs));
