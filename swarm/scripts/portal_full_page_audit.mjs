@@ -191,6 +191,22 @@ async function inspectPage(page, label) {
     const jsTruncatedLabels = [...document.querySelectorAll('#content .focus-title, #content .legend-label, #content .breakdown-title, #content .request-model, #content .model-name-row .cell-main, #content .compact-line')]
       .filter((n) => (n.textContent || '').includes('…'))
       .map((n) => ({ className: n.className || '', text: (n.textContent || '').trim(), title: n.title || '' }));
+    const primaryDataLabels = [...document.querySelectorAll('#content .legend-label, #content .focus-title, #content .request-model')].map((n) => {
+      const st = getComputedStyle(n);
+      return {
+        className: n.className || '',
+        text: (n.innerText || n.textContent || '').trim(),
+        whiteSpace: st.whiteSpace,
+        overflow: st.overflow,
+        textOverflow: st.textOverflow,
+        wordBreak: st.wordBreak,
+        overflowWrap: st.overflowWrap,
+        scrollWidth: n.scrollWidth,
+        clientWidth: n.clientWidth,
+        scrollHeight: n.scrollHeight,
+        clientHeight: n.clientHeight,
+      };
+    });
     return {
       title: document.querySelector('#page-title')?.textContent || '',
       panelCount,
@@ -207,6 +223,7 @@ async function inspectPage(page, label) {
       opsStatus,
       usageBreakdownStats,
       jsTruncatedLabels,
+      primaryDataLabels,
       disabledDangerButtons: [...document.querySelectorAll('button.btn.danger:disabled')].filter((b) => b.offsetParent !== null).map((b) => {
         const st = getComputedStyle(b);
         return { text: b.innerText.trim(), title: b.title || '', color: st.color, borderColor: st.borderColor, opacity: st.opacity };
@@ -381,6 +398,10 @@ async function runViewport(browser, name, width, height) {
     if (mobile) {
       const tinyChartLabels = (metrics.chartValueLabels || []).filter((l) => l.text && l.height < 8);
       if (tinyChartLabels.length) fail(`${name}/${view}: mobile chart value labels are too small to read`, { tinyChartLabels, metrics });
+      if (['dashboard', 'usage'].includes(view)) {
+        const clippedPrimaryLabels = (metrics.primaryDataLabels || []).filter((l) => l.text && (/nowrap/i.test(l.whiteSpace) || /ellipsis/i.test(l.textOverflow) || l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
+        if (clippedPrimaryLabels.length) fail(`${name}/${view}: mobile primary data labels should wrap instead of truncating`, { clippedPrimaryLabels, metrics });
+      }
     }
     const redDisabledDanger = (metrics.disabledDangerButtons || []).filter((b) => /248, 113, 113/.test(b.color) || /248, 113, 113/.test(b.borderColor));
     if (redDisabledDanger.length) fail(`${name}/${view}: disabled destructive actions still look clickable/red`, { redDisabledDanger, metrics });
