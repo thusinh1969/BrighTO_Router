@@ -320,8 +320,9 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
   .login-shell{grid-template-columns:1fr;max-width:480px}
   .login-copy{display:none}
   .wizard-steps,.form-grid,.route-model-grid,.user-hero{grid-template-columns:1fr}
-  .modal{padding:20px;max-height:none;overflow:visible}
-  .modal .actions{position:static;bottom:auto;margin:18px -20px -20px;padding:14px 20px;flex-wrap:wrap}
+  #modal-overlay{padding:12px 10px;align-items:flex-start}
+  .modal{padding:20px;max-height:calc(100dvh - 24px);overflow:auto;border-radius:18px}
+  .modal .actions,.route-modal .actions{position:static;bottom:auto;margin:18px -20px -20px;padding:14px 20px;flex-wrap:wrap;border-radius:0 0 18px 18px}
   .modal .actions .btn{flex:1 1 120px}
   .model-picker-row{flex-wrap:wrap!important}
   .model-picker-row input{flex:1 1 100%!important}
