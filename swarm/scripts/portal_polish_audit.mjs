@@ -89,11 +89,17 @@ async function main() {
       fmt1000: typeof fmt === 'function' ? fmt(1000) : null,
       fmt50000: typeof fmt === 'function' ? fmt(50000) : null,
       fmt1000000: typeof fmt === 'function' ? fmt(1000000) : null,
+      fmtCount1000: typeof fmtCount === 'function' ? fmtCount(1000) : null,
+      fmtCount50000: typeof fmtCount === 'function' ? fmtCount(50000) : null,
+      fmtCount1000000: typeof fmtCount === 'function' ? fmtCount(1000000) : null,
       fmtNum1000: typeof fmtNum === 'function' ? fmtNum(1000) : null,
       fmtNum1000000: typeof fmtNum === 'function' ? fmtNum(1000000) : null,
     }));
+    if (result.evidence.formatters.fmtCount1000 !== '1K' || result.evidence.formatters.fmtCount50000 !== '50K' || result.evidence.formatters.fmtCount1000000 !== '1M') {
+      bug(`fmtCount exists but does not meet required examples: ${JSON.stringify(result.evidence.formatters)}`);
+    }
     if (result.evidence.formatters.fmt1000 !== '1K') {
-      bug(`Main formatter must use K/M/B: fmt(1000)=${result.evidence.formatters.fmt1000}`);
+      bug(`Default count formatter must use K/M/B or all count callsites must avoid fmt(): fmt(1000)=${result.evidence.formatters.fmt1000}`);
     }
     if (String(result.evidence.formatters.fmtNum1000).includes('k')) {
       bug(`Chart formatter must use uppercase K: fmtNum(1000)=${result.evidence.formatters.fmtNum1000}`);
@@ -124,6 +130,8 @@ async function main() {
       htmlDensity: document.documentElement.getAttribute('data-density'),
       localStorageKeys: Object.keys(localStorage).filter((k) => /pref|font|density|brighto/i.test(k)),
     }));
+    if (result.evidence.rootPrefs.htmlDensity !== 'compact') bug(`Default density must be compact for admin dashboards; got ${result.evidence.rootPrefs.htmlDensity}`);
+    if (!result.evidence.rootPrefs.localStorageKeys.length) bug('Portal preferences are not persisted in localStorage after initial apply.');
 
     await nav(page, 'Providers');
     const providerName = `pw-polish-provider-${stamp}`;
