@@ -279,7 +279,8 @@ async function main() {
     await page.getByRole('button', { name: 'New key' }).click({ force: true });
     await modalField(page, 'Team').selectOption('1');
     await modalField(page, 'Owner').fill(`${prefix}-owner`);
-    await modalField(page, 'Allowed models').fill(routeName);
+    await page.locator('.modal').getByRole('button', { name: 'Restrict to selected models' }).click({ force: true });
+    await page.locator(`.modal .scope-chips input[value="${routeName}"]`).click({ force: true });
     await modalField(page, 'Requests per minute').fill('10');
     await modalField(page, 'Simultaneous request limit').fill('2');
     await page.locator('.modal').getByRole('button', { name: 'Create' }).click({ force: true });

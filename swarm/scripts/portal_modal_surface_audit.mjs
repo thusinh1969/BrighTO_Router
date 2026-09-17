@@ -131,6 +131,10 @@ async function capture(page, name) {
     if (!/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must make disabled save explicit`, metrics);
     if (/Save draft/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes ambiguous Save draft action`, metrics);
   }
+  if (name.endsWith('new-key')) {
+    if (!/Model access|All models|Restrict to selected models/i.test(metrics.text || '')) fail(`${name}: New key modal missing guided model access picker`, metrics);
+    if (/comma-separated|empty = all/i.test(metrics.text || '')) fail(`${name}: New key modal still exposes comma-separated model entry`, metrics);
+  }
   if (name.endsWith('add-provider') || name.endsWith('new-team')) {
     const badSwitches = (metrics.switches || []).filter((s) => s.display !== 'flex' || s.justifyContent !== 'space-between' || s.textTransform !== 'none');
     if (!(metrics.switches || []).length) fail(`${name}: state switch missing`, metrics);
