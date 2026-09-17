@@ -73,11 +73,21 @@ async function setupRoute() {
 }
 
 async function login(page) {
-  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 20000 });
-  await page.locator('#login-user').fill('admin');
-  await page.locator('#login-pass').fill(ADMIN);
-  await page.evaluate(() => login());
-  await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.locator('#login-user').fill('admin');
+      await page.locator('#login-pass').fill(ADMIN);
+      await page.evaluate(() => login());
+      await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 3) await page.waitForTimeout(600);
+    }
+  }
+  throw lastErr;
 }
 
 async function isActionableInViewport(page, locator) {
@@ -136,6 +146,10 @@ async function inspectViewport(browser, name, width, height) {
       const statusCell = cells[1] || null;
       const actions = row ? row.querySelector('td.actions') : null;
       const modelText = document.body.innerText.includes(model);
+      const sidebar = document.querySelector('.sidebar');
+      const main = document.querySelector('.main');
+      const content = document.querySelector('#content');
+      const panel = document.querySelector('.panel');
       function detail(el) {
         if (!el) return null;
         const r = el.getBoundingClientRect();
@@ -158,6 +172,11 @@ async function inspectViewport(browser, name, width, height) {
         firstCell: detail(firstCell),
         statusCell: detail(statusCell),
         actions: detail(actions),
+        sidebar: detail(sidebar),
+        sidebarOpen: sidebar ? sidebar.classList.contains('open') : false,
+        main: detail(main),
+        content: detail(content),
+        panel: detail(panel),
       };
     }, MODEL);
     metrics.navOk = navOk;
@@ -178,6 +197,28 @@ async function inspectViewport(browser, name, width, height) {
       }, 'Only the table/card region may scroll horizontally; the whole app page must not.');
     } else {
       pass('responsive', `${name}: no whole-page horizontal overflow`);
+    }
+
+    if (width <= 820) {
+      if (metrics.sidebarOpen) {
+        fail('responsive', `${name}: sidebar remains open after menu navigation and covers content`, {
+          sidebar: metrics.sidebar,
+          main: metrics.main,
+          panel: metrics.panel,
+        }, 'After a mobile nav item is selected, close the sidebar overlay so the selected page is readable.');
+      } else {
+        pass('responsive', `${name}: sidebar closes after mobile navigation`, { sidebarOpen: metrics.sidebarOpen });
+      }
+      const visiblePanelWidth = metrics.panel ? Math.max(0, Math.min(metrics.panel.right, metrics.viewport.width) - Math.max(metrics.panel.x, 0)) : 0;
+      if (!metrics.panel || visiblePanelWidth < Math.min(320, metrics.viewport.width - 32)) {
+        fail('responsive', `${name}: selected page content is too narrow on mobile`, {
+          visiblePanelWidth,
+          panel: metrics.panel,
+          viewport: metrics.viewport,
+        }, 'Mobile content should occupy the viewport width with normal padding; sidebar must not reserve or cover most of the screen.');
+      } else {
+        pass('responsive', `${name}: selected page content width is usable on mobile`, { visiblePanelWidth });
+      }
     }
 
     if (metrics.hasTableRow) {
