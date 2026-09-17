@@ -285,6 +285,12 @@ function enterApp(){
   ["providers","models","teams","keys","settings"].forEach(function(v){
     var n=$("nav-"+v); if(n) n.style.display = mode==="admin" ? "" : "none";
   });
+  if(mode==="user"){
+    document.querySelectorAll(".nav").forEach(function(n){ n.classList.remove("active"); });
+    var d=document.querySelector(".nav[data-view='dashboard']");
+    if(d) d.classList.add("active");
+    $("page-title").textContent="Dashboard"; $("page-desc").textContent=descs.dashboard;
+  }
 }
 var SESSION_KEY="brigto_session_v1";
 var SESSION_TTL_MS=12*3600*1000; // 12h
@@ -617,6 +623,7 @@ function openRouteModal(route){
   loadBtn.onclick=async function(){
     loadBtn.disabled=true; loadBtn.textContent="Loading…";
     try{
+      if(am.value!=="none" && !pk.value.trim()){ toast("Enter API key first","err"); return; }
       var b=backends.find(function(x){return x.id===Number(ps.value);});
       var fmt=pcol.value==="anthropic_messages"?"anthropic":"openai";
       var data=await api("/admin/routes/preview-models","POST",{base_url:b.base_url,protocol:fmt,auth_mode:am.value,provider_key:pk.value});
@@ -738,9 +745,9 @@ function openTeamModal(tm){
   var save=el("button","btn primary",tm.id?"Save":"Create");
   save.onclick=async function(){
     var payload={name:ni.value.trim(),enabled:cb.checked};
-    if(bi.value.trim()){ try{payload.budget=JSON.parse(bi.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
+    if(bt.value==="unlimited"){ payload.budget=null; } // Unlimited -> clear (ignore hidden Advanced JSON)
+    else if(bi.style.display!=="none" && bi.value.trim()){ try{payload.budget=JSON.parse(bi.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
     else if(bt.value==="token"){ var amt=Number(ba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;} payload.budget={period:bp.value,max_tokens:amt,per_model:{}}; }
-    else { payload.budget=null; } // Unlimited -> clear any existing budget
     try{ if(tm.id){await api("/admin/teams/"+tm.id,"PATCH",payload);} else {await api("/admin/teams","POST",payload);}
       closeModal(); toast("Team saved"); teams=await api("/admin/teams","GET"); rerender(); }
     catch(e){ toast("Save failed: "+e.message,"err"); }
