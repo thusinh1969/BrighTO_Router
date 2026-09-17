@@ -267,6 +267,10 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .user-metric{background:#0b1220;border:1px solid rgba(51,65,85,.78);border-radius:14px;padding:12px;min-width:0}
 .user-metric span{display:block;color:var(--muted);font-size:10.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
 .user-metric b{display:block;font-size:20px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.call-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px}
+.call-item{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:11px 12px;min-width:0}
+.call-item .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:6px}
+.call-item code{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:transparent;padding:0;color:var(--text)}
 
 /* ---------- Toast ---------- */
 #toast{position:fixed;top:70px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:100;pointer-events:none}
@@ -349,6 +353,8 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
   .mini-meta-grid{grid-template-columns:1fr;text-align:right}
   .key-secret{justify-content:flex-end;text-align:right;flex-wrap:wrap}
   .table-wrap .pill{text-align:left;justify-content:flex-start}
+  .call-grid{grid-template-columns:1fr}
+  .call-item code{white-space:normal;overflow-wrap:anywhere}
   .key-reveal{display:block}
   .key-reveal .btn{margin-top:10px}
 }
@@ -487,9 +493,10 @@ function enterApp(){
   $("sidebar-sub").textContent = mode==="admin" ? "Admin Portal" : "User Portal";
   $("verified-label").textContent = mode==="admin" ? "Admin key verified" : "API key verified";
   $("mode-pill").textContent = mode==="admin" ? "Admin" : "User · "+(authKey.slice(0,8)||"");
-  ["providers","models","teams","keys","settings"].forEach(function(v){
+  ["providers","models","teams","keys"].forEach(function(v){
     var n=$("nav-"+v); if(n) n.style.display = mode==="admin" ? "" : "none";
   });
+  var settingsNav=$("nav-settings"); if(settingsNav) settingsNav.style.display="";
   if(mode==="user"){
     document.querySelectorAll(".nav").forEach(function(n){ n.classList.remove("active"); });
     var d=document.querySelector(".nav[data-view='dashboard']");
@@ -554,7 +561,7 @@ function render(view){
   var seq=++renderSerial;
   c.dataset.renderSeq=String(seq);
   c.innerHTML="";
-  if(mode==="user" && ["providers","models","teams","keys","settings"].indexOf(view)>=0) view="dashboard";
+  if(mode==="user" && ["providers","models","teams","keys"].indexOf(view)>=0) view="dashboard";
   try{
     if(view==="dashboard") return renderDashboard(c,seq).then(function(){ finishRender(c,seq); }).catch(function(e){ if(isCurrentRender(c,seq)) toast("Dashboard failed: "+e.message,"err"); });
     else if(view==="providers") renderProviders(c);
@@ -621,6 +628,26 @@ function userHero(me,stats,logs,inT,outT,req,errRate){
   right.appendChild(el("p","hint",latest?"Latest request: "+fmtTs(latest.ts)+" · status "+latest.status:"No requests yet. Send one request, then refresh this dashboard."));
   hero.appendChild(right);
   return hero;
+}
+function userCallPanel(me,logs){
+  var p=el("div","panel call-panel");
+  var h=el("div","panel-head"); h.appendChild(el("h3",null,"Call endpoint"));
+  var copy=el("button","btn sm ghost","Copy endpoint");
+  copy.onclick=function(){navigator.clipboard.writeText(location.origin+"/v1/chat/completions").then(function(){toast("Endpoint copied");});};
+  h.appendChild(copy); p.appendChild(h);
+  p.appendChild(el("p","hint","Use the same client API key you used to sign in. BrighTO accepts OpenAI-compatible chat completion calls at this endpoint."));
+  var grid=el("div","call-grid");
+  function item(k,v){ var box=el("div","call-item"); box.appendChild(el("span","k",k)); var val=el("code",null,v); val.title=v; box.appendChild(val); grid.appendChild(box); }
+  item("Method","POST");
+  item("Base URL",location.origin);
+  item("Endpoint path","/v1/chat/completions");
+  item("Auth","Authorization: Bearer <your API key>");
+  var allowed=(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length)?me.key.allowed_models.join(", "):"All enabled routes";
+  item("Model scope",allowed);
+  p.appendChild(grid);
+  var latest=logs&&logs.length?logs[0]:null;
+  p.appendChild(el("p","hint",latest?"Last call: "+latest.model+" · "+fmtTs(latest.ts)+" · status "+latest.status:"After your first request, this page will show tokens, latency, cost if configured, and errors for this key only."));
+  return p;
 }
 function dashboardHero(sum,inT,outT,req,errRate,cost){
   var enabledRoutes=routes.filter(function(r){return r.effective_enabled}).length;
@@ -710,6 +737,7 @@ async function renderDashboard(c,seq){
     c.appendChild(dashboardHero(sum,inT,outT,req,errRate,cost));
   }else{
     c.appendChild(userHero(me,stats,logs,inT,outT,req,errRate));
+    c.appendChild(userCallPanel(me,logs));
   }
 
   var cards=[];
