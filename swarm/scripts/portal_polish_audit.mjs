@@ -120,7 +120,7 @@ async function seedUsage(page) {
       chars_per_token: 4,
       first_byte_timeout: 180,
     });
-    const key = await adminFetch('/admin/keys', 'POST', { team_id: 1, owner: `pw-polish-usage-owner-with-long-readable-name-${stamp}`, budget: null, expires_at: null });
+    const key = await adminFetch('/admin/keys', 'POST', { team_id: 1, owner: `pw-polish-usage-owner-with-long-readable-name-${stamp}`, allowed_models: [model], budget: null, expires_at: null });
     keyId = key.id;
     const revealed = await adminFetch('/admin/keys/' + keyId + '/reveal');
     const resp = await clientFetch('/v1/chat/completions', revealed.key, 'POST', {
@@ -277,6 +277,16 @@ async function main() {
     usageSeed = await seedUsage(page);
     await page.evaluate(() => refresh());
     await page.waitForTimeout(800);
+
+    await nav(page, 'API Keys');
+    result.evidence.keyCompactLines = await page.evaluate(() => [...document.querySelectorAll('.key-list-table .compact-line')].map((n) => {
+      const r = n.getBoundingClientRect();
+      const cs = getComputedStyle(n);
+      return { text: (n.textContent || '').trim(), title: n.getAttribute('title') || '', height: Math.round(r.height), clientWidth: n.clientWidth, scrollWidth: n.scrollWidth, whiteSpace: cs.whiteSpace, overflow: cs.overflow, textOverflow: cs.textOverflow, wordBreak: cs.wordBreak, overflowWrap: cs.overflowWrap };
+    }));
+    const brokenKeyCompact = result.evidence.keyCompactLines.filter((n) => n.height > 24 || n.whiteSpace !== 'nowrap' || n.overflow !== 'hidden' || n.textOverflow !== 'ellipsis' || n.wordBreak !== 'normal' || n.overflowWrap !== 'normal');
+    if (brokenKeyCompact.length) bug(`API Keys page owner/team/scope labels must stay one-line ellipsis/copy/title, not clipped or broken wraps: ${JSON.stringify(brokenKeyCompact.slice(0, 4))}`);
+
     await nav(page, 'Models & Routes');
     result.evidence.modelCompactLines = await page.evaluate(() => [...document.querySelectorAll('.route-list-table .compact-line')].map((n) => {
       const r = n.getBoundingClientRect();
