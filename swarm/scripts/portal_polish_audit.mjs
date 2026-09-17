@@ -151,7 +151,7 @@ async function main() {
   if (EXECUTABLE) launch.executablePath = EXECUTABLE;
   const browser = await chromium.launch(launch);
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, ignoreHTTPSErrors: true });
-  page.on('console', (m) => { if (m.type() === 'error') result.consoleErrors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/ERR_NETWORK_CHANGED/i.test(m.text())) result.consoleErrors.push(m.text()); });
   page.on('pageerror', (e) => result.consoleErrors.push('pageerror:' + e.message));
   page.on('dialog', async (d) => { result.evidence.lastDialog = d.message(); await d.accept(); });
 
@@ -169,10 +169,12 @@ async function main() {
       fmtCount1000000: typeof fmtCount === 'function' ? fmtCount(1000000) : null,
       fmtNum1000: typeof fmtNum === 'function' ? fmtNum(1000) : null,
       fmtNum1000000: typeof fmtNum === 'function' ? fmtNum(1000000) : null,
+      fmtDur0: typeof fmtDur === 'function' ? fmtDur(0) : null,
     }));
     if (result.evidence.formatters.fmtCount1000 !== '1K' || result.evidence.formatters.fmtCount50000 !== '50K' || result.evidence.formatters.fmtCount1000000 !== '1M') bug(`fmtCount examples wrong: ${JSON.stringify(result.evidence.formatters)}`);
     if (result.evidence.formatters.fmt1000 !== '1K') bug(`Default count formatter must use K/M/B: fmt(1000)=${result.evidence.formatters.fmt1000}`);
     if (String(result.evidence.formatters.fmtNum1000).includes('k')) bug(`Chart formatter must use uppercase K: fmtNum(1000)=${result.evidence.formatters.fmtNum1000}`);
+    if (result.evidence.formatters.fmtDur0 === '0 ms') bug('Duration formatter must not show 0 ms; use <1 ms for sub-millisecond work.');
 
     await page.locator('.card .big').first().waitFor({ state: 'visible', timeout: 7000 }).catch(() => null);
     result.evidence.dashboardDensity = await page.evaluate(() => {
@@ -208,6 +210,9 @@ async function main() {
     if (!result.evidence.rootPrefs.localStorageKeys.length) bug('Portal preferences are not persisted in localStorage after initial apply.');
 
     await nav(page, 'Providers');
+    const providerSummary = await page.locator('.summary-card').count();
+    result.evidence.providerSummaryCards = providerSummary;
+    if (providerSummary < 4) bug(`Providers page must show operational summary cards; got ${providerSummary}.`);
     const providerName = `pw-polish-provider-${stamp}`;
     const providerEdit = `${providerName}-edited`;
     await page.getByRole('button', { name: 'Add provider' }).first().click({ force: true });
@@ -253,6 +258,7 @@ async function main() {
     result.evidence.expectedTokS = expectedTokS || 'suppressed-because-duration-below-100ms';
     if (expectedTokS && !usageText.includes(expectedTokS)) bug(`Usage page did not render compact tok/s value ${expectedTokS}.`);
     if (!expectedTokS && !/TOK\/S\s+—/.test(usageText)) bug('Usage page must suppress Tok/s as — when duration is below 100 ms.');
+    if (/\b(ROUTER|DURATION)\s+0 ms\b/.test(usageText)) bug('Usage log must show <1 ms instead of 0 ms for sub-millisecond timings.');
     if (/\b\d{1,3},\d{3}\b/.test(usageText)) bug('Usage still shows comma-formatted large counts; expected compact K/M/B display.');
     if (result.consoleErrors.length) bug(`Browser console errors: ${JSON.stringify(result.consoleErrors)}`);
   } catch (e) {

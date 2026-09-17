@@ -67,6 +67,7 @@ async function inspectPage(page, label) {
   return page.evaluate(() => {
     const panelCount = document.querySelectorAll('.panel').length;
     const cards = document.querySelectorAll('.card').length;
+    const summaryCards = [...document.querySelectorAll('.summary-card')].map((n) => (n.innerText || n.textContent || '').trim());
     const text = document.querySelector('#content')?.innerText || '';
     const tableStats = [...document.querySelectorAll('#content .table-wrap')].map((wrap) => {
       const table = wrap.querySelector('table');
@@ -96,6 +97,7 @@ async function inspectPage(page, label) {
       title: document.querySelector('#page-title')?.textContent || '',
       panelCount,
       cards,
+      summaryCards,
       bodyScrollWidth: document.body.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
       contentText: text.slice(0, 1200),
@@ -107,7 +109,7 @@ async function inspectPage(page, label) {
 }
 async function runViewport(browser, name, width, height) {
   const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width, height } });
-  page.on('console', (m) => { if (m.type() === 'error') result.consoleErrors.push(`${name}: ${m.text()}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/ERR_NETWORK_CHANGED/i.test(m.text())) result.consoleErrors.push(`${name}: ${m.text()}`); });
   page.on('pageerror', (e) => result.consoleErrors.push(`${name}: pageerror ${e.message}`));
   await login(page);
   const mobile = width <= 820;
@@ -122,6 +124,7 @@ async function runViewport(browser, name, width, height) {
     if (metrics.bodyScrollWidth > metrics.clientWidth + 8) fail(`${name}/${view}: whole-page horizontal overflow`, metrics);
     if (!metrics.title) fail(`${name}/${view}: missing page title`, metrics);
     if (!metrics.panelCount && view !== 'dashboard') fail(`${name}/${view}: no content panels`, metrics);
+    if (['providers', 'models', 'keys'].includes(view) && (metrics.summaryCards || []).length < 4) fail(`${name}/${view}: missing operational summary cards`, metrics);
     const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
     if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });
     if (mobile) {
