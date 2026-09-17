@@ -6,8 +6,9 @@ Method: Playwright Chromium against the real running portal, plus Admin API veri
 Artifacts:
 
 - Full admin flow: `swarm/out/playwright/20260917-120946-full-portal-audit-noscreenshot/summary.json`
-- Focused User Portal flow: `swarm/out/playwright/20260917-121859-user-portal-focused/summary.json`
-- Focused Route/Provider delete + route Load models: `swarm/out/playwright/20260917-122317-delete-load-focused/summary.json`
+- Current polish gate: `swarm/out/playwright/20260917-121151-portal-polish-audit/summary.json`
+- Focused User Portal flow: `swarm/out/playwright/20260917-121131-user-portal-focused/summary.json`
+- Focused Route/Provider delete + route Load models: `swarm/out/playwright/20260917-121248-delete-load-focused/summary.json`
 
 Verdict: **NOT READY for release. Backend CRUD mostly works, but Admin product logic and UI clarity are still below SOTA. Fix the items below; do not argue from source-only checks. Build Docker and retest live.**
 
