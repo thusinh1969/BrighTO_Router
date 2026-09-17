@@ -207,3 +207,30 @@ Current failing checks from the reusable gate:
 - Usage still displays comma-formatted large token counts instead of compact `K/M/B`.
 
 DeepSeek must run this gate against live Docker before claiming Portal PASS. Passing backend tests alone is insufficient for this Portal objective.
+
+
+## Poll update — staged gate now active in the 10-minute poller
+
+Time: 2026-09-17 around 10:11 local time.
+
+Codex added and activated a cheap source-first gate:
+
+```bash
+python3 swarm/scripts/portal_static_gate.py
+```
+
+The versioned 10-minute poller now runs gates in this order:
+
+1. `cargo check --locked --all-targets`.
+2. `python3 swarm/scripts/portal_static_gate.py`.
+3. HTTPS health check.
+4. `bash swarm/scripts/portal_polish_audit.sh` only when the static gate passes.
+
+Current poller output:
+
+```text
+PORTAL_STATIC_GATE FAIL 10
+SKIP: static gate failed; fix source blockers before running browser acceptance
+```
+
+This is intentional. Browser acceptance should not be used to claim success while the source still lacks the required Portal preferences, compact formatter, uppercase `K/M/B`, and central render lifecycle.
