@@ -16,6 +16,10 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%}
+html[data-font=small]{zoom:.9}
+html[data-font=large]{zoom:1.1}
+html[data-density=compact] th,html[data-density=compact] td{padding:4px 10px}
+html[data-density=compact] .panel{padding:14px;margin-bottom:14px}
 body{font-family:var(--font);font-size:14px;line-height:1.5;color:var(--text);
   background:linear-gradient(135deg,var(--bg1),var(--bg2));min-height:100vh;-webkit-font-smoothing:antialiased}
 .hidden{display:none!important}
@@ -222,6 +226,7 @@ var backends = [], routes = [], teams = [], keys = [];
 function $(id){ return document.getElementById(id); }
 function el(tag, cls, text){ var n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
 function fmt(n){ if(n===null||n===undefined)return "-"; return Number(n).toLocaleString(); }
+function fmtCount(n){ if(n===null||n===undefined)return "-"; n=Number(n); if(Math.abs(n)>=1e9)return (n/1e9).toFixed(1)+"B"; if(Math.abs(n)>=1e6)return (n/1e6).toFixed(1)+"M"; if(Math.abs(n)>=1e3)return (n/1e3).toFixed(1)+"K"; return String(Math.round(n)); }
 function fmtTs(sec){ if(!sec)return "-"; var d=new Date(sec*1000); return d.toISOString().replace("T"," ").slice(0,16); }
 function fmtDate(sec){ return new Date(sec*1000).toISOString().slice(0,10); }
 function authHeaders(){
@@ -321,6 +326,7 @@ async function refresh(){
     if(cur) render(cur.dataset.view); else go("dashboard");
   }catch(e){ toast("Load failed: "+e.message,"err"); }
 }
+function rerender(){ var cur=document.querySelector(".nav.active"); if(cur) render(cur.dataset.view); else go("dashboard"); }
 function render(view){
   var c=$("content"); c.innerHTML="";
   if(mode==="user" && ["providers","models","teams","keys","settings"].indexOf(view)>=0) view="dashboard";
@@ -452,7 +458,7 @@ async function deleteProvider(b){
     await api("/admin/backends/"+b.id,"DELETE");
     toast("Provider deleted");
     backends=await api("/admin/backends","GET");
-    renderProviders($("content"));
+    rerender();
   }catch(e){ toast("Delete failed: "+e.message,"err"); }
 }
 function openProviderModal(b){
@@ -477,7 +483,7 @@ function openProviderModal(b){
     try{
       if(b.id){ await api("/admin/backends/"+b.id,"PATCH",payload); }
       else { await api("/admin/backends","POST",payload); }
-      closeModal(); toast("Provider saved"); backends=await api("/admin/backends","GET"); renderProviders($("content"));
+      closeModal(); toast("Provider saved"); backends=await api("/admin/backends","GET"); rerender();
     }catch(e){ toast("Save failed: "+e.message,"err"); }
   };
   act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
@@ -628,7 +634,7 @@ function openRouteModal(route){
     var isEdit=!!route.model_name;
     var path=isEdit?"/admin/routes/"+encodeURIComponent(route.model_name):"/admin/routes";
     var method=isEdit?"PATCH":"POST";
-    try{ await api(path,method,payload); closeModal(); toast("Route saved"); routes=await api("/admin/routes","GET"); renderModels($("content")); }
+    try{ await api(path,method,payload); closeModal(); toast("Route saved"); routes=await api("/admin/routes","GET"); rerender(); }
     catch(e){ toast("Save failed: "+e.message,"err"); }
   };
   act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
@@ -637,7 +643,7 @@ function openRouteModal(route){
 
 async function deleteRoute(r){
   if(!confirm("Delete route "+r.model_name+"?")) return;
-  try{ await api("/admin/routes/"+encodeURIComponent(r.model_name),"DELETE"); toast("Route deleted"); routes=await api("/admin/routes","GET"); renderModels($("content")); }
+  try{ await api("/admin/routes/"+encodeURIComponent(r.model_name),"DELETE"); toast("Route deleted"); routes=await api("/admin/routes","GET"); rerender(); }
   catch(e){ toast(e.message,"err"); }
 }
 
@@ -699,7 +705,7 @@ function openTeamModal(tm){
     if(bi.value.trim()){ try{payload.budget=JSON.parse(bi.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
     else if(bt.value==="token"){ var amt=Number(ba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;} payload.budget={period:bp.value,max_tokens:amt,per_model:{}}; }
     try{ if(tm.id){await api("/admin/teams/"+tm.id,"PATCH",payload);} else {await api("/admin/teams","POST",payload);}
-      closeModal(); toast("Team saved"); teams=await api("/admin/teams","GET"); renderTeams($("content")); }
+      closeModal(); toast("Team saved"); teams=await api("/admin/teams","GET"); rerender(); }
     catch(e){ toast("Save failed: "+e.message,"err"); }
   };
   act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
@@ -793,7 +799,7 @@ function openKeyModal(){
       m2.appendChild(el("p","hint","Admin can view and copy this client API key again later from the <b>API Keys</b> table."));
       var act2=el("div","actions"); var done=el("button","btn primary","Done"); done.onclick=closeModal; act2.appendChild(done); m2.appendChild(act2);
       ov.appendChild(m2); ov.classList.remove("hidden");
-      keys=await api("/admin/keys","GET"); renderKeys($("content"));
+      keys=await api("/admin/keys","GET"); rerender();
     }catch(e){ toast("Create key failed: "+e.message,"err"); }
   };
   act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
@@ -813,7 +819,7 @@ async function revealKey(k){
 }
 async function disableKey(k){
   if(!confirm("Disable key "+k.prefix+" for "+k.owner+"?")) return;
-  try{ await api("/admin/keys/"+k.id,"DELETE"); toast("Key disabled"); keys=await api("/admin/keys","GET"); renderKeys($("content")); }
+  try{ await api("/admin/keys/"+k.id,"DELETE"); toast("Key disabled"); keys=await api("/admin/keys","GET"); rerender(); }
   catch(e){ toast(e.message,"err"); }
 }
 
@@ -849,7 +855,7 @@ async function renderUsage(c){
         from:fr.value?Math.floor(new Date(fr.value+"T00:00:00Z").getTime()/1000):"",
         to:td.value?Math.floor(new Date(td.value+"T23:59:59Z").getTime()/1000):"",
         days:dy.value};
-      renderUsage($("content"));
+      rerender();
     }; row.appendChild(ap);
     bar.appendChild(row); c.appendChild(bar);
   }
@@ -888,6 +894,17 @@ function groupPanel(title,cols,rows){
 
 /* ===== Settings ===== */
 async function renderSettings(c){
+  var pp=el("div","panel");
+  pp.appendChild(el("h3",null,"Portal preferences"));
+  pp.appendChild(el("p","hint","Personal display settings — stored in this browser only."));
+  var prow=el("div","row"); prow.style.alignItems="end";
+  var fld1=el("div","field"); fld1.style.margin="0"; fld1.appendChild(el("label",null,"Font size"));
+  var fsel=el("select"); [["small","Small"],["normal","Normal"],["large","Large"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];fsel.appendChild(o);}); fsel.value=document.documentElement.dataset.font||"normal"; fsel.onchange=function(){setPref("font",fsel.value);}; fld1.appendChild(fsel); prow.appendChild(fld1);
+  var fld2=el("div","field"); fld2.style.margin="0"; fld2.appendChild(el("label",null,"Density"));
+  var dsel=el("select"); [["comfortable","Comfortable"],["compact","Compact"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];dsel.appendChild(o);}); dsel.value=document.documentElement.dataset.density||"comfortable"; dsel.onchange=function(){setPref("density",dsel.value);}; fld2.appendChild(dsel); prow.appendChild(fld2);
+  pp.appendChild(prow);
+  c.appendChild(pp);
+
   var p=el("div","panel");
   p.appendChild(el("h3",null,"Runtime settings"));
   p.appendChild(el("p","hint","Read-only. Change these via environment variables and restart."));
@@ -930,7 +947,7 @@ function chartBars(stats){
   wrap.appendChild(lg);
   return wrap;
 }
-function fmtNum(v){ if(v>=1000000000)return(v/1000000000).toFixed(1)+"B"; if(v>=1000000)return(v/1000000).toFixed(1)+"M"; if(v>=1000)return(v/1000).toFixed(1)+"k"; return String(Math.round(v)); }
+function fmtNum(v){ if(v>=1000000000)return(v/1000000000).toFixed(1)+"B"; if(v>=1000000)return(v/1000000).toFixed(1)+"M"; if(v>=1000)return(v/1000).toFixed(1)+"K"; return String(Math.round(v)); }
 
 /* ===== Logs table ===== */
 function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
@@ -973,7 +990,16 @@ function thead(cols){ var tr=el("tr"); cols.forEach(function(h){tr.appendChild(e
 function pill(text,kind){ var p=el("span","pill "+kind); var d=el("span","dot"); p.appendChild(d); p.appendChild(document.createTextNode(text)); return p; }
 function closeModal(){ $("modal-overlay").classList.add("hidden"); $("modal-overlay").innerHTML=""; }
 function toggleSidebar(){ $("sidebar").classList.toggle("open"); }
+function applyPrefs(){
+  var font=localStorage.getItem("pref_font")||"normal";
+  var density=localStorage.getItem("pref_density")||"comfortable";
+  document.documentElement.dataset.font=font;
+  document.documentElement.dataset.density=density;
+}
+function setPref(key,value){ localStorage.setItem("pref_"+key,value); applyPrefs(); }
+
 setMode("admin");
+applyPrefs();
 restoreSession();
 </script>
 </body>
