@@ -277,7 +277,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .call-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px}
 .call-item{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:11px 12px;min-width:0}
 .call-item .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:6px}
-.call-item code{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:transparent;padding:0;color:var(--text)}
+.call-item code{display:block;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;background:transparent;padding:0;color:var(--text)}
 
 /* ---------- Toast ---------- */
 #toast{position:fixed;top:70px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:100;pointer-events:none}

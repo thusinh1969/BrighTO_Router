@@ -56,10 +56,22 @@ async function loginUser(page, key) {
   await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
   await page.getByRole('heading', { name: 'Dashboard' }).waitFor({ state: 'visible', timeout: 12000 });
 }
+async function waitUserView(page, view) {
+  const expected = {
+    dashboard: ['Your API access', 'Call endpoint', '/v1/chat/completions'],
+    usage: ['Tokens by model', 'Request logs'],
+    settings: ['Portal preferences', 'Session', 'Model scope'],
+  }[view] || [];
+  await page.waitForFunction((needles) => {
+    const content = (document.querySelector('#content')?.innerText || '').toLowerCase();
+    return needles.every((n) => content.includes(String(n).toLowerCase()));
+  }, expected, { timeout: 12000 });
+  await page.waitForTimeout(100);
+}
 async function nav(page, view, mobile) {
   if (mobile) { await page.locator('.hamburger').click({ force: true }); await page.waitForTimeout(200); }
   await page.locator(`.nav[data-view="${view}"]`).click({ force: true });
-  await page.waitForTimeout(700);
+  await waitUserView(page, view);
 }
 async function inspect(page) {
   return page.evaluate(() => {
@@ -74,6 +86,19 @@ async function inspect(page) {
       panelCount: document.querySelectorAll('#content .panel').length,
       cardCount: document.querySelectorAll('#content .card').length,
       callItems: [...document.querySelectorAll('.call-item')].map((n) => (n.innerText || n.textContent || '').trim()),
+      callCodeStats: [...document.querySelectorAll('.call-item code')].map((n) => {
+        const st = getComputedStyle(n);
+        return {
+          text: (n.innerText || n.textContent || '').trim(),
+          scrollWidth: n.scrollWidth,
+          clientWidth: n.clientWidth,
+          scrollHeight: n.scrollHeight,
+          clientHeight: n.clientHeight,
+          whiteSpace: st.whiteSpace,
+          overflowX: st.overflowX,
+          textOverflow: st.textOverflow,
+        };
+      }),
       bodyScrollWidth: document.body.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
     };
@@ -86,6 +111,7 @@ async function runViewport(browser, seed, name, width, height) {
   const mobile = width <= 820;
   try {
     await loginUser(page, seed.key);
+    await waitUserView(page, 'dashboard');
     const dashShot = `${OUT}/${name}-user-dashboard.png`;
     await page.screenshot({ path: dashShot, fullPage: true });
     result.screenshots.push(dashShot);
@@ -99,6 +125,8 @@ async function runViewport(browser, seed, name, width, height) {
     if (!/Call endpoint|POST|\/v1\/chat\/completions|Authorization: Bearer <your API key>/i.test(dash.content)) fail(`${name}: user dashboard missing call endpoint quick start`, dash);
     if (!dash.content.includes(seed.model)) fail(`${name}: user dashboard missing allowed/used model`, dash);
     if (dash.callItems.length < 4) fail(`${name}: user call endpoint panel missing fields`, dash);
+    const clippedCallCodes = (dash.callCodeStats || []).filter((c) => c.scrollWidth > c.clientWidth + 4 || c.whiteSpace === 'nowrap' || c.textOverflow === 'ellipsis');
+    if (clippedCallCodes.length) fail(`${name}: user call endpoint code is clipped`, { clippedCallCodes, dash });
     if (dash.bodyScrollWidth > dash.clientWidth + 8) fail(`${name}: user dashboard horizontal overflow`, dash);
 
     await nav(page, 'usage', mobile);
