@@ -256,6 +256,11 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
   .route-list-table .cell-main,.route-list-table .cell-sub{display:block!important;-webkit-line-clamp:unset!important;-webkit-box-orient:initial!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere;text-overflow:clip!important}
   .route-list-table .model-meta-grid{gap:5px}
   .route-list-table .model-meta-grid span{border-radius:9px;line-height:1.25}
+  @media(min-width:1200px){
+    .route-list-table tr{grid-template-columns:minmax(0,2.2fr) minmax(82px,.58fr) minmax(0,1.18fr) minmax(0,1fr) minmax(0,1.32fr) minmax(204px,.92fr)}
+    .route-list-table td.actions{align-items:start}
+    .route-list-table .action-row{grid-template-columns:repeat(3,minmax(0,1fr));max-width:236px;gap:7px}
+  }
   .provider-list-wrap{overflow:visible;border:none;background:transparent}
   .provider-list-table{display:block;border-collapse:separate;border-spacing:0;font-size:13px}
   .provider-list-table colgroup,.provider-list-table thead{display:none}

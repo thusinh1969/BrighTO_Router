@@ -163,6 +163,14 @@ async function inspectViewport(browser, name, width, height) {
       const providerCell = cells[2] || null;
       const providerModelCell = cells[3] || null;
       const actions = row ? row.querySelector('td.actions') : null;
+      const actionButtons = actions ? [...actions.querySelectorAll('button')].map((button) => {
+        const r = button.getBoundingClientRect();
+        return {
+          text: (button.innerText || button.textContent || '').trim(),
+          x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height),
+          right: Math.round(r.right), bottom: Math.round(r.bottom),
+        };
+      }) : [];
       const modelText = document.body.innerText.includes(model);
       const sidebar = document.querySelector('.sidebar');
       const main = document.querySelector('.main');
@@ -192,6 +200,7 @@ async function inspectViewport(browser, name, width, height) {
         providerCell: detail(providerCell),
         providerModelCell: detail(providerModelCell),
         actions: detail(actions),
+        actionButtons,
         sidebar: detail(sidebar),
         sidebarOpen: sidebar ? sidebar.classList.contains('open') : false,
         main: detail(main),
@@ -260,6 +269,15 @@ async function inspectViewport(browser, name, width, height) {
         fail('visual', `${name}: action column too narrow`, a, 'Reserve enough width for Disable/Edit/Delete or collapse to an Actions menu.');
       } else {
         pass('visual', `${name}: action column is wide enough`, a);
+      }
+      if (width >= 1200 && metrics.actionButtons && metrics.actionButtons.length >= 3) {
+        const ys = metrics.actionButtons.map((b) => b.y);
+        const sameRow = Math.max(...ys) - Math.min(...ys) <= 3;
+        if (!sameRow) {
+          fail('visual', `${name}: route action buttons stack vertically on desktop`, { actionButtons: metrics.actionButtons }, 'Desktop route rows must keep Disable/Edit/Delete on one compact row.');
+        } else {
+          pass('visual', `${name}: route action buttons stay on one desktop row`, { actionButtons: metrics.actionButtons });
+        }
       }
     } else {
       pass('visual', `${name}: non-table route layout detected`, { modelText: true });
