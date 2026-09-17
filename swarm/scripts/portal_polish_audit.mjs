@@ -148,7 +148,7 @@ async function main() {
     await page.getByRole('button', { name: 'Add provider' }).first().click({ force: true });
     await fill(page, 'Name', providerName);
     await fill(page, 'Base URL', 'http://127.0.0.1:65531/v1');
-    await setMaybeSelect(page, 'Format', 'openai');
+    await setMaybeSelect(page, 'Provider Type', 'openai');
     await fill(page, 'Weight', '1');
     await fill(page, 'Max concurrent', '0');
     await (await modalButton(page, 'Add')).click({ force: true });
