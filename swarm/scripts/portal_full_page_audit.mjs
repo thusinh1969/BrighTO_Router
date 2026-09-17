@@ -306,6 +306,7 @@ async function inspectPage(page, label) {
           columns: st.gridTemplateColumns,
           keyText: key ? (key.innerText || key.textContent || '').trim() : '',
           copyButtons: n.querySelectorAll('button.icon-btn').length,
+          copyLabels: [...n.querySelectorAll('button.icon-btn')].map((b) => ((b.innerText || '').trim() || b.getAttribute('aria-label') || b.title || '').trim()),
           revealButtons: [...n.querySelectorAll('button')].filter((b) => (b.innerText || '').trim() === 'Reveal').length,
           keyScrollHeight: key ? key.scrollHeight : 0,
           keyClientHeight: key ? key.clientHeight : 0,
@@ -408,6 +409,8 @@ async function runViewport(browser, name, width, height) {
     if (view === 'keys') {
       const badKeyRows = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && (r.keyText === '…' || r.copyButtons !== 1 || r.revealButtons !== 0));
       if (badKeyRows.length) fail(`${name}/${view}: visible API key rows should show full key plus copy, without redundant Reveal action`, { badKeyRows, metrics });
+      const unclearCopyKeys = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && !(r.copyLabels || []).some((label) => /copy key|copy api key/i.test(label)));
+      if (unclearCopyKeys.length) fail(`${name}/${view}: API key copy action should be explicitly labelled`, { unclearCopyKeys, metrics });
       const clippedKeys = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && (/ellipsis/i.test(r.keyTextOverflow) || r.keyOverflow !== 'visible' || r.keyScrollHeight > r.keyClientHeight + 4));
       if (clippedKeys.length) fail(`${name}/${view}: revealed API keys are clipped`, { clippedKeys, metrics });
       const clippedKeyLimits = (metrics.keyLimitItems || []).filter((r) => r.text && (r.scrollWidth > r.clientWidth + 4 || r.scrollHeight > r.clientHeight + 4));

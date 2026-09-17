@@ -218,6 +218,8 @@ td.mono,.mono{font-family:var(--mono);font-size:12px}
 .model-name-row .icon-btn{align-self:center}
 .meta-dot{width:4px;height:4px;border-radius:50%;background:var(--faint);display:inline-block}
 .icon-btn{padding:3px 6px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.btn.icon-btn.copy-key-btn{line-height:1;gap:6px;padding:6px 9px;white-space:nowrap;font-size:11.5px;font-weight:850}
+.copy-key-btn svg{flex:0 0 auto}
 table.models-table,table.conn-table{table-layout:fixed;min-width:0!important}
 table.models-table td,table.conn-table td{overflow:hidden}
 table.models-table td:first-child,table.conn-table td:first-child{overflow:hidden;text-overflow:clip;white-space:normal}
@@ -234,7 +236,7 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .keys-table .mini-meta-grid{grid-template-columns:1fr;gap:3px}
 .keys-table td:nth-child(2) .cell-main,.keys-table td:nth-child(2) .cell-sub{white-space:nowrap!important;overflow:visible;text-overflow:clip;overflow-wrap:normal}
 .mini-meta-grid b{color:var(--text);font-weight:750}
-.key-secret{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;min-width:0}
+.key-secret{display:grid;grid-template-columns:1fr;align-items:start;justify-items:start;gap:7px;min-width:0}
 .key-secret .mono{display:block;overflow:visible;text-overflow:clip;white-space:nowrap;overflow-wrap:normal;word-break:normal;min-width:0}
 .table-wrap.pro-table{overflow:visible}
 @media(min-width:821px){
@@ -489,7 +491,7 @@ body.nav-open{overflow:hidden}
   .table-wrap .cell-main,.table-wrap .cell-sub,.table-wrap .mono,.metric-table td:first-child,.model-meta-grid span,.mini-meta-grid span{min-width:0;max-width:100%;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;text-overflow:clip}
   .metric-table td:first-child{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-overflow:clip}
   .mini-meta-grid{grid-template-columns:1fr;text-align:left}
-  .key-secret{display:flex;justify-content:flex-start;text-align:left;flex-wrap:wrap}
+  .key-secret{display:grid;grid-template-columns:1fr;justify-items:start;text-align:left}
   .table-wrap .pill{text-align:left;justify-content:flex-start}
   .call-grid{grid-template-columns:1fr}
   .call-item code{white-space:normal;overflow-wrap:anywhere}
@@ -1661,7 +1663,7 @@ function renderKeys(c){
   else{
     var w=el("div","table-wrap pro-table key-list-wrap"); var t=el("table","models-table keys-table key-list-table");
     var colg=document.createElement("colgroup");
-    ["37%","21%","18%","14%","10%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
+    ["43%","18%","17%","13%","9%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
     t.appendChild(thead(["Client key","Owner / team","Scope","Limits",""]));
     var tb=el("tbody");
@@ -1677,7 +1679,7 @@ function renderKeys(c){
         api("/admin/keys/"+k.id+"/reveal","GET").then(function(data){
           secret.innerHTML="";
           var full=el("span","mono",data.key); full.title=data.key; secret.appendChild(full);
-          secret.appendChild(copyIconBtn(data.key));
+          secret.appendChild(copyKeyBtn(data.key));
         }).catch(function(){ secret.innerHTML=""; var vb=el("button","btn sm ghost","Reveal"); vb.onclick=function(){revealKey(k);}; secret.appendChild(vb); });
       }
       ks.appendChild(secret);
@@ -2114,7 +2116,8 @@ function nameNode(tag,cls,text,max){
 }
 
 function shQuote(s){ return "'"+String(s).replace(/'/g,"'\"'\"'")+"'"; }
-function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.dataset.copy=text; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
+function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.setAttribute("aria-label","Copy"); b.dataset.copy=text; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
+function copyKeyBtn(text){ var b=copyIconBtn(text); b.classList.add("copy-key-btn"); b.title="Copy API key"; b.setAttribute("aria-label","Copy API key"); b.appendChild(el("span",null,"Copy key")); return b; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
 var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]];
 function catEntry(key){ return (catalog||[]).find(function(e){return e.key===key;}) || {key:key,label:key,base_url:"",dialect:"openai",key_env:"",key_set:false}; }

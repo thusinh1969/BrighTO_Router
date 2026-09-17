@@ -263,10 +263,11 @@ async function main() {
     const keyRowState = await createdKeyRow.locator('.key-secret').evaluate((node) => ({
       text: node.innerText,
       copyButtons: node.querySelectorAll('button.icon-btn').length,
+      copyLabels: [...node.querySelectorAll('button.icon-btn')].map((b) => ((b.innerText || '').trim() || b.getAttribute('aria-label') || b.title || '').trim()),
       revealButtons: [...node.querySelectorAll('button')].filter((b) => (b.innerText || '').trim() === 'Reveal').length,
     }));
-    if (keyRowState.copyButtons === 1 && keyRowState.revealButtons === 0 && keyRowState.text.includes(key.prefix)) {
-      pass('keys', 'visible key row shows full key plus copy without redundant Reveal action', keyRowState);
+    if (keyRowState.copyButtons === 1 && keyRowState.revealButtons === 0 && keyRowState.text.includes(key.prefix) && keyRowState.copyLabels.some((label) => /copy key|copy api key/i.test(label))) {
+      pass('keys', 'visible key row shows full key plus labelled copy without redundant Reveal action', keyRowState);
     } else {
       fail('keys', 'visible key row should not require Reveal after admin login', keyRowState);
     }
