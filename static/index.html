@@ -179,10 +179,13 @@ td.mono,.mono{font-family:var(--mono);font-size:12px}
 .icon-btn{padding:3px 6px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
 table.models-table,table.conn-table{table-layout:fixed;min-width:0!important}
 table.models-table td,table.conn-table td{overflow:hidden}
-table.models-table td:first-child{overflow:hidden;text-overflow:clip;white-space:normal}
-table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+table.models-table td:first-child,table.conn-table td:first-child{overflow:hidden;text-overflow:clip;white-space:normal}
+table.models-table td:first-child .cell-main,table.conn-table td:first-child .cell-main,table.models-table td:nth-child(3) .cell-main,table.models-table td:nth-child(4) .cell-main{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .action-row{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
-.model-meta-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px 10px;font-size:11.5px;color:var(--muted)}
+.conn-table .action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;justify-content:stretch}
+.conn-table .action-row .btn{width:100%;padding-left:8px;padding-right:8px}
+.model-meta-grid{display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px;color:var(--muted)}
+.model-meta-grid span{display:inline-flex;align-items:center;gap:4px;background:rgba(15,23,42,.9);border:1px solid rgba(51,65,85,.75);border-radius:999px;padding:3px 8px;max-width:100%}
 .model-meta-grid b{color:var(--text);font-weight:750}
 .mini-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;font-size:11.5px;color:var(--muted)}
 .mini-meta-grid b{color:var(--text);font-weight:750}
@@ -774,7 +777,7 @@ function renderProviders(c){
   else{
     var w=el("div","table-wrap pro-table"); var t=el("table","conn-table");
     var colg=document.createElement("colgroup");
-    ["24%","24%","8%","8%","22%","14%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
+    ["30%","22%","7%","7%","22%","12%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
     t.appendChild(thead(["Connection","Status","Routes","Usage","Base URL",""]));
     var tb=el("tbody");
@@ -929,7 +932,7 @@ function renderModels(c){
   else{
     var w=el("div","table-wrap pro-table"); var t=el("table","models-table");
     var colg=document.createElement("colgroup");
-    ["28%","12%","18%","18%","12%","12%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
+    ["27%","10%","21%","16%","14%","12%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
     t.appendChild(thead(["Public model","Status","Provider","Provider model","Route settings",""]));
     var tb=el("tbody");
