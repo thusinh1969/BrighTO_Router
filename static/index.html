@@ -412,6 +412,9 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .call-item{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:11px 12px;min-width:0}
 .call-item .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:6px}
 .call-item code{display:block;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;background:transparent;padding:0;color:var(--text)}
+.curl-preview{margin-top:12px;background:#0b1220;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.curl-preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:850}
+.curl-preview pre{margin:0;padding:13px 14px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.55;background:#070d19}
 
 /* ---------- Toast ---------- */
 #toast{position:fixed;top:70px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:100;pointer-events:none}
@@ -868,11 +871,13 @@ function userCallPanel(me,logs){
   var p=el("div","panel call-panel");
   var endpoint=location.origin+"/v1/chat/completions";
   var firstModel=(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length)?me.key.allowed_models[0]:((logs&&logs.length&&logs[0].model)||"<model>");
-  var curlBody=JSON.stringify({model:firstModel,messages:[{role:"user",content:"Reply OK"}],max_tokens:16});
+  var curlBody=JSON.stringify({model:firstModel,messages:[{role:"user",content:"Reply OK"}],max_tokens:16},null,2);
+  var cont=" "+String.fromCharCode(92);
   var curl=[
-    "curl -k "+shQuote(endpoint)+" \\",
-    "  -H "+shQuote("Authorization: Bearer <your API key>")+" \\",
-    "  -H "+shQuote("Content-Type: application/json")+" \\",
+    "BRIGHTO_ENDPOINT="+shQuote(endpoint),
+    "curl -k \"$BRIGHTO_ENDPOINT\""+cont,
+    "  -H "+shQuote("Authorization: Bearer <your API key>")+cont,
+    "  -H "+shQuote("Content-Type: application/json")+cont,
     "  -d "+shQuote(curlBody)
   ].join("\n");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Call endpoint"));
@@ -894,6 +899,13 @@ function userCallPanel(me,logs){
   var allowed=(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length)?me.key.allowed_models.join(", "):"All enabled routes";
   item("Model scope",allowed);
   p.appendChild(grid);
+  var preview=el("div","curl-preview");
+  var previewHead=el("div","curl-preview-head");
+  previewHead.appendChild(el("span",null,"Ready cURL test"));
+  previewHead.appendChild(el("span",null,"copy and run"));
+  preview.appendChild(previewHead);
+  var pre=document.createElement("pre"); pre.textContent=curl; preview.appendChild(pre);
+  p.appendChild(preview);
   var latest=logs&&logs.length?logs[0]:null;
   p.appendChild(el("p","hint",latest?"Last call: "+latest.model+" · "+fmtTs(latest.ts)+" · status "+latest.status:"After your first request, this page will show tokens, latency, cost if configured, and errors for this key only."));
   return p;
