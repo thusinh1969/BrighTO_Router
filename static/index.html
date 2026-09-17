@@ -241,6 +241,11 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .model-map .k{display:block;color:var(--muted);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:850;margin-bottom:5px}
 .model-map .v{display:block;font-family:var(--mono);font-size:12.5px;color:var(--text);white-space:normal;overflow-wrap:anywhere}
 .model-map .arrow{display:flex;align-items:center;justify-content:center;color:var(--sky);font-weight:900;padding:0 2px}
+.advanced-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0b1220;border:1px solid var(--border);border-radius:13px;color:var(--text);padding:12px 14px;margin:4px 0 12px;cursor:pointer;text-align:left}
+.advanced-toggle b{display:block;font-size:13px}
+.advanced-toggle span{display:block;color:var(--muted);font-size:12px;margin-top:2px;font-weight:500}
+.advanced-toggle i{font-style:normal;color:var(--accent-text);font-weight:850}
+.advanced-panel.hidden{display:none}
 .modal .actions{display:flex;justify-content:flex-end;gap:10px;margin:22px -26px -26px;padding:16px 26px;background:linear-gradient(180deg,rgba(15,23,42,.82),var(--panel));border-top:1px solid var(--border);position:sticky;bottom:-26px;z-index:2;border-radius:0 0 20px 20px}
 .route-modal .actions{position:static;bottom:auto}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
@@ -1168,8 +1173,13 @@ function openRouteModal(route){
   var stat=el("p","hint"); m.appendChild(stat);
   var testState={ok:false};
 
-  m.appendChild(el("div","section-title","Limits and pricing (optional)"));
-  var limits=el("div","form-grid");
+	  var optionalOpen=!!(route.context_tokens||route.max_output_tokens||route.price_input_per_mtok_usd||route.price_output_per_mtok_usd||route.fallback_backend_id||(route.first_byte_timeout&&route.first_byte_timeout!==180));
+	  var advBtn=el("button","advanced-toggle");
+	  var advCopy=el("div"); advCopy.appendChild(el("b",null,"Optional limits and pricing")); advCopy.appendChild(el("span",null,"Context, output cap, price, fallback provider, and timeout."));
+	  var advIcon=el("i",null,optionalOpen?"Hide":"Show");
+	  advBtn.appendChild(advCopy); advBtn.appendChild(advIcon); m.appendChild(advBtn);
+	  var advPanel=el("div","advanced-panel"+(optionalOpen?"":" hidden"));
+	  var limits=el("div","form-grid");
   var f5=el("div","field"); f5.appendChild(el("label",null,"Context window (tokens, optional)")); var ct=el("input"); ct.type="number"; ct.value=route.context_tokens||""; f5.appendChild(ct); limits.appendChild(f5);
   var f6=el("div","field"); f6.appendChild(el("label",null,"Max output tokens (optional)")); var mo=el("input"); mo.type="number"; mo.value=route.max_output_tokens||""; f6.appendChild(mo); limits.appendChild(f6);
   var f7=el("div","field"); f7.appendChild(el("label",null,"Price per 1M input tokens (USD, optional)")); var pi=el("input"); pi.type="number"; pi.step="0.01"; pi.value=route.price_input_per_mtok_usd||""; f7.appendChild(pi); limits.appendChild(f7);
@@ -1180,7 +1190,12 @@ function openRouteModal(route){
   fb.value=route.fallback_backend_id?String(route.fallback_backend_id):"";
   f3.appendChild(fb); f3.appendChild(el("p","hint","Optional backup provider connection if the primary route fails.")); limits.appendChild(f3);
   var f4=el("div","field"); f4.appendChild(el("label",null,"Provider start timeout (seconds)")); var to=el("input"); to.type="number"; to.value=route.first_byte_timeout||180; f4.appendChild(to); f4.appendChild(el("p","hint","How long to wait for the provider to start responding.")); limits.appendChild(f4);
-  m.appendChild(limits);
+	  advPanel.appendChild(limits); m.appendChild(advPanel);
+	  advBtn.onclick=function(){
+	    optionalOpen=!optionalOpen;
+	    advPanel.classList.toggle("hidden",!optionalOpen);
+	    advIcon.textContent=optionalOpen?"Hide":"Show";
+	  };
 
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
