@@ -259,13 +259,17 @@ async function main() {
     else fail('keys', 'Edit key did not clear hidden advanced budget value', { key: budgetKey });
 
     createdKeyRow = row(page, prefix + '-owner');
-    await createdKeyRow.getByRole('button', { name: 'Reveal' }).waitFor({ state: 'visible', timeout: 8000 });
-    await createdKeyRow.getByRole('button', { name: 'Reveal' }).click({ force: true });
-    await page.locator('.modal').filter({ hasText: key.prefix }).waitFor({ state: 'visible', timeout: 8000 });
-    const fullKeyText = await page.locator('.modal').innerText();
-    if (fullKeyText.includes(key.prefix)) pass('keys', 'Reveal opens key reveal modal', { prefix: key.prefix });
-    else fail('keys', 'Reveal did not reveal key prefix', { prefix: key.prefix, modalText: fullKeyText.slice(0, 200) });
-    await page.evaluate(() => closeModal());
+    await createdKeyRow.locator('.key-secret .mono').filter({ hasText: key.prefix }).waitFor({ state: 'visible', timeout: 8000 });
+    const keyRowState = await createdKeyRow.locator('.key-secret').evaluate((node) => ({
+      text: node.innerText,
+      copyButtons: node.querySelectorAll('button.icon-btn').length,
+      revealButtons: [...node.querySelectorAll('button')].filter((b) => (b.innerText || '').trim() === 'Reveal').length,
+    }));
+    if (keyRowState.copyButtons === 1 && keyRowState.revealButtons === 0 && keyRowState.text.includes(key.prefix)) {
+      pass('keys', 'visible key row shows full key plus copy without redundant Reveal action', keyRowState);
+    } else {
+      fail('keys', 'visible key row should not require Reveal after admin login', keyRowState);
+    }
 
     await createdKeyRow.getByRole('button', { name: 'Disable' }).click({ force: true });
     await page.waitForTimeout(700);
