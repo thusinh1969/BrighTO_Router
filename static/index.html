@@ -28,12 +28,25 @@ body{font-family:var(--font);font-size:14px;line-height:1.5;color:var(--text);
 code{font-family:var(--mono);background:rgba(30,41,59,.6);padding:2px 7px;border-radius:6px;font-size:12px;color:var(--accent-text)}
 
 /* ---------- Login ---------- */
-#login-view{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden}
+#login-view{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:28px;position:relative;overflow:hidden}
 #login-view::before,#login-view::after{content:"";position:absolute;border-radius:50%;filter:blur(80px);opacity:.35;pointer-events:none}
 #login-view::before{width:520px;height:520px;background:#2563eb;top:-120px;right:-100px}
 #login-view::after{width:480px;height:480px;background:#14b8a6;bottom:-140px;left:-120px;opacity:.2}
-.login-card{position:relative;width:100%;max-width:420px;background:var(--panel);border:1px solid var(--border);
-  border-radius:24px;padding:38px 34px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.login-shell{position:relative;width:min(1040px,100%);display:grid;grid-template-columns:minmax(0,1.05fr) 420px;gap:18px;align-items:stretch}
+.login-copy{background:linear-gradient(145deg,rgba(17,28,49,.92),rgba(8,17,31,.72));border:1px solid rgba(125,211,252,.16);border-radius:28px;padding:34px;box-shadow:0 24px 70px rgba(0,0,0,.42);overflow:hidden;position:relative}
+.login-copy::after{content:"";position:absolute;width:280px;height:280px;border-radius:50%;background:rgba(56,189,248,.13);right:-90px;bottom:-120px;filter:blur(4px)}
+.login-copy .eyebrow{color:var(--accent-text);font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.09em;margin-bottom:14px}
+.login-copy h2{margin:0 0 12px;font-size:34px;line-height:1.04;letter-spacing:-.04em;max-width:620px}
+.login-copy p{margin:0;color:var(--muted);max-width:620px;font-size:14.5px}
+.login-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:26px 0}
+.login-metric{background:rgba(11,18,32,.72);border:1px solid var(--border);border-radius:16px;padding:13px;min-width:0}
+.login-metric b{display:block;font-size:19px;color:#fff;margin-bottom:2px}
+.login-metric span{display:block;color:var(--muted);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.login-proof{display:grid;gap:10px;margin-top:10px;position:relative;z-index:1}
+.login-proof div{display:flex;gap:10px;align-items:flex-start;background:rgba(15,23,42,.58);border:1px solid rgba(51,65,85,.65);border-radius:14px;padding:11px 13px;color:var(--text);font-size:13px}
+.login-proof i{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.1);margin-top:5px;flex:0 0 auto}
+.login-card{position:relative;width:100%;background:rgba(15,23,42,.96);border:1px solid var(--border);
+  border-radius:24px;padding:38px 34px;box-shadow:0 24px 60px rgba(0,0,0,.5);align-self:center}
 .brand{display:flex;align-items:center;gap:12px;margin-bottom:4px}
 .brand .logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--sky),var(--violet));
   display:flex;align-items:center;justify-content:center;font-weight:800;font-size:21px;color:#fff;flex:0 0 auto}
@@ -206,7 +219,18 @@ table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:an
   padding:6px 13px;font-size:12.5px;cursor:pointer;color:var(--text);font-weight:600}
 .chip.selected{border-color:var(--sky);background:rgba(56,189,248,.12);color:var(--accent-text)}
 .chip input{margin:0;accent-color:var(--sky)}
-
+.picker-modal{max-width:640px!important;padding:0;overflow:hidden}
+.picker-head{padding:24px 26px 14px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(30,41,59,.5),rgba(15,23,42,0))}
+.picker-head h3{margin:0 0 6px}
+.picker-head .hint{margin:0}
+.picker-search{padding:16px 26px 10px;border-bottom:1px solid rgba(38,54,79,.75)}
+.picker-search label{display:block;color:var(--accent-text);font-size:11.5px;font-weight:850;letter-spacing:.02em;margin-bottom:7px}
+.picker-list{max-height:390px;overflow-y:auto;padding:10px 12px;background:#0b1220}
+.picker-item{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;background:#111827;border:1px solid rgba(51,65,85,.8);color:var(--text);border-radius:12px;padding:11px 13px;margin-bottom:8px;cursor:pointer}
+.picker-item:hover,.picker-item.selected{border-color:var(--sky);background:rgba(56,189,248,.11)}
+.picker-item .mono{white-space:normal;overflow-wrap:anywhere}
+.picker-badge{font-size:10.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.18);border-radius:999px;padding:3px 8px}
+.picker-empty{padding:24px;text-align:center;color:var(--muted)}
 
 .request-list{display:grid;gap:10px}
 .request-card{background:#0b1220;border:1px solid var(--border);border-radius:14px;padding:12px 14px}
@@ -219,6 +243,15 @@ table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:an
 .request-kpi .k{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:2px}
 .request-kpi .v{display:block;color:var(--text);font-size:12.5px;font-weight:760;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .request-kpi.primary .v{color:var(--accent-text);font-size:15px;font-weight:850}
+.user-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.55fr);gap:14px;margin-bottom:18px}
+.user-card{background:linear-gradient(145deg,#111c31,#0b1220);border:1px solid var(--border);border-radius:22px;padding:22px;min-width:0;box-shadow:0 20px 50px rgba(0,0,0,.22)}
+.user-card h3{margin:0 0 8px;font-size:20px;letter-spacing:-.02em}
+.user-card p{margin:0;color:var(--muted)}
+.user-card .key-line{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.user-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.user-metric{background:#0b1220;border:1px solid rgba(51,65,85,.78);border-radius:14px;padding:12px;min-width:0}
+.user-metric span{display:block;color:var(--muted);font-size:10.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
+.user-metric b{display:block;font-size:20px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ---------- Toast ---------- */
 #toast{position:fixed;top:70px;right:22px;display:flex;flex-direction:column;gap:8px;z-index:100;pointer-events:none}
@@ -251,7 +284,9 @@ table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:an
 .kv .k{color:var(--muted)} .kv .v{font-weight:600}
 .hamburger{display:none}
 @media(max-width:820px){
-  .wizard-steps,.form-grid{grid-template-columns:1fr}
+  .login-shell{grid-template-columns:1fr;max-width:480px}
+  .login-copy{display:none}
+  .wizard-steps,.form-grid,.user-hero{grid-template-columns:1fr}
   .hamburger{display:inline-flex}
   .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s}
   .sidebar.open{transform:none}
@@ -299,23 +334,40 @@ table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:an
 
 <!-- ============ LOGIN ============ -->
 <div id="login-view">
-  <div class="login-card">
-    <div class="brand">
-      <div class="logo">B</div>
-      <div><h1>BrighTO</h1><div class="sub">Router</div></div>
+  <div class="login-shell">
+    <section class="login-copy" aria-label="Product overview">
+      <div class="eyebrow">Rust LLM gateway</div>
+      <h2>Route, budget, and observe every model call from one control plane.</h2>
+      <p>BrighTO Router gives teams one OpenAI-compatible endpoint with provider choice, API keys, budgets, token accounting, and live production signals.</p>
+      <div class="login-metrics">
+        <div class="login-metric"><b>1</b><span>simple portal</span></div>
+        <div class="login-metric"><b>5s</b><span>config reload</span></div>
+        <div class="login-metric"><b>PostgreSQL</b><span>runtime store</span></div>
+      </div>
+      <div class="login-proof">
+        <div><i></i><span>Create a tested model route before clients can use it.</span></div>
+        <div><i></i><span>Give each team a visible key, expiry, rate limit, and budget.</span></div>
+        <div><i></i><span>Track tokens, cost, errors, latency, and Tok/s after every request.</span></div>
+      </div>
+    </section>
+    <div class="login-card">
+      <div class="brand">
+        <div class="logo">B</div>
+        <div><h1>BrighTO</h1><div class="sub">Router</div></div>
+      </div>
+      <p class="subtitle" id="login-sub">Sign in to manage your LLM gateway.</p>
+      <div class="seg">
+        <button id="seg-admin" class="active" onclick="setMode('admin')">Admin</button>
+        <button id="seg-user" onclick="setMode('user')">User</button>
+      </div>
+      <div id="admin-fields">
+        <div class="field"><label>Username</label><input id="login-user" value="admin" autocomplete="username"></div>
+        <div class="field"><label>Password</label><input id="login-pass" type="password" placeholder="ADMIN_MASTER_KEY" autocomplete="current-password"></div>
+      </div>
+      <div class="field hidden" id="user-field"><label>API key</label><input id="login-apikey" type="password" placeholder="lc-..." autocomplete="off"></div>
+      <button class="btn primary btn-block" onclick="login()">Sign in</button>
+      <div class="warn-note hidden" id="login-error"></div>
     </div>
-    <p class="subtitle" id="login-sub">Sign in to manage your LLM gateway.</p>
-    <div class="seg">
-      <button id="seg-admin" class="active" onclick="setMode('admin')">Admin</button>
-      <button id="seg-user" onclick="setMode('user')">User</button>
-    </div>
-    <div id="admin-fields">
-      <div class="field"><label>Username</label><input id="login-user" value="admin" autocomplete="username"></div>
-      <div class="field"><label>Password</label><input id="login-pass" type="password" placeholder="ADMIN_MASTER_KEY" autocomplete="current-password"></div>
-    </div>
-    <div class="field hidden" id="user-field"><label>API key</label><input id="login-apikey" type="password" placeholder="lc-..." autocomplete="off"></div>
-    <button class="btn primary btn-block" onclick="login()">Sign in</button>
-    <div class="warn-note hidden" id="login-error"></div>
   </div>
 </div>
 
@@ -516,6 +568,36 @@ function readinessItem(label,note,kind){
   row.appendChild(el("div","readiness-note",note));
   return row;
 }
+function userHero(me,stats,logs,inT,outT,req,errRate){
+  var latest=logs&&logs.length?logs[0]:null;
+  var tokRateVals=(logs||[]).filter(function(r){return r.total_tokens_per_second!=null;}).map(function(r){return Number(r.total_tokens_per_second)||0;});
+  var avgTok=tokRateVals.length?Math.round(tokRateVals.reduce(function(a,b){return a+b;},0)/tokRateVals.length):null;
+  var hero=el("div","user-hero");
+  var left=el("div","user-card");
+  left.appendChild(el("div","ops-kicker","Client workspace"));
+  left.appendChild(el("h3",null,"Your API access"));
+  left.appendChild(el("p",null,"Use your key against the router endpoint. This page shows only your traffic, allowed models, limits, and recent request speed."));
+  var line=el("div","key-line");
+  if(me&&me.key){ line.appendChild(pill("Key "+me.key.prefix,"info")); line.appendChild(pill(me.key.enabled?"Enabled":"Disabled",me.key.enabled?"on":"off")); }
+  if(me&&me.team) line.appendChild(pill("Team: "+me.team.name,"info"));
+  left.appendChild(line);
+  if(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length){
+    left.appendChild(el("p","hint","Allowed models: "+me.key.allowed_models.slice(0,6).join(", ")+(me.key.allowed_models.length>6?" +"+(me.key.allowed_models.length-6)+" more":"")));
+  }else{
+    left.appendChild(el("p","hint","Allowed models: all enabled routes."));
+  }
+  hero.appendChild(left);
+  var right=el("div","user-card");
+  right.appendChild(el("div","ops-kicker","Last 30 days"));
+  var g=el("div","user-metrics");
+  [["Requests",fmt(req)], ["Tokens",fmt(inT+outT)], ["Error rate",errRate+"%"], ["Tok/s",avgTok==null?"—":fmt(avgTok)]].forEach(function(x){
+    var m=el("div","user-metric"); m.appendChild(el("span",null,x[0])); m.appendChild(el("b",null,x[1])); g.appendChild(m);
+  });
+  right.appendChild(g);
+  right.appendChild(el("p","hint",latest?"Latest request: "+fmtTs(latest.ts)+" · status "+latest.status:"No requests yet. Send one request, then refresh this dashboard."));
+  hero.appendChild(right);
+  return hero;
+}
 function dashboardHero(sum,inT,outT,req,errRate,cost){
   var enabledRoutes=routes.filter(function(r){return r.effective_enabled}).length;
   var configuredRoutes=routes.length;
@@ -587,10 +669,11 @@ function focusPanel(title,rows,empty){
 /* ===== Dashboard ===== */
 async function renderDashboard(c,seq){
   c.innerHTML="";
-  var stats=[], logs=[], sum=null;
+  var stats=[], logs=[], sum=null, me=null;
   try{ stats=await api(mode==="admin"?"/admin/stats?days=30":"/portal/me/stats?days=30","GET"); }catch(e){}
   try{ logs=await api(mode==="admin"?"/admin/usage":"/portal/me/usage","GET"); }catch(e){}
   if(mode==="admin"){ try{ sum=await api("/admin/summary?days=30","GET"); }catch(e){} }
+  else { try{ me=await api("/portal/me","GET"); }catch(e){} }
   if(!isCurrentRender(c,seq)) return;
   var inT=sum?sum.totals.input_tokens:stats.reduce(function(a,s){return a+s.input_tokens},0);
   var outT=sum?sum.totals.output_tokens:stats.reduce(function(a,s){return a+s.output_tokens},0);
@@ -601,6 +684,8 @@ async function renderDashboard(c,seq){
 
   if(mode==="admin"){
     c.appendChild(dashboardHero(sum,inT,outT,req,errRate,cost));
+  }else{
+    c.appendChild(userHero(me,stats,logs,inT,outT,req,errRate));
   }
 
   var cards=[];
@@ -608,12 +693,12 @@ async function renderDashboard(c,seq){
     cards=[["Gateway","Ready","router online"],
            ["Enabled routes", routes.filter(function(r){return r.enabled}).length, "of "+routes.length+" routes"],
            ["Active providers", backends.filter(function(b){return b.enabled}).length, "of "+backends.length+" configured"],
-           ["Active teams", teams.filter(function(t){return t.enabled}).length, "of "+teams.length+" teams"]];
+           ["Active teams", teams.filter(function(t){return t.enabled}).length, "of "+teams.length+" teams"],
+           ["Estimated cost", fmtCost(cost), pricedReqs?(pricedReqs+" priced requests"):"configure route prices"]];
   }
   cards=cards.concat([
     ["Requests (30d)", fmt(req), "completed"],
     ["Total tokens", fmt(inT+outT), "in "+fmt(inT)+" / out "+fmt(outT)],
-    ["Estimated cost", fmtCost(cost), pricedReqs?(pricedReqs+" priced requests"):"configure route prices"],
     ["Error rate", errRate+"%", "30d"]
   ]);
   var grid=el("div","grid");
@@ -1064,21 +1149,31 @@ function openRouteModal(route){
 }
 
 function pickModelModal(models, onPick){
-  var ov=el("div"); ov.style.position="fixed"; ov.style.inset="0"; ov.style.background="rgba(2,6,18,.82)"; ov.style.zIndex="300"; ov.style.display="flex"; ov.style.alignItems="flex-start"; ov.style.justifyContent="center"; ov.style.padding="42px 20px"; ov.style.overflowY="auto";
-  var m=el("div","modal"); m.style.maxWidth="520px";
-  m.appendChild(el("h3",null,"Select a model ("+models.length+")"));
-  var search=el("input"); search.placeholder="Search models…"; search.style.marginBottom="12px"; m.appendChild(search);
-  var list=el("div","picker-list"); list.style.maxHeight="360px"; list.style.overflowY="auto"; list.style.border="1px solid var(--border)"; list.style.borderRadius="10px"; m.appendChild(list);
+  var ov=el("div"); ov.className="picker-overlay"; ov.style.position="fixed"; ov.style.inset="0"; ov.style.background="rgba(2,6,18,.82)"; ov.style.zIndex="300"; ov.style.display="flex"; ov.style.alignItems="flex-start"; ov.style.justifyContent="center"; ov.style.padding="42px 20px"; ov.style.overflowY="auto";
+  var m=el("div","modal picker-modal");
+  var head=el("div","picker-head");
+  head.appendChild(el("h3",null,"Select a model ("+models.length+")"));
+  head.appendChild(el("p","hint","Choose exactly one provider model. The public model name can stay the same or be renamed after selection."));
+  m.appendChild(head);
+  var searchBox=el("div","picker-search");
+  searchBox.appendChild(el("label",null,"Search models"));
+  var search=el("input"); search.placeholder="Type part of a model name…"; search.setAttribute("aria-label","Search models"); searchBox.appendChild(search);
+  m.appendChild(searchBox);
+  var list=el("div","picker-list"); list.setAttribute("role","listbox"); m.appendChild(list);
   var chosen=null;
+  var use=el("button","btn primary","Use this model"); use.disabled=true;
   function draw(q){
     list.innerHTML="";
     var ql=(q||"").toLowerCase();
     var shown=models.filter(function(md){ return md.toLowerCase().indexOf(ql)>=0; }).slice(0,300);
-    if(!shown.length){ list.appendChild(el("p","hint","No matches")); }
+    if(!shown.length){ list.appendChild(el("div","picker-empty","No models match this search.")); return; }
     shown.forEach(function(md){
-      var it=el("div"); it.style.cursor="pointer"; it.style.padding="9px 12px"; it.style.borderBottom="1px solid var(--border)";
+      var it=el("button","picker-item"); it.type="button"; it.setAttribute("role","option"); it.setAttribute("aria-selected",chosen===md?"true":"false");
+      if(chosen===md) it.classList.add("selected");
       it.appendChild(el("span","mono",md));
-      it.onclick=function(){ chosen=md; var all=list.querySelectorAll("div"); for(var i=0;i<all.length;i++) all[i].style.background=""; it.style.background="rgba(56,189,248,.14)"; use.disabled=false; };
+      it.appendChild(el("span","picker-badge",chosen===md?"Selected":"Model"));
+      it.onclick=function(){ chosen=md; use.disabled=false; draw(search.value); };
+      it.ondblclick=function(){ chosen=md; onPick(chosen); ov.remove(); };
       list.appendChild(it);
     });
   }
@@ -1086,10 +1181,9 @@ function pickModelModal(models, onPick){
   draw("");
   var act=el("div","actions");
   var cl=el("button","btn","Cancel"); cl.onclick=function(){ ov.remove(); };
-  var use=el("button","btn primary","Use this model"); use.disabled=true;
   use.onclick=function(){ if(chosen){ onPick(chosen); ov.remove(); } };
   act.appendChild(cl); act.appendChild(use); m.appendChild(act);
-  ov.appendChild(m); document.body.appendChild(ov);
+  ov.appendChild(m); document.body.appendChild(ov); search.focus();
 }
 
 async function deleteRoute(r){
