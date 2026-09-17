@@ -236,6 +236,11 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
   padding:6px 13px;font-size:12.5px;cursor:pointer;color:var(--text);font-weight:600}
 .chip.selected{border-color:var(--sky);background:rgba(56,189,248,.12);color:var(--accent-text)}
 .chip input{margin:0;accent-color:var(--sky)}
+.field .switch-field{display:flex;align-items:center;justify-content:space-between;gap:14px;background:#0b1220;border:1px solid var(--border2);border-radius:13px;padding:12px 14px;color:var(--text);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500;margin-bottom:0}
+.field .switch-field.selected{border-color:var(--sky);background:rgba(56,189,248,.10)}
+.field .switch-field b{display:block;font-size:13px;color:var(--text);font-weight:750}
+.field .switch-field small{display:block;color:var(--muted);font-size:12px;margin-top:2px;text-transform:none;letter-spacing:0;font-weight:500}
+.field .switch-field input{width:18px;height:18px;accent-color:var(--sky);flex:0 0 auto;padding:0;margin:0}
 .picker-modal{max-width:640px!important;padding:0;overflow:hidden}
 .picker-head{padding:24px 26px 14px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(30,41,59,.5),rgba(15,23,42,0))}
 .picker-head h3{margin:0 0 6px}
@@ -933,8 +938,10 @@ function openProviderModal(b){
   m.appendChild(loadGrid);
   m.appendChild(el("div","section-title","State"));
   var en=el("div","field");
-  var lab=el("label","chip"+(b.enabled!==false?" selected":"")); var cb=el("input"); cb.type="checkbox"; cb.checked=b.enabled!==false;
-  lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); en.appendChild(lab); m.appendChild(en);
+  var lab=el("label","switch-field"+(b.enabled!==false?" selected":"")); var cb=el("input"); cb.type="checkbox"; cb.checked=b.enabled!==false;
+  cb.onchange=function(){ lab.classList.toggle("selected", cb.checked); };
+  var copy=el("span"); copy.appendChild(el("b",null,"Enabled")); copy.appendChild(el("small",null,"Available for model routes."));
+  lab.appendChild(copy); lab.appendChild(cb); en.appendChild(lab); m.appendChild(en);
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary", b.id?"Save":"Add");
@@ -1362,7 +1369,7 @@ function openTeamModal(tm){
   advBtn.onclick=function(){bi.style.display = bi.style.display==="none"?"block":"none";};
   f2d.appendChild(advBtn); f2d.appendChild(bi); m.appendChild(f2d);
   m.appendChild(el("div","section-title","State"));
-  var f3=el("div","field"); var lab=el("label","chip"+(tm.enabled===false?"":" selected")); var cb=el("input"); cb.type="checkbox"; cb.checked=tm.enabled!==false; lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); f3.appendChild(lab); m.appendChild(f3);
+  var f3=el("div","field"); var lab=el("label","switch-field"+(tm.enabled===false?"":" selected")); var cb=el("input"); cb.type="checkbox"; cb.checked=tm.enabled!==false; cb.onchange=function(){ lab.classList.toggle("selected", cb.checked); }; var copy=el("span"); copy.appendChild(el("b",null,"Enabled")); copy.appendChild(el("small",null,"Team can own API keys and usage.")); lab.appendChild(copy); lab.appendChild(cb); f3.appendChild(lab); m.appendChild(f3);
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary",tm.id?"Save":"Create");
   save.onclick=async function(){
@@ -1486,7 +1493,7 @@ function openKeyModal(k){
   var bud=el("textarea"); bud.style.display="none"; bud.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}'; if(k.budget) bud.value=JSON.stringify(k.budget);
   advBtn.onclick=function(){bud.style.display = bud.style.display==="none"?"block":"none";};
   f10.appendChild(advBtn); f10.appendChild(bud); m.appendChild(f10);
-  if(isEdit){ m.appendChild(el("div","section-title","State")); var f11=el("div","field"); var lab=el("label","chip"+(k.enabled!==false?" selected":"")); var ecb=el("input"); ecb.type="checkbox"; ecb.checked=k.enabled!==false; lab.appendChild(ecb); lab.appendChild(document.createTextNode("Enabled")); f11.appendChild(lab); m.appendChild(f11); }
+  if(isEdit){ m.appendChild(el("div","section-title","State")); var f11=el("div","field"); var lab=el("label","switch-field"+(k.enabled!==false?" selected":"")); var ecb=el("input"); ecb.type="checkbox"; ecb.checked=k.enabled!==false; ecb.onchange=function(){ lab.classList.toggle("selected", ecb.checked); }; var copy=el("span"); copy.appendChild(el("b",null,"Enabled")); copy.appendChild(el("small",null,"Client key can call allowed routes.")); lab.appendChild(copy); lab.appendChild(ecb); f11.appendChild(lab); m.appendChild(f11); }
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary",isEdit?"Save":"Create");
   save.onclick=async function(){
