@@ -55,6 +55,9 @@ async function inspect(page) {
       passPlaceholder: pass?.getAttribute('placeholder') || '',
       apiPlaceholder: api?.getAttribute('placeholder') || '',
       signInText: signIn?.innerText?.trim() || '',
+      signInDisabled: !!signIn?.disabled,
+      errorVisible: visible(document.querySelector('#login-error')),
+      errorText: document.querySelector('#login-error')?.textContent || '',
       text: (login?.innerText || document.body.innerText || '').slice(0, 1400),
     };
   });
@@ -81,6 +84,26 @@ function checkUser(label, metrics) {
   if (metrics.adminVisible || !metrics.userVisible) fail(`${label}: user form visibility incorrect`, metrics);
   if (!/client API key/i.test(metrics.subtitle) || !/lc-/i.test(metrics.help) || !/API Keys/i.test(metrics.help)) fail(`${label}: user copy does not explain client API key`, metrics);
   if (!/Client API key/i.test(metrics.userLabel) || metrics.apiPlaceholder !== 'lc-...') fail(`${label}: user API key label is unclear`, metrics);
+}
+
+async function verifyLoginErrorReset(browser, name, width, height) {
+  const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width, height } });
+  try {
+    await gotoWithRetry(page, BASE + '/');
+    await page.locator('#login-pass').fill('definitely-wrong-admin-key');
+    await page.locator('#login-pass').press('Enter');
+    await page.locator('#login-error:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
+    const failed = await inspect(page);
+    result.pages[`${name}-admin-error`] = failed;
+    if (!/Invalid admin/i.test(failed.errorText) || failed.signInDisabled) fail(`${name}: invalid admin login should show error and re-enable Sign in`, failed);
+    await page.locator('#seg-user').click();
+    await page.waitForTimeout(100);
+    const user = await inspect(page);
+    result.pages[`${name}-error-cleared-on-user-tab`] = user;
+    if (user.errorVisible || /Invalid admin/i.test(user.text)) fail(`${name}: switching Admin/User tabs should clear stale login errors`, user);
+  } finally {
+    await page.close().catch(() => {});
+  }
 }
 
 async function verifyEnterSignIn(browser, name, width, height) {
@@ -124,6 +147,7 @@ async function runViewport(browser, name, width, height) {
   result.pages[`${name}-user`] = userMetrics;
   checkUser(`${name}-user`, userMetrics);
   await page.close();
+  await verifyLoginErrorReset(browser, name, width, height);
   await verifyEnterSignIn(browser, name, width, height);
 }
 

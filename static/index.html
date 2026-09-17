@@ -526,7 +526,7 @@ body.nav-open{overflow:hidden}
         <div class="field"><label>Admin key</label><input id="login-pass" type="password" placeholder="ADMIN_MASTER_KEY" autocomplete="current-password"></div>
       </div>
       <div class="field hidden" id="user-field"><label>Client API key</label><input id="login-apikey" type="password" placeholder="lc-..." autocomplete="off"></div>
-      <button class="btn primary btn-block" onclick="login()">Sign in</button>
+      <button id="login-submit" class="btn primary btn-block" onclick="login()">Sign in</button>
       <div class="warn-note hidden" id="login-error"></div>
     </div>
   </div>
@@ -571,6 +571,7 @@ body.nav-open{overflow:hidden}
 "use strict";
 var mode = "admin";
 var authKey = "";
+var loginBusy = false;
 var backends = [], routes = [], teams = [], keys = [], catalog = [];
 
 function $(id){ return document.getElementById(id); }
@@ -593,8 +594,16 @@ async function api(path, method, body){
 function toast(msg, type){ var b=$("toast"); var t=el("div","toast "+(type||""),msg); b.appendChild(t); setTimeout(function(){t.remove();},4000); }
 
 /* ===== Auth ===== */
+function clearLoginError(){ var err=$("login-error"); if(err){ err.textContent=""; err.classList.add("hidden"); } }
+function showLoginError(msg){ var err=$("login-error"); if(err){ err.textContent=msg; err.classList.remove("hidden"); } }
+function setLoginBusy(on){
+  loginBusy=!!on;
+  var b=$("login-submit");
+  if(b){ b.disabled=loginBusy; b.textContent=loginBusy?"Signing in…":"Sign in"; }
+}
 function setMode(m){
   mode=m;
+  clearLoginError();
   $("seg-admin").classList.toggle("active",m==="admin");
   $("seg-user").classList.toggle("active",m==="user");
   $("admin-fields").classList.toggle("hidden",m!=="admin");
@@ -603,23 +612,31 @@ function setMode(m){
   $("login-help").innerHTML = m==="admin" ? "Use username <code>admin</code> and the <code>ADMIN_MASTER_KEY</code> value." : "Paste the visible <code>lc-...</code> key issued from the API Keys screen.";
 }
 async function login(){
-  var err=$("login-error"); err.classList.add("hidden");
+  if(loginBusy) return;
+  clearLoginError();
+  var path, errMsg;
   if(mode==="admin"){
     var u=$("login-user").value.trim();
     var p=$("login-pass").value;
-    if(u!=="admin" || !p){ err.textContent="Invalid admin username or password."; err.classList.remove("hidden"); return; }
-    authKey=p;
-    try{ await api("/admin/backends","GET"); }
-    catch(e){ err.textContent="Invalid admin username or password."; err.classList.remove("hidden"); return; }
+    if(u!=="admin" || !p){ showLoginError("Invalid admin username or password."); return; }
+    authKey=p; path="/admin/backends"; errMsg="Invalid admin username or password.";
   }else{
     authKey=$("login-apikey").value.trim();
-    if(!authKey){ err.textContent="Please enter your API key."; err.classList.remove("hidden"); return; }
-    try{ await api("/portal/me","GET"); }
-    catch(e){ err.textContent="Invalid API key."; err.classList.remove("hidden"); return; }
+    if(!authKey){ showLoginError("Please enter your API key."); return; }
+    path="/portal/me"; errMsg="Invalid API key.";
   }
-  enterApp();
-  saveSession();
-  await refresh();
+  setLoginBusy(true);
+  try{
+    await api(path,"GET");
+    enterApp();
+    saveSession();
+    await refresh();
+  }catch(e){
+    authKey="";
+    showLoginError(errMsg);
+  }finally{
+    setLoginBusy(false);
+  }
 }
 function enterApp(){
   $("login-view").classList.add("hidden");
@@ -662,7 +679,7 @@ async function restoreSession(){
   await refresh();
   return true;
 }
-function logout(){ authKey=""; clearSession(); $("app-view").classList.add("hidden"); $("login-view").classList.remove("hidden"); $("content").innerHTML=""; }
+function logout(){ authKey=""; setLoginBusy(false); clearLoginError(); clearSession(); $("app-view").classList.add("hidden"); $("login-view").classList.remove("hidden"); $("content").innerHTML=""; }
 
 /* ===== Nav ===== */
 var titles={dashboard:"Dashboard",providers:"Providers",models:"Models & Routes",teams:"Teams",keys:"API Keys",usage:"Usage",settings:"Settings"};
