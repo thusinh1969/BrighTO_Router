@@ -12,6 +12,22 @@ const result = { result: 'FAIL', base: BASE, model: MODEL, viewportResults: {}, 
 function pass(area, summary, evidence = {}) { console.log(`[PASS] ${area}: ${summary}`); result.passes.push({ area, summary, evidence }); }
 function fail(area, summary, evidence = {}, requiredFix = '') { console.log(`[FAIL] ${area}: ${summary}`); result.failures.push({ area, summary, evidence, requiredFix }); }
 
+
+async function gotoWithRetry(page, url, attempts = 3) {
+  let lastError = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      return;
+    } catch (e) {
+      lastError = e;
+      if (!/ERR_NETWORK_CHANGED|ERR_CONNECTION_RESET|ERR_HTTP2_PROTOCOL_ERROR/i.test(String(e && (e.message || e)))) break;
+      await page.waitForTimeout(500 + i * 500);
+    }
+  }
+  throw lastError;
+}
+
 async function adminFetch(path, method = 'GET', body) {
   const res = await fetch(BASE + path, {
     method,
@@ -76,7 +92,7 @@ async function login(page) {
   let lastErr;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await gotoWithRetry(page, BASE + '/');
       await page.locator('#login-user').fill('admin');
       await page.locator('#login-pass').fill(ADMIN);
       await page.evaluate(() => login());

@@ -12,6 +12,22 @@ const result = { result: 'FAIL', base: BASE, prefix, failures: [], passes: [], e
 function pass(area, summary, evidence = {}) { console.log('[PASS] ' + area + ': ' + summary); result.passes.push({ area, summary, evidence }); }
 function fail(area, summary, evidence = {}, requiredFix = '') { console.log('[FAIL] ' + area + ': ' + summary); result.failures.push({ area, summary, evidence, requiredFix }); }
 
+
+async function gotoWithRetry(page, url, attempts = 3) {
+  let lastError = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      return;
+    } catch (e) {
+      lastError = e;
+      if (!/ERR_NETWORK_CHANGED|ERR_CONNECTION_RESET|ERR_HTTP2_PROTOCOL_ERROR/i.test(String(e && (e.message || e)))) break;
+      await page.waitForTimeout(500 + i * 500);
+    }
+  }
+  throw lastError;
+}
+
 async function adminFetch(path, method = 'GET', body) {
   const res = await fetch(BASE + path, { method, headers: { 'content-type': 'application/json', 'x-admin-key': ADMIN }, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await res.text();
@@ -38,7 +54,7 @@ async function main() {
   let teamId = null, keyId = null;
 
   try {
-    await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await gotoWithRetry(page, BASE + '/');
     await page.locator('#login-user').fill('admin');
     await page.locator('#login-pass').fill(ADMIN);
     await page.evaluate(() => login());
@@ -191,6 +207,26 @@ async function main() {
     keyId = key?.id;
     if (keyMatch && key && key.revealable) pass('keys', 'key create + revealable', { owner: key.owner, prefix: key.prefix });
     else fail('keys', 'key create/reveal missing', { key });
+
+    const createdKeyRow = row(page, prefix + '-owner');
+    await createdKeyRow.getByRole('button', { name: 'Reveal' }).waitFor({ state: 'visible', timeout: 8000 });
+    await createdKeyRow.getByRole('button', { name: 'Reveal' }).click({ force: true });
+    await page.locator('.modal').filter({ hasText: key.prefix }).waitFor({ state: 'visible', timeout: 8000 });
+    const fullKeyText = await page.locator('.modal').innerText();
+    if (fullKeyText.includes(key.prefix)) pass('keys', 'Reveal opens key reveal modal', { prefix: key.prefix });
+    else fail('keys', 'Reveal did not reveal key prefix', { prefix: key.prefix, modalText: fullKeyText.slice(0, 200) });
+    await page.evaluate(() => closeModal());
+
+    await createdKeyRow.getByRole('button', { name: 'Disable' }).click({ force: true });
+    await page.waitForTimeout(700);
+    let toggledKey = (await adminFetch('/admin/keys')).find((k) => k.id === keyId);
+    if (toggledKey && toggledKey.enabled === false) pass('keys', 'Disable key button disables key', { id: keyId });
+    else fail('keys', 'Disable key button did not disable key', { key: toggledKey });
+    await row(page, prefix + '-owner').getByRole('button', { name: 'Enable' }).click({ force: true });
+    await page.waitForTimeout(700);
+    toggledKey = (await adminFetch('/admin/keys')).find((k) => k.id === keyId);
+    if (toggledKey && toggledKey.enabled === true) pass('keys', 'Enable key button re-enables key', { id: keyId });
+    else fail('keys', 'Enable key button did not re-enable key', { key: toggledKey });
 
     const userKey = (await adminFetch('/admin/keys')).find((k) => k.enabled && k.revealable !== false && k.id !== keyId) || key;
     if (userKey) {
