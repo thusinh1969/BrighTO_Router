@@ -23,15 +23,12 @@ function row(page, text) { return page.locator('tr').filter({ hasText: text }).f
 
 async function main() {
   if (!ADMIN) { fail('env', 'BRIGHTO_ADMIN_KEY required'); return; }
-  const launch = { headless: true };
-  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) launch.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
-  const browser = await chromium.launch(launch);
+  const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 900 } });
   page.on('console', (m) => { if (m.type() === 'error') result.consoleErrors.push(m.text()); });
   page.on('pageerror', (e) => result.consoleErrors.push('pageerror: ' + e.message));
   page.on('dialog', async (d) => { result.evidence.lastDialog = d.message(); await d.accept(); });
 
-  let routeCreated = false, backendCreatedId = null;
   try {
     await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.locator('#login-user').fill('admin');
@@ -42,9 +39,11 @@ async function main() {
 
     const catalog = await adminFetch('/admin/provider-catalog');
     result.evidence.catalog = catalog;
-    if (catalog.length >= 2 && catalog.some((c) => c.key === 'custom') && catalog.every((c) => c.dialect === 'openai' || c.dialect === 'anthropic')) {
-      pass('catalog', 'provider catalog loaded from .env with 2 dialects + Custom LLM', { count: catalog.length });
-    } else { fail('catalog', 'catalog wrong', catalog); }
+    if (catalog.length === 10 && catalog.some((c) => c.key === 'zai') && catalog.some((c) => c.key === 'meta-muse')) {
+      pass('catalog', '10 providers incl Z.AI + Meta Muse', { count: catalog.length });
+    } else { fail('catalog', 'catalog wrong', catalog.map((c) => c.key)); }
+    const gemini = catalog.find((c) => c.key === 'gemini');
+    if (gemini && gemini.enabled === false) pass('catalog', 'Gemini marked coming-soon'); else fail('catalog', 'Gemini not disabled', { gemini });
 
     await page.locator('.nav[data-view="models"]').click({ force: true });
     await page.waitForTimeout(600);
@@ -52,61 +51,70 @@ async function main() {
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
     const labels = await page.locator('.modal label').evaluateAll((ls) => ls.map((l) => l.textContent.trim()));
     result.evidence.addModelLabels = labels;
-    const want = ['Provider', 'Base URL', 'API key', 'Provider model', 'Public model name (shown to clients)'];
-    const missing = want.filter((w) => !labels.some((l) => l.includes(w)));
-    if (!missing.length) pass('wizard', 'unified Add-model fields present', { labels });
-    else fail('wizard', 'missing fields', { missing, labels });
 
-    // select Custom LLM
-    await modalField(page, 'Provider').selectOption('custom');
+    const saveEnabledBtn = page.getByRole('button', { name: 'Save enabled' });
+    const saveDraftBtn = page.getByRole('button', { name: 'Save draft' });
+    if (await saveEnabledBtn.isDisabled()) pass('gating', 'Save enabled disabled before test');
+    else fail('gating', 'Save enabled should be disabled before test');
+    if (await saveDraftBtn.isEnabled()) pass('gating', 'Save draft always available');
+    else fail('gating', 'Save draft should be available');
+
+    await modalField(page, 'Provider').selectOption('custom-llm');
     await page.waitForTimeout(200);
     await modalField(page, 'Base URL').fill('http://127.0.0.1:9000/v1');
     await page.getByRole('button', { name: 'Load models' }).click({ force: true });
-    // picker is a separate fixed overlay, not .modal
     await page.waitForTimeout(1200);
     const pickerText = await page.locator('body').innerText();
-    if (pickerText.includes('Select a model')) pass('wizard', 'Load models opens a picker window');
-    else fail('wizard', 'picker window did not open', { excerpt: pickerText.slice(0, 300) });
+    if (pickerText.includes('Select a model')) pass('picker', 'Load models opens chooser'); else fail('picker', 'chooser missing', { excerpt: pickerText.slice(0, 200) });
     await page.locator('text=mock-model').first().click();
     await page.getByRole('button', { name: 'Use this model' }).click();
     await page.waitForTimeout(400);
     const pmodel = await modalField(page, 'Provider model').inputValue();
-    if (pmodel === 'mock-model') pass('wizard', 'picked model filled provider model field');
-    else fail('wizard', 'provider model field wrong', { pmodel });
+    if (pmodel === 'mock-model') pass('picker', 'picked model filled'); else fail('picker', 'model field wrong', { pmodel });
 
     await page.getByRole('button', { name: 'Test connection' }).click({ force: true });
     await page.waitForTimeout(1500);
     const statText = await page.locator('.modal').innerText();
-    const saveBtn = page.getByRole('button', { name: 'Save model' });
-    const saveEnabled = await saveBtn.isEnabled();
-    if (statText.includes('Connected') && saveEnabled) pass('wizard', 'test connection passed and Save enabled', { excerpt: statText.slice(-200) });
-    else fail('wizard', 'test connection did not enable Save', { excerpt: statText.slice(-200), saveEnabled });
+    if (statText.includes('Connected') && (await saveEnabledBtn.isEnabled())) pass('gating', 'test PASS enables Save enabled', { excerpt: statText.slice(-160) });
+    else fail('gating', 'test did not enable Save enabled', { excerpt: statText.slice(-160), enabled: await saveEnabledBtn.isEnabled() });
 
-    await saveBtn.click({ force: true });
+    await saveEnabledBtn.click({ force: true });
     await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
     await row(page, 'mock-model').waitFor({ state: 'visible', timeout: 10000 });
-    const routes = await adminFetch('/admin/routes');
+    let routes = await adminFetch('/admin/routes');
     const route = routes.find((r) => r.model_name === 'mock-model');
-    const backends = await adminFetch('/admin/backends');
+    let backends = await adminFetch('/admin/backends');
     const backend = backends.find((b) => b.base_url === 'http://127.0.0.1:9000/v1');
-    backendCreatedId = backend?.id;
-    if (route && route.provider_model_name === 'mock-model' && route.protocol === 'local_openai_chat' && route.auth_mode === 'none') {
-      pass('save', 'model saved with auto-created local endpoint (auth none)', { route, backend });
-      routeCreated = true;
-    } else fail('save', 'model/backend not persisted correctly', { route, backend });
+    if (route && route.enabled === true && route.auth_mode === 'none' && route.protocol === 'local_openai_chat') pass('save', 'model saved enabled with auto-created connection', { route, backend });
+    else fail('save', 'model/backend wrong', { route, backend });
 
-    // smoke through router with client key
     const resp = await fetch(BASE + '/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + CLIENT_KEY }, body: JSON.stringify({ model: 'mock-model', messages: [{ role: 'user', content: 'Reply OK' }], max_tokens: 8, stream: false }) });
-    const body = await resp.text();
-    if (resp.status === 200) pass('smoke', 'client call through router returns 200', { status: resp.status });
-    else fail('smoke', 'client call failed', { status: resp.status, body: body.slice(0, 200) });
+    if (resp.status === 200) pass('smoke', 'client call returns 200', { status: resp.status });
+    else fail('smoke', 'client call failed', { status: resp.status, body: (await resp.text()).slice(0, 200) });
+
+    await page.getByRole('button', { name: 'Add model' }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
+    await modalField(page, 'Provider').selectOption('custom-llm');
+    await modalField(page, 'Base URL').fill('http://127.0.0.1:9000/v1');
+    await modalField(page, 'Provider model').fill('mock-model');
+    await modalField(page, 'Public model name (shown to clients)').fill('mock-model-2');
+    await page.getByRole('button', { name: 'Test connection' }).click({ force: true });
+    await page.waitForTimeout(1500);
+    await page.getByRole('button', { name: 'Save enabled' }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
+    backends = await adminFetch('/admin/backends');
+    const sameUrl = backends.filter((b) => b.base_url === 'http://127.0.0.1:9000/v1');
+    if (sameUrl.length === 1) pass('dedup', 'one connection for repeated URL', { count: sameUrl.length });
+    else fail('dedup', 'duplicate connection created', { count: sameUrl.length });
 
     if (result.consoleErrors.length) fail('runtime', 'console errors', { consoleErrors: result.consoleErrors });
   } catch (e) {
     fail('audit', 'crashed', { error: e.stack || e.message });
   } finally {
     try { await adminFetch('/admin/routes/mock-model', 'DELETE'); } catch {}
-    if (backendCreatedId) { try { await adminFetch('/admin/backends/' + backendCreatedId, 'DELETE'); } catch {} }
+    try { await adminFetch('/admin/routes/mock-model-2', 'DELETE'); } catch {}
+    const bs = await adminFetch('/admin/backends').catch(() => []);
+    for (const b of (bs || [])) { if (b.base_url === 'http://127.0.0.1:9000/v1') { try { await adminFetch('/admin/backends/' + b.id, 'DELETE'); } catch {} } }
     await browser.close().catch(() => {});
   }
 }

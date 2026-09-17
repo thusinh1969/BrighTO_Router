@@ -285,6 +285,7 @@ pub fn router(runtime: Arc<AppState>) -> Router {
             "/routes/{model_name}",
             patch(patch_route).delete(delete_route),
         )
+        .route("/routes/{model_name}/enabled", patch(toggle_route_enabled))
         .route("/teams/{id}", patch(update_team))
         .route("/keys/{id}", patch(update_key).delete(disable_key))
         .route("/keys/{id}/reveal", get(reveal_key))
@@ -388,6 +389,14 @@ struct BackendResponse {
     max_inflight: i64,
     format: String,
     enabled: bool,
+    /// Số model route ĐANG enabled tham chiếu provider này.
+    active_route_count: i64,
+    /// Số dòng usage_ledger ghi cho provider này.
+    usage_count: i64,
+    /// true chỉ khi không có active route và không có usage (an toàn để xoá).
+    can_delete: bool,
+    /// Lý do chặn xoá (rỗng nếu can_delete).
+    delete_blockers: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -469,6 +478,14 @@ struct RouteResponse {
     enabled: bool,
     auth_mode: String,
     protocol: String,
+    /// route.enabled && có ít nhất 1 backend tham chiếu enabled.
+    effective_enabled: bool,
+    /// None nếu effective; 'disabled manually' / 'provider disabled'.
+    disabled_reason: Option<String>,
+    /// Số dòng usage_ledger cho public model này.
+    usage_count: i64,
+    /// true chỉ khi không có usage history (có thể xoá; có usage thì phải disable).
+    can_delete: bool,
 }
 
 #[derive(Deserialize)]
@@ -650,6 +667,68 @@ fn parse_backend_ids(value: &str) -> Result<Vec<i64>, ApiError> {
     })
 }
 
+/// Aux data cho lifecycle: enabled map + usage theo backend/model + active route theo backend.
+struct LifecycleData {
+    backends_enabled: HashMap<i64, bool>,
+    usage_by_backend: HashMap<i64, i64>,
+    usage_by_model: HashMap<String, i64>,
+    active_by_backend: HashMap<i64, Vec<String>>,
+}
+
+async fn load_lifecycle_data(pool: &PgPool) -> Result<LifecycleData, ApiError> {
+    let backends = sqlx::query::<sqlx::Postgres>("SELECT id, enabled FROM backends")
+        .fetch_all(pool)
+        .await?;
+    let mut backends_enabled = HashMap::new();
+    for b in &backends {
+        backends_enabled.insert(b.try_get::<i64, _>("id")?, b.try_get::<bool, _>("enabled")?);
+    }
+
+    let usage = sqlx::query::<sqlx::Postgres>(
+        "SELECT backend_id, model, COUNT(*) AS c FROM usage_ledger GROUP BY backend_id, model",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut usage_by_backend: HashMap<i64, i64> = HashMap::new();
+    let mut usage_by_model: HashMap<String, i64> = HashMap::new();
+    for u in &usage {
+        let bid: i64 = u.try_get("backend_id")?;
+        let model: String = u.try_get("model")?;
+        let c: i64 = u.try_get("c")?;
+        *usage_by_backend.entry(bid).or_insert(0) += c;
+        *usage_by_model.entry(model).or_insert(0) += c;
+    }
+
+    let routes = sqlx::query::<sqlx::Postgres>(
+        "SELECT model_name, backend_ids, fallback_backend_id, enabled FROM model_routes",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut active_by_backend: HashMap<i64, Vec<String>> = HashMap::new();
+    for r in &routes {
+        let enabled: bool = r.try_get("enabled")?;
+        if !enabled {
+            continue;
+        }
+        let name: String = r.try_get("model_name")?;
+        let ids_json: String = r.try_get("backend_ids")?;
+        let mut ids = parse_backend_ids(&ids_json).unwrap_or_default();
+        if let Ok(Some(fb)) = r.try_get::<Option<i64>, _>("fallback_backend_id") {
+            ids.push(fb);
+        }
+        for id in ids {
+            active_by_backend.entry(id).or_default().push(name.clone());
+        }
+    }
+
+    Ok(LifecycleData {
+        backends_enabled,
+        usage_by_backend,
+        usage_by_model,
+        active_by_backend,
+    })
+}
+
 async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiError> {
     let rows = sqlx::query::<sqlx::Postgres>(
         "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
@@ -659,14 +738,37 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
     )
     .fetch_all(pool)
     .await?;
+    let lc = load_lifecycle_data(pool).await?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         let backend_ids_json: String = row.try_get("backend_ids")?;
+        let model_name: String = row.try_get("model_name")?;
+        let enabled: bool = row.try_get("enabled")?;
+        let backend_ids = parse_backend_ids(&backend_ids_json)?;
+        let fallback: Option<i64> = row.try_get("fallback_backend_id")?;
+
+        let mut referenced = backend_ids.clone();
+        if let Some(fb) = fallback {
+            referenced.push(fb);
+        }
+        let any_backend_enabled = referenced
+            .iter()
+            .any(|id| lc.backends_enabled.get(id).copied().unwrap_or(false));
+        let effective_enabled = enabled && any_backend_enabled;
+        let disabled_reason = if !enabled {
+            Some("disabled manually".to_string())
+        } else if !any_backend_enabled {
+            Some("provider disabled".to_string())
+        } else {
+            None
+        };
+        let usage_count = lc.usage_by_model.get(&model_name).copied().unwrap_or(0);
+
         out.push(RouteResponse {
-            model_name: row.try_get("model_name")?,
-            backend_ids: parse_backend_ids(&backend_ids_json)?,
-            fallback_backend_id: row.try_get("fallback_backend_id")?,
+            model_name,
+            backend_ids,
+            fallback_backend_id: fallback,
             chars_per_token: row.try_get("chars_per_token")?,
             first_byte_timeout: row.try_get::<i64, _>("first_byte_timeout")? as u64,
             provider_model_name: row.try_get("provider_model_name")?,
@@ -674,9 +776,13 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
             max_output_tokens: row.try_get("max_output_tokens")?,
             price_input_per_mtok_usd: row.try_get("price_input_per_mtok_usd")?,
             price_output_per_mtok_usd: row.try_get("price_output_per_mtok_usd")?,
-            enabled: row.try_get("enabled")?,
+            enabled,
             auth_mode: row.try_get("auth_mode")?,
             protocol: row.try_get("protocol")?,
+            effective_enabled,
+            disabled_reason,
+            usage_count,
+            can_delete: usage_count == 0,
         });
     }
     Ok(out)
@@ -723,6 +829,10 @@ async fn create_backend(
         max_inflight: max_inflight as i64,
         format: format.to_string(),
         enabled: payload.enabled,
+        active_route_count: 0,
+        usage_count: 0,
+        can_delete: true,
+        delete_blockers: vec![],
     }))
 }
 
@@ -738,12 +848,28 @@ async fn list_backends(
     )
     .fetch_all(pool)
     .await?;
+    let lc = load_lifecycle_data(pool).await?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
+        let id: i64 = row.try_get("id")?;
         let api_key_ref: String = row.try_get("api_key_ref")?;
+        let active_names = lc.active_by_backend.get(&id).cloned().unwrap_or_default();
+        let active_route_count = active_names.len() as i64;
+        let usage_count = lc.usage_by_backend.get(&id).copied().unwrap_or(0);
+        let mut delete_blockers = Vec::new();
+        if !active_names.is_empty() {
+            delete_blockers.push(format!(
+                "used by {} active route(s): {}",
+                active_names.len(),
+                active_names.join(", ")
+            ));
+        }
+        if usage_count > 0 {
+            delete_blockers.push(format!("has {usage_count} logged request(s)"));
+        }
         out.push(BackendResponse {
-            id: row.try_get("id")?,
+            id,
             name: row.try_get("name")?,
             base_url: row.try_get("base_url")?,
             key_resolved: resolve_backend_key(&api_key_ref)
@@ -754,6 +880,10 @@ async fn list_backends(
             max_inflight: row.try_get("max_inflight")?,
             format: row.try_get("format")?,
             enabled: row.try_get("enabled")?,
+            active_route_count,
+            usage_count,
+            can_delete: delete_blockers.is_empty(),
+            delete_blockers,
         });
     }
     Ok(Json(out))
@@ -911,23 +1041,74 @@ async fn delete_backend(
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
 
-    let refs = sqlx::query::<sqlx::Postgres>("SELECT model_name, backend_ids FROM model_routes")
-        .fetch_all(pool)
-        .await?;
-    let mut in_use = Vec::new();
+    // 1. Block if provider has usage history (CODEX lifecycle).
+    let usage: i64 = sqlx::query::<sqlx::Postgres>(
+        "SELECT COUNT(*) AS c FROM usage_ledger WHERE backend_id = $1",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await?
+    .try_get("c")?;
+    if usage > 0 {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            format!("provider has {usage} logged request(s); disable it instead of deleting"),
+        ));
+    }
+
+    // 2. Block if any ENABLED route references it.
+    let refs = sqlx::query::<sqlx::Postgres>(
+        "SELECT model_name, backend_ids, fallback_backend_id, enabled FROM model_routes",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut active_in_use = Vec::new();
     for row in &refs {
+        let enabled: bool = row.try_get("enabled")?;
+        if !enabled {
+            continue;
+        }
         let ids_json: String = row.try_get("backend_ids")?;
         let ids = parse_backend_ids(&ids_json).unwrap_or_default();
         if ids.contains(&id) {
-            in_use.push(row.try_get::<String, _>("model_name")?);
+            active_in_use.push(row.try_get::<String, _>("model_name")?);
         }
     }
-    if !in_use.is_empty() {
-        in_use.sort();
+    if !active_in_use.is_empty() {
+        active_in_use.sort();
         return Err(ApiError::new(
             StatusCode::CONFLICT,
-            format!("backend in use by routes: {}", in_use.join(", ")),
+            format!("provider used by active routes: {}", active_in_use.join(", ")),
         ));
+    }
+
+    // 3. Cascade-clean disabled-only routes still referencing this provider.
+    for row in &refs {
+        let model: String = row.try_get("model_name")?;
+        let ids_json: String = row.try_get("backend_ids")?;
+        let ids = parse_backend_ids(&ids_json).unwrap_or_default();
+        let fallback: Option<i64> = row.try_get("fallback_backend_id")?;
+        if !ids.contains(&id) && fallback != Some(id) {
+            continue;
+        }
+        let remaining: Vec<i64> = ids.iter().copied().filter(|x| *x != id).collect();
+        let new_fallback = if fallback == Some(id) { None } else { fallback };
+        if remaining.is_empty() && new_fallback.is_none() {
+            let _ = sqlx::query::<sqlx::Postgres>("DELETE FROM model_routes WHERE model_name = $1")
+                .bind(&model)
+                .execute(pool)
+                .await?;
+        } else {
+            let json = serde_json::to_string(&remaining)?;
+            let _ = sqlx::query::<sqlx::Postgres>(
+                "UPDATE model_routes SET backend_ids = $1, fallback_backend_id = $2, enabled = false WHERE model_name = $3",
+            )
+            .bind(&json)
+            .bind(new_fallback)
+            .bind(&model)
+            .execute(pool)
+            .await?;
+        }
     }
 
     let result = sqlx::query::<sqlx::Postgres>("DELETE FROM backends WHERE id = $1")
@@ -1102,15 +1283,16 @@ struct ProviderCatalogEntry {
     key_env: String,
     /// true nếu env var đã set giá trị (UI hiện "dùng key từ .env", không lộ plaintext).
     key_set: bool,
+    /// false = "coming soon"/experimental (Gemini, Meta Muse) — hiển thị nhưng không chọn được.
+    enabled: bool,
 }
 
 /// Danh sách provider cố định, hard-coded trong .env qua PROVIDER_CATALOG.
-/// Định dạng mỗi entry: key|label|base_url|dialect|key_env, phân tách bằng ';'.
-/// Chỉ 2 dialect (openai/anthropic); phần còn lại (OpenAI/DeepSeek/Gemini/...) chỉ là
-/// base URL khác nhau của cùng 1 dialect. "Custom LLM" = base_url rỗng để Admin tự điền.
+/// Định dạng mỗi entry: key|label|base_url|dialect|key_env|enabled(1/0), phân tách bằng ';'.
+/// Chỉ 2 dialect (openai/anthropic); phần còn lại chỉ là base URL khác nhau của cùng 1 dialect.
 fn provider_catalog_from_env() -> Vec<ProviderCatalogEntry> {
     let raw = std::env::var("PROVIDER_CATALOG").unwrap_or_else(|_| {
-        "openai|OpenAI|https://api.openai.com/v1|openai|OPENAI_API_KEY;         anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY;         gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY;         deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY;         moonshot|Moonshot (Kimi)|https://api.moonshot.ai/v1|openai|KIMI_API_KEY;         qwen|Qwen (DashScope)|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY;         openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY;         custom|Custom LLM||openai|CUSTOM_LLM_API_KEY"
+        "openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;         anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;         gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;         deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;         kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;         qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;         zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;         openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;         meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;         custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1"
             .to_string()
     });
     raw.split(';')
@@ -1121,6 +1303,10 @@ fn provider_catalog_from_env() -> Vec<ProviderCatalogEntry> {
             let base_url = it.next()?.trim().to_string();
             let dialect = it.next()?.trim().to_string();
             let key_env = it.next().map(str::trim).unwrap_or("").to_string();
+            let enabled = it
+                .next()
+                .map(|v| v.trim() != "0")
+                .unwrap_or(true);
             if key.is_empty() || label.is_empty() {
                 return None;
             }
@@ -1138,6 +1324,7 @@ fn provider_catalog_from_env() -> Vec<ProviderCatalogEntry> {
                 dialect: if dialect == "anthropic" { "anthropic".into() } else { "openai".into() },
                 key_env,
                 key_set,
+                enabled,
             })
         })
         .collect()
@@ -1502,6 +1689,10 @@ fn route_response(v: ValidatedRoute) -> RouteResponse {
         enabled: v.enabled,
         auth_mode: v.auth_mode,
         protocol: v.protocol,
+        effective_enabled: v.enabled,
+        disabled_reason: None,
+        usage_count: 0,
+        can_delete: true,
     }
 }
 
@@ -1574,6 +1765,20 @@ async fn patch_route(
                 "model name already exists",
             ));
         }
+        // Block rename if the public model has usage history (audit identity).
+        let usage: i64 = sqlx::query::<sqlx::Postgres>(
+            "SELECT COUNT(*) AS c FROM usage_ledger WHERE model = $1",
+        )
+        .bind(&old_name)
+        .fetch_one(pool)
+        .await?
+        .try_get("c")?;
+        if usage > 0 {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "model has transaction history; renaming is not allowed",
+            ));
+        }
     }
     let result = sqlx::query::<sqlx::Postgres>(
         "UPDATE model_routes SET model_name = $1, backend_ids = $2, fallback_backend_id = $3, \
@@ -1615,6 +1820,20 @@ async fn delete_route(
 ) -> Result<StatusCode, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
+    // Block delete if model has transaction history (only disable is allowed).
+    let usage: i64 = sqlx::query::<sqlx::Postgres>(
+        "SELECT COUNT(*) AS c FROM usage_ledger WHERE model = $1",
+    )
+    .bind(&model_name)
+    .fetch_one(pool)
+    .await?
+    .try_get("c")?;
+    if usage > 0 {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "model has transaction history; disable it instead",
+        ));
+    }
     let result = sqlx::query::<sqlx::Postgres>("DELETE FROM model_routes WHERE model_name = $1")
         .bind(&model_name)
         .execute(pool)
@@ -1624,6 +1843,33 @@ async fn delete_route(
     }
     state.reload_now().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct ToggleEnabled {
+    enabled: bool,
+}
+
+/// Bật/tắt model route mà không cần gửi lại toàn bộ payload (giữ nguyên credential/backend_ids).
+async fn toggle_route_enabled(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(model_name): Path<String>,
+    Json(payload): Json<ToggleEnabled>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+    let result = sqlx::query::<sqlx::Postgres>("UPDATE model_routes SET enabled = $1 WHERE model_name = $2")
+        .bind(payload.enabled)
+        .bind(&model_name)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("route not found"));
+    }
+    state.reload_now().await?;
+    Ok(Json(json!({ "model_name": model_name, "enabled": payload.enabled })))
 }
 
 async fn create_team(

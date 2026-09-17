@@ -488,7 +488,25 @@ async fn handle_generate(
         return build_error(&request_id, StatusCode::NOT_FOUND, "model not configured");
     };
     if !route.enabled {
-        return build_error(&request_id, StatusCode::NOT_FOUND, "model is disabled");
+        return build_error(&request_id, StatusCode::FORBIDDEN, "model is disabled");
+    }
+
+    // Effective-enabled guard (CODEX lifecycle): route enabled nhưng mọi backend tham chiếu đều
+    // disabled -> từ chối RÕ RÀNG trước khi acquire/forward, KHÔNG trả "503 no healthy backend".
+    let any_backend_enabled = route
+        .backend_ids
+        .iter()
+        .any(|id| snapshot.backends.get(id).map(|b| b.enabled).unwrap_or(false))
+        || route
+            .fallback_backend_id
+            .map(|id| snapshot.backends.get(&id).map(|b| b.enabled).unwrap_or(false))
+            .unwrap_or(false);
+    if !any_backend_enabled {
+        return build_error(
+            &request_id,
+            StatusCode::FORBIDDEN,
+            "model is disabled: no enabled provider backend",
+        );
     }
 
     // Protocol endpoint guard (CODEX provider-protocol taxonomy): route chỉ chấp nhận endpoint
