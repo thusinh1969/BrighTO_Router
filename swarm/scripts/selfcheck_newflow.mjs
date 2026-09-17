@@ -53,11 +53,11 @@ async function main() {
     result.evidence.addModelLabels = labels;
 
     const saveEnabledBtn = page.getByRole('button', { name: 'Save enabled' });
-    const saveDraftBtn = page.getByRole('button', { name: 'Save draft' });
+    const saveDisabledBtn = page.getByRole('button', { name: 'Save disabled' });
     if (await saveEnabledBtn.isDisabled()) pass('gating', 'Save enabled disabled before test');
     else fail('gating', 'Save enabled should be disabled before test');
-    if (await saveDraftBtn.isEnabled()) pass('gating', 'Save draft always available');
-    else fail('gating', 'Save draft should be available');
+    if (await saveDisabledBtn.isEnabled()) pass('gating', 'Save disabled available without test');
+    else fail('gating', 'Save disabled should be available');
 
     await modalField(page, 'Provider').selectOption('custom-llm');
     await page.waitForTimeout(200);
