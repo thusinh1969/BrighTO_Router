@@ -111,6 +111,11 @@ async function inspectPage(page, label) {
       const r = node.getBoundingClientRect();
       return { open: node.open, text: (node.innerText || node.textContent || '').trim().slice(0, 240), y: Math.round(r.y), height: Math.round(r.height) };
     });
+    const opsStatus = [...document.querySelectorAll('#content .ops-status')].map((node) => ({
+      label: (node.querySelector('.k')?.textContent || '').trim(),
+      value: (node.querySelector('.v')?.textContent || '').trim(),
+      note: (node.querySelector('.cell-sub')?.textContent || '').trim(),
+    }));
     const usageBreakdownStats = [...document.querySelectorAll('#content .usage-breakdown-grid')].map((grid) => {
       const st = getComputedStyle(grid);
       return {
@@ -140,6 +145,7 @@ async function inspectPage(page, label) {
       chartValueLabels,
       sectionPositions,
       diagnosticDetails,
+      opsStatus,
       usageBreakdownStats,
       disabledDangerButtons: [...document.querySelectorAll('button.btn.danger:disabled')].filter((b) => b.offsetParent !== null).map((b) => {
         const st = getComputedStyle(b);
@@ -301,6 +307,11 @@ async function runViewport(browser, name, width, height) {
     if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });
     if (['dashboard', 'usage'].includes(view) && (metrics.legendStats || []).length && !(metrics.chartValueLabels || []).some((l) => /^\d|[KMB]/.test(l.text))) {
       fail(`${name}/${view}: sparse chart bars need visible value labels`, metrics);
+    }
+    if (view === 'dashboard') {
+      const speed = (metrics.opsStatus || []).find((s) => s.label === 'Speed');
+      if (speed && /\*$/.test(speed.value)) fail(`${name}/${view}: hero Speed KPI must not promote short-sample Tokens/sec values`, { speed, metrics });
+      if (speed && /short sample/i.test(speed.note || '')) fail(`${name}/${view}: hero Speed KPI should ask for a longer sample instead of showing short-sample copy`, { speed, metrics });
     }
     if (mobile) {
       const tinyChartLabels = (metrics.chartValueLabels || []).filter((l) => l.text && l.height < 8);
