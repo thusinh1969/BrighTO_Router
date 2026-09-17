@@ -349,7 +349,7 @@ async function main() {
           clearTimeout(timer);
         }
         if (smoke.status === 200) pass('routes', `enabled route smoke works: ${r.model_name}`, { model: r.model_name, key_prefix: keyMeta.prefix });
-        else fail('routes', `enabled route smoke failed: ${r.model_name}`, { model: r.model_name, route: r, smoke }, 'Enabled routes must be smoke-tested through the router before being marked enabled/done. Save disabled is available without endpoint test; Save enabled requires endpoint test.');
+        else fail('routes', `enabled route smoke failed: ${r.model_name}`, { model: r.model_name, route: r, smoke }, 'Enabled routes must be smoke-tested through the router before being marked enabled/done. Save draft is available without endpoint test and remains disabled; Save enabled requires endpoint test.');
       }
     }
 

@@ -1338,7 +1338,7 @@ function openRouteModal(route){
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var testBtn=el("button","btn","Test connection");
-  var saveDisabled=el("button","btn","Save disabled"); saveDisabled.title="Saves the route disabled; no connection test required";
+  var saveDisabled=el("button","btn","Save draft"); saveDisabled.title="Saves a disabled draft; it cannot receive client traffic until tested and enabled";
   var save=el("button","btn primary","Save enabled"); save.disabled=true; save.title="Requires a passing connection test";
   act.appendChild(cancel); act.appendChild(testBtn); act.appendChild(saveDisabled); act.appendChild(save); m.appendChild(act);
 
