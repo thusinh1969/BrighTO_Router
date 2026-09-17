@@ -63,6 +63,50 @@ async function go(page, view, mobile) {
   await page.locator(`.nav[data-view="${view}"]`).click({ force: true });
   await page.waitForTimeout(700);
 }
+async function verifyMobileSidebar(page, name) {
+  const initial = await page.evaluate(() => ({
+    sidebarOpen: document.querySelector('#sidebar')?.classList.contains('open') || false,
+    backdropActive: document.querySelector('#sidebar-backdrop')?.classList.contains('active') || false,
+  }));
+  if (initial.sidebarOpen || initial.backdropActive) fail(`${name}: mobile sidebar should start closed`, initial);
+
+  await page.locator('.hamburger').click({ force: true });
+  await page.waitForTimeout(250);
+  const opened = await page.evaluate(() => {
+    const sb = document.querySelector('#sidebar');
+    const bd = document.querySelector('#sidebar-backdrop');
+    return {
+      sidebarOpen: sb?.classList.contains('open') || false,
+      backdropActive: bd?.classList.contains('active') || false,
+      bodyLocked: document.body.classList.contains('nav-open'),
+      backdropPointer: bd ? getComputedStyle(bd).pointerEvents : '',
+      backdropRect: bd ? (() => { const r = bd.getBoundingClientRect(); return { x: Math.round(r.x), width: Math.round(r.width) }; })() : null,
+    };
+  });
+  if (!opened.sidebarOpen || !opened.backdropActive || !opened.bodyLocked || opened.backdropPointer === 'none' || !opened.backdropRect || opened.backdropRect.width < 80) fail(`${name}: hamburger should open sidebar with active backdrop`, opened);
+
+  const vp = page.viewportSize() || { width: 390, height: 760 };
+  await page.mouse.click(vp.width - 12, Math.floor(vp.height / 2));
+  await page.waitForTimeout(250);
+  const closedByBackdrop = await page.evaluate(() => ({
+    sidebarOpen: document.querySelector('#sidebar')?.classList.contains('open') || false,
+    backdropActive: document.querySelector('#sidebar-backdrop')?.classList.contains('active') || false,
+    bodyLocked: document.body.classList.contains('nav-open'),
+  }));
+  if (closedByBackdrop.sidebarOpen || closedByBackdrop.backdropActive || closedByBackdrop.bodyLocked) fail(`${name}: tapping backdrop should close mobile sidebar`, closedByBackdrop);
+
+  await page.locator('.hamburger').click({ force: true });
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const closedByEscape = await page.evaluate(() => ({
+    sidebarOpen: document.querySelector('#sidebar')?.classList.contains('open') || false,
+    backdropActive: document.querySelector('#sidebar-backdrop')?.classList.contains('active') || false,
+    bodyLocked: document.body.classList.contains('nav-open'),
+  }));
+  if (closedByEscape.sidebarOpen || closedByEscape.backdropActive || closedByEscape.bodyLocked) fail(`${name}: Escape should close mobile sidebar`, closedByEscape);
+}
+
 async function inspectPage(page, label) {
   return page.evaluate(() => {
     const panelCount = document.querySelectorAll('.panel').length;
@@ -276,6 +320,7 @@ async function runViewport(browser, name, width, height) {
   page.on('pageerror', (e) => result.consoleErrors.push(`${name}: pageerror ${e.message}`));
   await login(page);
   const mobile = width <= 820;
+  if (mobile) await verifyMobileSidebar(page, name);
   result.pages[name] = {};
   for (const view of ['dashboard', 'providers', 'models', 'teams', 'keys', 'usage', 'settings']) {
     await go(page, view, mobile);

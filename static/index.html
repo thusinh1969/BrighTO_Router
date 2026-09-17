@@ -402,6 +402,8 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .kv:last-child{border-bottom:none}
 .kv .k{color:var(--muted)} .kv .v{font-weight:600}
 .hamburger{display:none}
+.sidebar-backdrop{display:none}
+body.nav-open{overflow:hidden}
 @media(max-width:820px){
   .login-shell{grid-template-columns:1fr;max-width:480px}
   .login-copy{display:none}
@@ -426,8 +428,10 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
   .model-picker-row input{flex:1 1 100%!important}
   .model-picker-row .btn{width:100%}
   .hamburger{display:inline-flex}
-  .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s}
+  .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s;box-shadow:24px 0 70px rgba(0,0,0,.45)}
   .sidebar.open{transform:none}
+  .sidebar-backdrop{display:block;position:fixed;top:0;right:0;bottom:0;left:240px;z-index:35;background:rgba(2,6,18,.62);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .18s}
+  .sidebar-backdrop.active{opacity:1;pointer-events:auto}
   .main{padding:18px 16px;max-width:none;width:100%}
   .topbar{flex-direction:column;align-items:flex-start;margin-bottom:16px}
   .topbar h2{font-size:24px}
@@ -544,9 +548,11 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
     </div>
   </aside>
 
+  <div id="sidebar-backdrop" class="sidebar-backdrop" onclick="closeSidebar()" aria-hidden="true"></div>
+
   <main class="main">
     <div class="topbar">
-      <button class="btn sm ghost hamburger" onclick="toggleSidebar()">☰</button>
+      <button class="btn sm ghost hamburger" onclick="toggleSidebar()" aria-label="Open navigation menu">☰</button>
       <div><h2 id="page-title">Dashboard</h2><div class="desc" id="page-desc"></div></div>
       <div class="verified"><span class="dot"></span><span id="verified-label">Admin key verified</span></div>
     </div>
@@ -662,7 +668,7 @@ function pageDesc(view){ return mode==="user" && userDescs[view] ? userDescs[vie
 function go(view){
   document.querySelectorAll(".nav").forEach(function(n){ n.classList.toggle("active", n.dataset.view===view); });
   $("page-title").textContent=titles[view]; $("page-desc").textContent=pageDesc(view);
-  $("sidebar").classList.remove("open"); // close mobile sidebar after navigation
+  closeSidebar(); // close mobile sidebar after navigation
   render(view);
 }
 async function refresh(){
@@ -2132,7 +2138,15 @@ function decorateTables(){
 }
 function pill(text,kind){ var p=el("span","pill "+kind); var d=el("span","dot"); p.appendChild(d); p.appendChild(document.createTextNode(text)); return p; }
 function closeModal(){ $("modal-overlay").classList.add("hidden"); $("modal-overlay").innerHTML=""; }
-function toggleSidebar(){ $("sidebar").classList.toggle("open"); }
+function setSidebar(open){
+  var sb=$("sidebar"), bd=$("sidebar-backdrop");
+  if(!sb||!bd) return;
+  sb.classList.toggle("open",!!open);
+  bd.classList.toggle("active",!!open);
+  document.body.classList.toggle("nav-open",!!open);
+}
+function closeSidebar(){ setSidebar(false); }
+function toggleSidebar(){ setSidebar(!$("sidebar").classList.contains("open")); }
 function applyPrefs(){
   var font=localStorage.getItem("pref_font")||"normal";
   var density=localStorage.getItem("pref_density")||"compact";
@@ -2147,6 +2161,8 @@ setMode("admin");
 applyPrefs();
 var contentNode=$("content");
 if(contentNode && window.MutationObserver){ new MutationObserver(function(){ decorateTables(); }).observe(contentNode,{childList:true,subtree:true}); }
+document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeSidebar(); });
+window.addEventListener("resize",function(){ if(window.innerWidth>820) closeSidebar(); });
 restoreSession();
 </script>
 </body>
