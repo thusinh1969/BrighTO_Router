@@ -110,6 +110,10 @@ async function capture(page, name) {
   if (metrics.missing) fail(`${name}: modal missing`, metrics);
   if (metrics.clipped?.length) fail(`${name}: modal has clipped/overflowing content`, metrics);
   if (metrics.footerCoveredInputs?.length) fail(`${name}: sticky footer covers input fields`, metrics);
+  if (name.endsWith('add-model')) {
+    if (!/Exact upstream model name returned by the provider/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Provider model help text`, metrics);
+    if (!/model name your apps send/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Public model help text`, metrics);
+  }
 }
 
 async function runViewport(browser, name, width, height) {

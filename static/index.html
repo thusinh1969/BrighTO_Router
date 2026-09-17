@@ -229,6 +229,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .form-grid .field{margin-bottom:0}
 .route-model-grid{grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);align-items:end;margin-bottom:13px}
 .modal .actions{display:flex;justify-content:flex-end;gap:10px;margin:22px -26px -26px;padding:16px 26px;background:linear-gradient(180deg,rgba(15,23,42,.82),var(--panel));border-top:1px solid var(--border);position:sticky;bottom:-26px;z-index:2;border-radius:0 0 20px 20px}
+.route-modal .actions{position:static;bottom:auto}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .chip{display:flex;align-items:center;gap:7px;background:#111827;border:1px solid var(--border2);border-radius:99px;
   padding:6px 13px;font-size:12.5px;cursor:pointer;color:var(--text);font-weight:600}
@@ -1102,10 +1103,14 @@ function openRouteModal(route){
   var row=el("div","row model-picker-row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
   var ms=el("input"); ms.style.flex="1"; ms.placeholder="Load models to pick one, or type a name"; ms.value=route.provider_model_name||"";
   var loadBtn=el("button","btn sm","Load models");
-  row.appendChild(ms); row.appendChild(loadBtn); f1.appendChild(row); modelGrid.appendChild(f1);
+  row.appendChild(ms); row.appendChild(loadBtn); f1.appendChild(row);
+  f1.appendChild(el("p","hint","Exact upstream model name returned by the provider."));
+  modelGrid.appendChild(f1);
 
   var f=el("div","field"); f.appendChild(el("label",null,"Public model name (shown to clients)"));
-  var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi); modelGrid.appendChild(f);
+  var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi);
+  f.appendChild(el("p","hint","The model name your apps send. Use the same name or a shorter team alias."));
+  modelGrid.appendChild(f);
   m.appendChild(modelGrid);
   ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; clearTest(""); };
 
