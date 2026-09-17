@@ -186,6 +186,20 @@ async function capture(page, name) {
   if (name.endsWith('new-key')) {
     if (/Advanced JSON/i.test(metrics.text || '')) fail(`${name}: budget advanced action exposes JSON jargon`, metrics);
   }
+  if (name.endsWith('add-provider')) {
+    if (!/Optional load control/i.test(metrics.text || '')) fail(`${name}: Provider modal missing optional load control drawer`, metrics);
+    const visibleLabels = (metrics.visibleInputLabels || []).map((x) => String(x).toLowerCase());
+    const optionalLabels = ['weight', 'simultaneous calls (0 = unlimited)'];
+    const hiddenByDefault = optionalLabels.filter((label) => visibleLabels.includes(label));
+    if (hiddenByDefault.length) fail(`${name}: Provider load-control fields must be collapsed by default`, { hiddenByDefault, metrics });
+    await page.getByRole('button', { name: /Optional load control/ }).click({ force: true });
+    await page.waitForTimeout(200);
+    const expanded = await inspectModal(page);
+    result.metrics[`${name}-expanded`] = expanded;
+    const expandedLabels = (expanded.visibleInputLabels || []).map((x) => String(x).toLowerCase());
+    const missingExpanded = optionalLabels.filter((label) => !expandedLabels.includes(label));
+    if (missingExpanded.length) fail(`${name}: Provider optional load-control drawer did not reveal all controls`, { missingExpanded, expanded });
+  }
   if (name.endsWith('add-provider') || name.endsWith('new-team')) {
     const badSwitches = (metrics.switches || []).filter((s) => s.display !== 'flex' || s.justifyContent !== 'space-between' || s.textTransform !== 'none');
     if (!(metrics.switches || []).length) fail(`${name}: state switch missing`, metrics);

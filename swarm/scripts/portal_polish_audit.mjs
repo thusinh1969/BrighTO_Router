@@ -244,6 +244,7 @@ async function main() {
     const providerModalText = await page.locator('.modal').innerText();
     if (!/Pre-register provider/i.test(providerModalText)) bug('Provider modal must explain manual creation as pre-registration.');
     if (/Provider Type/i.test(providerModalText)) bug('Provider modal must not expose stale Provider Type jargon.');
+    await page.locator('.modal').getByRole('button', { name: /Optional load control/ }).click({ force: true });
     await fill(page, 'Weight', '1');
     await fill(page, 'Simultaneous calls', '0');
     await (await modalButton(page, 'Pre-register')).click({ force: true });
