@@ -109,6 +109,28 @@ async function inspectPage(page, label) {
       contentText: text.slice(0, 1200),
       tableStats,
       legendStats,
+      disabledDangerButtons: [...document.querySelectorAll('button.btn.danger:disabled')].filter((b) => b.offsetParent !== null).map((b) => {
+        const st = getComputedStyle(b);
+        return { text: b.innerText.trim(), title: b.title || '', color: st.color, borderColor: st.borderColor, opacity: st.opacity };
+      }),
+      modelNameRows: [...document.querySelectorAll('.models-table .model-name-row')].map((n) => {
+        const st = getComputedStyle(n);
+        const r = n.getBoundingClientRect();
+        const name = n.querySelector('.cell-main');
+        const ns = name ? getComputedStyle(name) : null;
+        return {
+          display: st.display,
+          columns: st.gridTemplateColumns,
+          width: Math.round(r.width),
+          copyButtons: n.querySelectorAll('button.icon-btn').length,
+          nameText: name ? (name.innerText || name.textContent || '').trim() : '',
+          nameScrollHeight: name ? name.scrollHeight : 0,
+          nameClientHeight: name ? name.clientHeight : 0,
+          nameTextOverflow: ns ? ns.textOverflow : '',
+          nameLineClamp: ns ? ns.webkitLineClamp : '',
+          nameOverflow: ns ? ns.overflow : '',
+        };
+      }),
       visibleButtons: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => b.innerText.trim()).filter(Boolean).slice(0, 30),
     };
   });
@@ -133,6 +155,14 @@ async function runViewport(browser, name, width, height) {
     if (['providers', 'models', 'teams', 'keys'].includes(view) && (metrics.summaryCards || []).length < 4) fail(`${name}/${view}: missing operational summary cards`, metrics);
     const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
     if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });
+    const redDisabledDanger = (metrics.disabledDangerButtons || []).filter((b) => /248, 113, 113/.test(b.color) || /248, 113, 113/.test(b.borderColor));
+    if (redDisabledDanger.length) fail(`${name}/${view}: disabled destructive actions still look clickable/red`, { redDisabledDanger, metrics });
+    if (view === 'models') {
+      const badModelNameRows = (metrics.modelNameRows || []).filter((r) => r.display !== 'grid' || r.copyButtons !== 1);
+      if (badModelNameRows.length) fail(`${name}/${view}: public model name and copy action are not aligned as a stable grid`, { badModelNameRows, metrics });
+      const clippedModelNames = (metrics.modelNameRows || []).filter((r) => /ellipsis/i.test(r.nameTextOverflow) || r.nameLineClamp !== 'none' || r.nameOverflow !== 'visible' || r.nameScrollHeight > r.nameClientHeight + 4);
+      if (clippedModelNames.length) fail(`${name}/${view}: public model names are clipped`, { clippedModelNames, metrics });
+    }
     if (mobile) {
       const wideTables = metrics.tableStats.filter((t) => t.scrollWidth > t.clientWidth + 8);
       if (wideTables.length) fail(`${name}/${view}: mobile table still scrolls horizontally`, { wideTables, metrics });
