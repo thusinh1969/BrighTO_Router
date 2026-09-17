@@ -103,6 +103,14 @@ async function inspectPage(page, label) {
       const r = node.getBoundingClientRect();
       return { text: (node.textContent || '').trim(), x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
     });
+    const sectionPositions = [...document.querySelectorAll('#content h3, #content .diagnostic-details summary b')].map((node) => {
+      const r = node.getBoundingClientRect();
+      return { text: (node.innerText || node.textContent || '').trim(), y: Math.round(r.y) };
+    });
+    const diagnosticDetails = [...document.querySelectorAll('#content .diagnostic-details')].map((node) => {
+      const r = node.getBoundingClientRect();
+      return { open: node.open, text: (node.innerText || node.textContent || '').trim().slice(0, 240), y: Math.round(r.y), height: Math.round(r.height) };
+    });
     return {
       title: document.querySelector('#page-title')?.textContent || '',
       panelCount,
@@ -114,6 +122,8 @@ async function inspectPage(page, label) {
       tableStats,
       legendStats,
       chartValueLabels,
+      sectionPositions,
+      diagnosticDetails,
       disabledDangerButtons: [...document.querySelectorAll('button.btn.danger:disabled')].filter((b) => b.offsetParent !== null).map((b) => {
         const st = getComputedStyle(b);
         return { text: b.innerText.trim(), title: b.title || '', color: st.color, borderColor: st.borderColor, opacity: st.opacity };
@@ -187,6 +197,10 @@ async function runViewport(browser, name, width, height) {
     if (!metrics.title) fail(`${name}/${view}: missing page title`, metrics);
     if (!metrics.panelCount && view !== 'dashboard') fail(`${name}/${view}: no content panels`, metrics);
     if (['providers', 'models', 'teams', 'keys'].includes(view) && (metrics.summaryCards || []).length < 4) fail(`${name}/${view}: missing operational summary cards`, metrics);
+    if (!mobile && view === 'dashboard') {
+      const diag = metrics.diagnosticDetails || [];
+      if (!diag.length || diag.some((d) => !d.open)) fail(`${name}/${view}: desktop dashboard diagnostics should stay open`, metrics);
+    }
     const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
     if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });
     if (['dashboard', 'usage'].includes(view) && (metrics.legendStats || []).length && !(metrics.chartValueLabels || []).some((l) => /^\d|[KMB]/.test(l.text))) {
@@ -222,6 +236,11 @@ async function runViewport(browser, name, width, height) {
         if (firstRow.length < 2) fail(`${name}/${view}: mobile KPI cards should use a compact two-column layout`, { cardRects: metrics.cardRects, metrics });
         const crampedCards = (metrics.cardRects || []).filter((r) => r.width < 130);
         if (crampedCards.length) fail(`${name}/${view}: mobile KPI cards are too narrow to read`, { crampedCards, metrics });
+        const diag = metrics.diagnosticDetails || [];
+        if (!diag.length || diag.some((d) => d.open)) fail(`${name}/${view}: mobile dashboard technical diagnostics should default collapsed`, metrics);
+        const recentY = (metrics.sectionPositions || []).find((s) => s.text === 'Recent requests')?.y;
+        const diagY = (metrics.sectionPositions || []).find((s) => s.text === 'Technical diagnostics')?.y;
+        if (recentY == null || diagY == null || recentY > diagY) fail(`${name}/${view}: mobile Recent requests should appear before technical diagnostics`, metrics);
       }
       if (view === 'usage') {
         if (!(metrics.visibleButtons || []).includes('Show filters')) fail(`${name}/${view}: mobile Usage should default to collapsed filters with a Show filters action`, metrics);
