@@ -119,6 +119,9 @@ textarea{resize:vertical;min-height:72px}
 .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:10px;flex-wrap:wrap}
 .panel-head h3{margin:0}
 .panel-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.models-actions{display:grid;grid-template-columns:auto 160px;align-items:center;gap:8px}
+.models-actions .btn{white-space:nowrap}
+.models-actions select{width:160px}
 .ops-hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:16px;margin-bottom:18px}
 .ops-primary,.ops-side{background:linear-gradient(145deg,rgba(17,28,49,.96),rgba(15,23,42,.96));border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;box-shadow:0 18px 50px rgba(0,0,0,.22);min-width:0}
 .ops-primary{position:relative;overflow:hidden}
@@ -220,6 +223,23 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .key-secret{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;min-width:0}
 .key-secret .mono{display:block;overflow:visible;text-overflow:clip;white-space:nowrap;overflow-wrap:normal;word-break:normal;min-width:0}
 .table-wrap.pro-table{overflow:visible}
+@media(min-width:821px){
+  .route-list-wrap{overflow:visible;border:none;background:transparent}
+  .route-list-table{display:block;border-collapse:separate;border-spacing:0;font-size:13px}
+  .route-list-table colgroup,.route-list-table thead{display:none}
+  .route-list-table tbody{display:grid;gap:12px}
+  .route-list-table tr{display:grid;grid-template-columns:minmax(210px,1.22fr) minmax(96px,.48fr) minmax(140px,.72fr) minmax(160px,.88fr) minmax(200px,1fr) minmax(92px,.42fr);gap:12px;align-items:start;background:linear-gradient(145deg,rgba(15,23,42,.98),rgba(11,18,32,.98));border:1px solid rgba(51,65,85,.9);border-radius:16px;padding:14px;box-shadow:0 14px 34px rgba(0,0,0,.14)}
+  .route-list-table tr:hover{background:linear-gradient(145deg,rgba(17,28,49,.98),rgba(11,18,32,.98));border-color:rgba(56,189,248,.26)}
+  .route-list-table td{display:block;border-bottom:none;padding:0;overflow:visible;min-width:0}
+  .route-list-table td::before{content:attr(data-label);display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.055em;font-weight:850;margin-bottom:6px;line-height:1.2}
+  .route-list-table td[data-label=""]::before,.route-list-table td.actions::before{display:none}
+  .route-list-table td.actions{display:flex;align-items:center;justify-content:flex-end;text-align:left;align-self:stretch;white-space:normal}
+  .route-list-table .action-row{display:grid;grid-template-columns:1fr;gap:7px;width:100%;max-width:96px;margin-left:auto}
+  .route-list-table .action-row .btn{width:100%;justify-content:center;padding-left:8px;padding-right:8px}
+  .route-list-table .cell-main,.route-list-table .cell-sub{display:block!important;-webkit-line-clamp:unset!important;-webkit-box-orient:initial!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere;text-overflow:clip!important}
+  .route-list-table .model-meta-grid{gap:5px}
+  .route-list-table .model-meta-grid span{border-radius:9px;line-height:1.25}
+}
 .metric-table td:first-child{min-width:220px;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .metric-table td:first-child{overflow-wrap:anywhere}
 
@@ -384,6 +404,8 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
   .diagnostic-body{padding:10px}
   .panel-head{align-items:stretch}
   .panel-head>select{max-width:none!important;flex:1 1 100%}
+  .models-actions{width:100%;display:grid;grid-template-columns:1fr;gap:8px}
+  .models-actions .btn,.models-actions select{width:100%;max-width:none!important}
   .table-wrap{overflow:visible;border:none;background:transparent}
   .table-wrap table{display:block;width:100%;max-width:100%;min-width:0!important;border-collapse:separate;border-spacing:0}
   .table-wrap colgroup{display:none}
@@ -1091,13 +1113,15 @@ function renderModels(c){
   ]));
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Models"));
+  var hActions=el("div","panel-head-actions models-actions");
   var add=el("button","btn primary sm","Add model"); add.onclick=function(){openRouteModal();};
-  h.appendChild(add);
+  hActions.appendChild(add);
   var filt=el("select"); filt.style.maxWidth="160px";
   [["all","All"],["enabled","Enabled only"],["disabled","Disabled only"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; filt.appendChild(o); });
   filt.value=(window.modelFilter||"all");
   filt.onchange=function(){ window.modelFilter=filt.value; renderModels($("content")); };
-  h.appendChild(filt);
+  hActions.appendChild(filt);
+  h.appendChild(hActions);
   p.appendChild(h);
   p.appendChild(el("p","hint","One guided flow: pick a provider, load its models, choose one, test the connection, then save. The connection is created for you."));
   var fv=(window.modelFilter||"all");
@@ -1105,7 +1129,7 @@ function renderModels(c){
   if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
   else if(!shown.length){ p.appendChild(emptyBox("No models match this filter.")); }
   else{
-    var w=el("div","table-wrap pro-table"); var t=el("table","models-table");
+    var w=el("div","table-wrap pro-table route-list-wrap"); var t=el("table","models-table route-list-table");
     var colg=document.createElement("colgroup");
     ["27%","10%","21%","16%","14%","12%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
