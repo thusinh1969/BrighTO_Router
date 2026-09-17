@@ -119,7 +119,7 @@ async function inspectModal(page) {
       };
     });
     const footerCoveredImportant = footerRect
-      ? [...modal.querySelectorAll('.model-map')].filter((node) => node.offsetParent !== null).map((node) => {
+      ? [...modal.querySelectorAll('.model-map, .advanced-toggle')].filter((node) => node.offsetParent !== null).map((node) => {
           const r = node.getBoundingClientRect();
           const overlap = Math.max(0, Math.min(r.bottom, footerRect.bottom) - Math.max(r.top, footerRect.top));
           return {
@@ -244,7 +244,7 @@ async function capture(page, name) {
   if (metrics.missing) fail(`${name}: modal missing`, metrics);
   if (metrics.clipped?.length) fail(`${name}: modal has clipped/overflowing content`, metrics);
   if (metrics.footerCoveredInputs?.length) fail(`${name}: sticky footer covers input fields`, metrics);
-  if (name.startsWith('mobile-') && name.endsWith('add-model') && metrics.footerCoveredImportant?.length) fail(`${name}: sticky footer covers the model mapping preview`, metrics);
+  if (name.endsWith('add-model') && metrics.footerCoveredImportant?.length) fail(`${name}: action footer covers important Add model controls`, metrics);
   const activeLookingDisabledPrimary = (metrics.disabledPrimaryButtons || []).filter((b) => /Save enabled|Use this model|Sign in/i.test(b.text || '') && (/rgb\(29, 78, 216\)|rgb\(30, 64, 175\)/.test(b.backgroundColor || '') || /rgb\(29, 78, 216\)|rgb\(30, 64, 175\)/.test(b.borderColor || '')));
   if (activeLookingDisabledPrimary.length) fail(`${name}: disabled primary buttons still look active`, { activeLookingDisabledPrimary, metrics });
   if (name.startsWith('mobile-')) {
@@ -255,6 +255,8 @@ async function capture(page, name) {
     if (!/Exact upstream model name returned by the provider/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Provider model help text`, metrics);
     if (!/model name your apps send/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Public model help text`, metrics);
     if (!/Client sends|Provider receives/i.test(metrics.text || '')) fail(`${name}: Add model modal missing public-to-provider model mapping preview`, metrics);
+    if (/public-model|provider-model/i.test(metrics.text || '')) fail(`${name}: Add model mapping preview uses fake technical placeholder values`, metrics);
+    if (!/Public name|Provider model/i.test(metrics.text || '')) fail(`${name}: Add model mapping preview should clearly show empty state before a model is chosen`, metrics);
     if (!/Gemini \(coming soon\)|Meta Muse \(coming soon\)/i.test(metrics.text || '')) fail(`${name}: Add model provider picker must mark coming-soon providers`, metrics);
     if (name.startsWith('desktop-') && metrics.footer && metrics.footer.bottom > metrics.clientH + 3) fail(`${name}: Add model primary actions must be visible on desktop`, metrics);
     await verifyModelPickerPreview(page, name);
