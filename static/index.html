@@ -225,7 +225,7 @@ td.mono{font-family:var(--mono);font-size:12px}
 "use strict";
 var mode = "admin";
 var authKey = "";
-var backends = [], routes = [], teams = [], keys = [];
+var backends = [], routes = [], teams = [], keys = [], catalog = [];
 
 function $(id){ return document.getElementById(id); }
 function el(tag, cls, text){ var n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
@@ -331,6 +331,7 @@ async function refresh(){
       routes=await api("/admin/routes","GET");
       teams=await api("/admin/teams","GET");
       keys=await api("/admin/keys","GET");
+      try{ catalog=await api("/admin/provider-catalog","GET"); }catch(e){ catalog=[]; }
     }
     var cur=document.querySelector(".nav.active");
     if(cur) render(cur.dataset.view); else go("dashboard");
@@ -436,7 +437,7 @@ function renderProviders(c){
   var add=el("button","btn primary sm","Add provider"); add.onclick=openProviderModal;
   h.appendChild(add);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Providers are endpoint/template definitions (name, URL, type, capacity). The provider API key is entered per model route in the Route wizard — never here."));
+  p.appendChild(el("p","hint","Providers are upstream API connections (base URL + dialect). Add a model and its provider is created automatically; pre-register one here only to reuse it across many models. The API key lives on the model route, never on the provider."));
   if(!backends.length){ p.appendChild(emptyBox("No providers yet.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table");
@@ -480,16 +481,29 @@ function openProviderModal(b){
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
   m.appendChild(el("h3",null, b.id?"Edit provider · "+b.name:"Add provider"));
-  var inputs={};
-  var fields=[["name","Name",b.name||""],["base_url","Base URL",b.base_url||""],["weight","Weight",String(b.weight||1)],["max_inflight","Max concurrent (0 = unlimited)",String(b.max_inflight||0)]];
-  fields.forEach(function(f){ var box=el("div","field"); box.appendChild(el("label",null,f[1])); var i=el("input"); i.value=f[2]; inputs[f[0]]=i; box.appendChild(i); m.appendChild(box); });
-  var ft=el("div","field"); ft.appendChild(el("label",null,"Provider Type"));
-  var tsel=el("select");
-  PROVIDER_TYPES.forEach(function(t){var o=el("option",null,t[1]);o.value=t[0];tsel.appendChild(o);});
-  var curType=providerTypeLabel(b);
-  tsel.value=(PROVIDER_TYPES.find(function(t){return t[1].indexOf(curType)>=0;})||PROVIDER_TYPES[0])[0];
-  tsel.onchange=function(){ var t=PROVIDER_TYPES.find(function(x){return x[0]===tsel.value;}); if(t && t[2] && !inputs.base_url.value.trim()) inputs.base_url.value=t[2]; };
-  ft.appendChild(tsel); m.appendChild(ft);
+  // Chọn provider từ catalog hard-coded trong .env (chỉ 2 dialect: openai/anthropic).
+  var fp=el("div","field"); fp.appendChild(el("label",null,"Provider"));
+  var psel=el("select");
+  (catalog||[]).forEach(function(e){ var o=el("option",null,e.label); o.value=e.key; psel.appendChild(o); });
+  if(!(catalog||[]).length){ var no=el("option",null,"Custom LLM"); no.value="custom"; psel.appendChild(no); }
+  var pre=(catalog||[]).find(function(e){ return b.name && (b.name===e.label || b.name.toLowerCase().indexOf(e.key)>=0); });
+  if(pre) psel.value=pre.key;
+  else if(b.name && (catalog||[]).length) psel.value=(catalog[0].key||"custom");
+  fp.appendChild(psel); m.appendChild(fp);
+  var fname=el("div","field"); fname.appendChild(el("label",null,"Name"));
+  var nameIn=el("input"); nameIn.value=b.name||""; fname.appendChild(nameIn); m.appendChild(fname);
+  var fu=el("div","field"); fu.appendChild(el("label",null,"Base URL"));
+  var urlIn=el("input"); urlIn.value=b.base_url||""; fu.appendChild(urlIn); m.appendChild(fu);
+  function applyCat(){
+    var e=catEntry(psel.value);
+    if(!nameIn.value.trim()) nameIn.value=e.label;
+    if(e.base_url) urlIn.value=e.base_url;
+  }
+  psel.onchange=applyCat; applyCat();
+  var fw=el("div","field"); fw.appendChild(el("label",null,"Weight"));
+  var wIn=el("input"); wIn.type="number"; wIn.value=String(b.weight||1); fw.appendChild(wIn); m.appendChild(fw);
+  var fm=el("div","field"); fm.appendChild(el("label",null,"Max concurrent (0 = unlimited)"));
+  var mxIn=el("input"); mxIn.type="number"; mxIn.value=String(b.max_inflight||0); fm.appendChild(mxIn); m.appendChild(fm);
   var en=el("div","field");
   var lab=el("label","chip"+(b.enabled!==false?" selected":"")); var cb=el("input"); cb.type="checkbox"; cb.checked=b.enabled!==false;
   lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); en.appendChild(lab); m.appendChild(en);
@@ -497,9 +511,9 @@ function openProviderModal(b){
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary", b.id?"Save":"Add");
   save.onclick=async function(){
-    var t=PROVIDER_TYPES.find(function(x){return x[0]===tsel.value;});
-    var format=t?t[3]:"openai";
-    var payload={name:inputs.name.value.trim(),base_url:inputs.base_url.value.trim(),format:format,weight:Number(inputs.weight.value)||1,max_inflight:Number(inputs.max_inflight.value)||0,enabled:cb.checked};
+    var e=catEntry(psel.value);
+    var payload={name:(nameIn.value.trim()||e.label),base_url:urlIn.value.trim(),format:e.dialect,weight:Number(wIn.value)||1,max_inflight:Number(mxIn.value)||0,enabled:cb.checked};
+    if(!payload.base_url){ toast("Base URL is required","err"); return; }
     if(!b.id) payload.api_key_ref="env:NONE"; // provider template secret-free; route owns the key
     try{
       if(b.id){ await api("/admin/backends/"+b.id,"PATCH",payload); }
@@ -535,11 +549,11 @@ async function fetchModels(b){
 function renderModels(c){
   c.innerHTML="";
   var p=el("div","panel");
-  var h=el("div","panel-head"); h.appendChild(el("h3",null,"Model routes"));
-  var add=el("button","btn primary sm","Create model route"); add.onclick=function(){openRouteModal();};
+  var h=el("div","panel-head"); h.appendChild(el("h3",null,"Models"));
+  var add=el("button","btn primary sm","Add model"); add.onclick=function(){openRouteModal();};
   h.appendChild(add);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Each route exposes a public model name to clients and maps it to a provider backend."));
+  p.appendChild(el("p","hint","One guided flow: pick a provider, load its models, choose one, test the connection, then save. The endpoint is created for you."));
   if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table");
@@ -566,82 +580,50 @@ function renderModels(c){
 function openRouteModal(route){
   route=route||{};
   var ov=$("modal-overlay"); ov.innerHTML="";
-  var m=el("div","modal");
-  m.appendChild(el("h3",null,route.model_name?"Edit route":"Create model route"));
+  var m=el("div","modal"); m.style.maxWidth="640px";
+  m.appendChild(el("h3",null, route.model_name?"Edit model":"Add model"));
 
   var f0=el("div","field"); f0.appendChild(el("label",null,"Provider"));
   var ps=el("select");
-  function fillProviders(showDisabled){
-    ps.innerHTML="";
-    var shown=backends.filter(function(b){return showDisabled||b.enabled;});
-    if(!shown.length){ var no=el("option",null,"No providers"); no.value=""; ps.appendChild(no); }
-    shown.forEach(function(b){ var o=el("option",null,b.name+" (id "+b.id+")"); o.value=b.id; ps.appendChild(o); });
-    if(route.backend_ids && route.backend_ids.length) ps.value=route.backend_ids[0];
+  (catalog||[]).forEach(function(e){ var o=el("option",null,e.label); o.value=e.key; ps.appendChild(o); });
+  if(!(catalog||[]).length){ var no=el("option",null,"Custom LLM"); no.value="custom"; ps.appendChild(no); }
+  var pHint=el("p","hint");
+  f0.appendChild(ps); f0.appendChild(pHint); m.appendChild(f0);
+
+  var fu=el("div","field"); fu.appendChild(el("label",null,"Base URL"));
+  var url=el("input"); url.placeholder="https://api.openai.com/v1"; fu.appendChild(url); m.appendChild(fu);
+
+  var fk=el("div","field"); fk.appendChild(el("label",null,"API key"));
+  var pk=el("input"); pk.type="password"; pk.placeholder="sk-…";
+  var keyHint=el("p","hint");
+  fk.appendChild(pk); fk.appendChild(keyHint); m.appendChild(fk);
+
+  function applyCat(){
+    var e=catEntry(ps.value);
+    if(e.base_url){ url.value=e.base_url; url.placeholder=e.base_url; }
+    else { url.value=""; url.placeholder="https://…"; }
+    pHint.textContent = e.dialect==="anthropic" ? "Anthropic Messages API" : "OpenAI-compatible API";
+    if(e.key_set){ keyHint.textContent="Using key from .env ("+e.key_env+") — leave blank to use it, or paste to override."; }
+    else if(e.key_env){ keyHint.textContent="No key in .env ("+e.key_env+") — paste the API key (stored per model, write-only)."; }
+    else { keyHint.textContent="Paste the API key (stored per model, write-only)."; }
   }
-  fillProviders(false);
-  var sd=el("label","chip"); var sdcb=el("input"); sdcb.type="checkbox"; sdcb.checked=false; sd.appendChild(sdcb); sd.appendChild(document.createTextNode("Show disabled"));
-  sdcb.onchange=function(){ fillProviders(sdcb.checked); populateProtocols(); };
-  f0.appendChild(ps); f0.appendChild(sd); m.appendChild(f0);
+  ps.onchange=function(){ applyCat(); testState.ok=false; save.disabled=true; stat.textContent=""; stat.style.color="var(--muted)"; };
+  applyCat();
 
-  var fp=el("div","field"); fp.appendChild(el("label",null,"Provider API protocol"));
-  var pcol=el("select");
-  function populateProtocols(){
-    var b=backends.find(function(x){return x.id===Number(ps.value);});
-    pcol.innerHTML="";
-    protocolsForBackend(b).forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];pcol.appendChild(o);});
-    if(route.protocol && pcol.querySelector('option[value="'+route.protocol+'"]')) pcol.value=route.protocol;
-    else if(route.auth_mode==="anthropic") pcol.value="anthropic_messages";
-    else pcol.value=pcol.firstChild?pcol.firstChild.value:"openai_chat";
-  }
-  populateProtocols();
-  fp.appendChild(pcol); m.appendChild(fp);
-
-  var fa=el("div","field"); fa.appendChild(el("label",null,"Authentication"));
-  var am=el("select");
-  [["bearer","Bearer API key (OpenAI-compatible)"],["anthropic","Anthropic x-api-key"],["none","No API key (local llama.cpp/vLLM)"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];am.appendChild(o);});
-  if(route.auth_mode) am.value=route.auth_mode;
-  fa.appendChild(am); m.appendChild(fa);
-  var fk=el("div","field"); fk.appendChild(el("label",null,"Provider API key (blank = keep existing)"));
-  var pk=el("input"); pk.type="password"; pk.placeholder="sk-..."; fk.appendChild(pk); m.appendChild(fk);
-  am.onchange=function(){ fk.style.display = am.value==="none"?"none":""; };
-  if(am.value==="none") fk.style.display="none";
-  pcol.onchange=function(){
-    if(!route.model_name){
-      am.value = pcol.value==="anthropic_messages"?"anthropic":(pcol.value==="local_openai_chat"?"none":"bearer");
-    }
-    am.onchange();
-  };
-  ps.onchange=function(){ populateProtocols(); if(!route.model_name) pcol.onchange(); };
-
-  var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model — load or type manually"));
+  var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model"));
   var row=el("div","row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
-  var ms=el("input"); ms.style.flex="1"; ms.placeholder="Load models or type a provider model name"; ms.setAttribute("list","route-model-options");
-  ms.value=route.provider_model_name||"";
-  var dl=el("datalist"); dl.id="route-model-options";
-  row.appendChild(ms); row.appendChild(dl);
+  var ms=el("input"); ms.style.flex="1"; ms.placeholder="Load models to pick one, or type a name"; ms.value=route.provider_model_name||"";
   var loadBtn=el("button","btn sm","Load models");
-  loadBtn.onclick=async function(){
-    loadBtn.disabled=true; loadBtn.textContent="Loading…";
-    try{
-      if(am.value!=="none" && !pk.value.trim()){ toast("Enter API key first","err"); return; }
-      var b=backends.find(function(x){return x.id===Number(ps.value);});
-      var fmt=pcol.value==="anthropic_messages"?"anthropic":"openai";
-      var data=await api("/admin/routes/preview-models","POST",{base_url:b.base_url,protocol:fmt,auth_mode:am.value,provider_key:pk.value});
-      dl.innerHTML="";
-      if(!data.models.length){ toast("No models returned — type the provider model name manually"); return; }
-      data.models.forEach(function(md){ var o=el("option",null,md); o.value=md; dl.appendChild(o); });
-      if(!ms.value) ms.value=data.models[0];
-      if(!mi.value) mi.value=ms.value;
-    }catch(e){ toast("Load models: "+e.message,"err"); }
-    finally{ loadBtn.disabled=false; loadBtn.textContent="Load models"; }
-  };
-  row.appendChild(loadBtn);
-  f1.appendChild(row); m.appendChild(f1);
+  row.appendChild(ms); row.appendChild(loadBtn); f1.appendChild(row); m.appendChild(f1);
 
   var f=el("div","field"); f.appendChild(el("label",null,"Public model name (shown to clients)"));
   var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi); m.appendChild(f);
   ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; };
 
+  var stat=el("p","hint"); m.appendChild(stat);
+  var testState={ok:false};
+
+  var opt=el("p",null,"Limits & pricing (optional)"); opt.style.margin="14px 0 2px"; opt.style.fontWeight="700"; opt.style.fontSize="12px"; opt.style.color="var(--muted)"; m.appendChild(opt);
   var f5=el("div","field"); f5.appendChild(el("label",null,"Context window (tokens, optional)")); var ct=el("input"); ct.type="number"; ct.value=route.context_tokens||""; f5.appendChild(ct); m.appendChild(f5);
   var f6=el("div","field"); f6.appendChild(el("label",null,"Max output tokens (optional)")); var mo=el("input"); mo.type="number"; mo.value=route.max_output_tokens||""; f6.appendChild(mo); m.appendChild(f6);
   var f7=el("div","field"); f7.appendChild(el("label",null,"Price per 1M input tokens (USD, optional)")); var pi=el("input"); pi.type="number"; pi.step="0.01"; pi.value=route.price_input_per_mtok_usd||""; f7.appendChild(pi); m.appendChild(f7);
@@ -651,37 +633,124 @@ function openRouteModal(route){
 
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
-  var save=el("button","btn primary","Save route");
-  save.onclick=async function(){
-    var name=mi.value.trim(); if(!name){toast("Model name is required","err");return;}
-    var modelSel=ms.value.trim();
-    if(!modelSel){toast("Load models and pick a provider model","err");return;}
-    var payload={model_name:name,backend_ids:[Number(ps.value)],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel};
-    payload.auth_mode=am.value;
-    payload.protocol=pcol.value;
-    // Validate protocol/auth compatibility (block nonsensical combos).
-    var prov=backends.find(function(x){return x.id===Number(ps.value);});
-    var pname=(prov&&prov.name||"").toLowerCase();
-    if(payload.protocol==="anthropic_messages" && payload.auth_mode==="none" && pname.indexOf("local")<0 && pname.indexOf("custom")<0){
-      toast("Anthropic Messages requires an API key (auth ≠ none).","err"); return;
-    }
-    if(payload.protocol==="local_openai_chat" && payload.auth_mode!=="none"){
-      toast("Local OpenAI-compatible chat should use 'No API key' auth.","err"); return;
-    }
-    if(pk.value.trim()) payload.provider_key=pk.value.trim();
-    if(ct.value) payload.context_tokens=Number(ct.value);
-    if(mo.value) payload.max_output_tokens=Number(mo.value);
-    if(pi.value!=="") payload.price_input_per_mtok_usd=Number(pi.value);
-    if(po.value!=="") payload.price_output_per_mtok_usd=Number(po.value);
-    if(fb.value) payload.fallback_backend_id=Number(fb.value);
-    var isEdit=!!route.model_name;
-    var path=isEdit?"/admin/routes/"+encodeURIComponent(route.model_name):"/admin/routes";
-    var method=isEdit?"PATCH":"POST";
-    try{ await api(path,method,payload); closeModal(); toast("Route saved"); routes=await api("/admin/routes","GET"); rerender(); }
-    catch(e){ toast("Save failed: "+e.message,"err"); }
+  var testBtn=el("button","btn","Test connection");
+  var save=el("button","btn primary", route.model_name?"Save":"Save model"); save.disabled=true;
+  act.appendChild(cancel); act.appendChild(testBtn); act.appendChild(save); m.appendChild(act);
+
+  function dialAuth(){
+    var e=catEntry(ps.value);
+    var anthropic=e.dialect==="anthropic";
+    if(anthropic) return { dialect:"anthropic", auth:"anthropic", protocol:"anthropic_messages" };
+    var local = isLocalUrl(url.value.trim());
+    if(local && !pk.value.trim() && !(e.key_env && e.key_set)) return { dialect:"openai", auth:"none", protocol:"local_openai_chat" };
+    return { dialect:"openai", auth:"bearer", protocol:"openai_chat" };
+  }
+  function keyPayload(){
+    var e=catEntry(ps.value);
+    if(pk.value.trim()) return {provider_key:pk.value.trim()};
+    if(e.key_env && e.key_set) return {provider_key_ref:"env:"+e.key_env};
+    return {};
+  }
+
+  loadBtn.onclick=async function(){
+    var da=dialAuth();
+    if(!url.value.trim()){ toast("Enter a Base URL first","err"); return; }
+    if(da.auth!=="none" && !pk.value.trim() && !catEntry(ps.value).key_set){ toast("Enter an API key first","err"); return; }
+    loadBtn.disabled=true; loadBtn.textContent="Loading…";
+    try{
+      var payload=Object.assign({base_url:url.value.trim(), protocol:da.dialect, auth_mode:da.auth}, keyPayload());
+      var data=await api("/admin/routes/preview-models","POST",payload);
+      if(!data.models || !data.models.length){ toast("No models returned — type the provider model name manually","err"); return; }
+      pickModelModal(data.models, function(chosen){ ms.value=chosen; if(!mi.value) mi.value=chosen; testState.ok=false; save.disabled=true; stat.textContent="Model chosen — click Test connection."; stat.style.color="var(--muted)"; });
+    }catch(e){ toast("Load models: "+e.message,"err"); }
+    finally{ loadBtn.disabled=false; loadBtn.textContent="Load models"; }
   };
-  act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
+
+  testBtn.onclick=async function(){
+    var da=dialAuth();
+    if(!url.value.trim()){ toast("Enter a Base URL","err"); return; }
+    if(!ms.value.trim()){ toast("Pick a provider model first","err"); return; }
+    testBtn.disabled=true; testBtn.textContent="Testing…"; stat.textContent="Testing connection…"; stat.style.color="var(--muted)";
+    try{
+      var payload=Object.assign({base_url:url.value.trim(), dialect:da.dialect, auth_mode:da.auth, provider_model_name:ms.value.trim()}, keyPayload());
+      var r=await api("/admin/test-connection","POST",payload);
+      if(r.ok){
+        stat.textContent="✓ Connected ("+r.latency_ms+" ms)"+(r.model_ok===true?" · model OK":(r.model_ok===false?" · model rejected":""));
+        stat.style.color="var(--green)"; testState.ok=true; save.disabled=false;
+      }else{
+        stat.textContent="✗ "+(r.error||("HTTP "+r.status)); stat.style.color="var(--red)"; testState.ok=false; save.disabled=true;
+      }
+    }catch(e){ stat.textContent="✗ "+e.message; stat.style.color="var(--red)"; testState.ok=false; save.disabled=true; }
+    finally{ testBtn.disabled=false; testBtn.textContent="Test connection"; }
+  };
+
+  save.onclick=async function(){
+    var name=mi.value.trim(); if(!name){toast("Public model name is required","err");return;}
+    var modelSel=ms.value.trim(); if(!modelSel){toast("Provider model is required","err");return;}
+    if(!testState.ok){toast("Test connection must pass before saving","err");return;}
+    var da=dialAuth(); var e=catEntry(ps.value);
+    save.disabled=true; save.textContent="Saving…";
+    try{
+      var backend=backends.find(function(b){ return b.base_url===url.value.trim(); });
+      var backendId;
+      if(backend){ backendId=backend.id; }
+      else{
+        var created=await api("/admin/backends","POST",{name:e.label||"Custom LLM",base_url:url.value.trim(),api_key_ref:"env:NONE",weight:1,max_inflight:0,format:da.dialect,enabled:true});
+        backendId=created.id;
+      }
+      var payload={model_name:name,backend_ids:[backendId],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel};
+      payload.auth_mode=da.auth; payload.protocol=da.protocol;
+      Object.assign(payload, keyPayload());
+      if(ct.value) payload.context_tokens=Number(ct.value);
+      if(mo.value) payload.max_output_tokens=Number(mo.value);
+      if(pi.value!=="") payload.price_input_per_mtok_usd=Number(pi.value);
+      if(po.value!=="") payload.price_output_per_mtok_usd=Number(po.value);
+      if(fb.value) payload.fallback_backend_id=Number(fb.value);
+      var isEdit=!!route.model_name;
+      var path=isEdit?"/admin/routes/"+encodeURIComponent(route.model_name):"/admin/routes";
+      var method=isEdit?"PATCH":"POST";
+      await api(path,method,payload);
+      closeModal(); toast("Model saved");
+      routes=await api("/admin/routes","GET"); backends=await api("/admin/backends","GET"); rerender();
+    }catch(err){ toast("Save failed: "+err.message,"err"); save.disabled=false; save.textContent=route.model_name?"Save":"Save model"; }
+  };
+
+  if(route.model_name){
+    var rb=backends.find(function(x){return x.id===route.backend_ids[0];});
+    if(rb){ url.value=rb.base_url; var ck=(catalog||[]).find(function(e){return rb.name===e.label;}); if(ck) ps.value=ck.key; }
+    stat.textContent="Test connection again to re-enable Save."; stat.style.color="var(--muted)";
+  }
+
   ov.appendChild(m); ov.classList.remove("hidden");
+}
+
+function pickModelModal(models, onPick){
+  var ov=el("div"); ov.style.position="fixed"; ov.style.inset="0"; ov.style.background="rgba(2,6,18,.82)"; ov.style.zIndex="300"; ov.style.display="flex"; ov.style.alignItems="flex-start"; ov.style.justifyContent="center"; ov.style.padding="42px 20px"; ov.style.overflowY="auto";
+  var m=el("div","modal"); m.style.maxWidth="520px";
+  m.appendChild(el("h3",null,"Select a model ("+models.length+")"));
+  var search=el("input"); search.placeholder="Search models…"; search.style.marginBottom="12px"; m.appendChild(search);
+  var list=el("div"); list.style.maxHeight="360px"; list.style.overflowY="auto"; list.style.border="1px solid var(--border)"; list.style.borderRadius="10px"; m.appendChild(list);
+  var chosen=null;
+  function draw(q){
+    list.innerHTML="";
+    var ql=(q||"").toLowerCase();
+    var shown=models.filter(function(md){ return md.toLowerCase().indexOf(ql)>=0; }).slice(0,300);
+    if(!shown.length){ list.appendChild(el("p","hint","No matches")); }
+    shown.forEach(function(md){
+      var it=el("div"); it.style.cursor="pointer"; it.style.padding="9px 12px"; it.style.borderBottom="1px solid var(--border)";
+      it.appendChild(el("span","mono",md));
+      it.onclick=function(){ chosen=md; var all=list.querySelectorAll("div"); for(var i=0;i<all.length;i++) all[i].style.background=""; it.style.background="rgba(56,189,248,.14)"; use.disabled=false; };
+      list.appendChild(it);
+    });
+  }
+  search.oninput=function(){ draw(search.value); };
+  draw("");
+  var act=el("div","actions");
+  var cl=el("button","btn","Cancel"); cl.onclick=function(){ ov.remove(); };
+  var use=el("button","btn primary","Use this model"); use.disabled=true;
+  use.onclick=function(){ if(chosen){ onPick(chosen); ov.remove(); } };
+  act.appendChild(cl); act.appendChild(use); m.appendChild(act);
+  ov.appendChild(m); document.body.appendChild(ov);
 }
 
 async function deleteRoute(r){
@@ -1012,9 +1081,9 @@ function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1000) return Math.
 function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
 var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]];
-var PROVIDER_TYPES=[["openai","OpenAI","https://api.openai.com","openai"],["anthropic","Anthropic","https://api.anthropic.com","anthropic"],["gemini","Gemini OpenAI-compatible","https://generativelanguage.googleapis.com/v1beta/openai","openai"],["deepseek","DeepSeek","https://api.deepseek.com","openai"],["kimi","Kimi / Moonshot","https://api.moonshot.ai/v1","openai"],["qwen","Qwen / DashScope","https://dashscope-intl.aliyuncs.com/compatible-mode/v1","openai"],["zai","Z.AI / GLM","","openai"],["openrouter","OpenRouter","https://openrouter.ai/api/v1","openai"],["muse","Meta Muse","","openai"],["local","Local OpenAI-compatible","http://127.0.0.1:8088/v1","openai"],["custom-openai","Custom OpenAI-compatible","","openai"],["custom-anthropic","Custom Anthropic-compatible","","anthropic"]];
-function providerTypeLabel(b){ var n=(b&&b.name||"").toLowerCase(); if(b&&b.format==="anthropic")return "Anthropic"; if(n.indexOf("anthropic")>=0)return "Anthropic"; if(n.indexOf("gemini")>=0)return "Gemini"; if(n.indexOf("deepseek")>=0)return "DeepSeek"; if(n.indexOf("kimi")>=0||n.indexOf("moonshot")>=0)return "Kimi"; if(n.indexOf("qwen")>=0||n.indexOf("dashscope")>=0)return "Qwen"; if(n.indexOf("zai")>=0||n.indexOf("glm")>=0)return "Z.AI"; if(n.indexOf("openrouter")>=0)return "OpenRouter"; if(n.indexOf("muse")>=0)return "Muse"; if(n.indexOf("local")>=0||n.indexOf("llama")>=0||n.indexOf("vllm")>=0||n.indexOf("ollama")>=0)return "Local"; if(n.indexOf("custom")>=0)return "Custom"; return "OpenAI"; }
-function protocolsForBackend(b){ var n=(b&&b.name||"").toLowerCase(); if(b&&b.format==="anthropic"&&n.indexOf("custom")<0)return [["anthropic_messages","Anthropic Messages"]]; if(n.indexOf("anthropic")>=0&&n.indexOf("custom")<0)return [["anthropic_messages","Anthropic Messages"]]; if(n.indexOf("local")>=0||n.indexOf("llama")>=0||n.indexOf("vllm")>=0||n.indexOf("ollama")>=0)return [["local_openai_chat","Local OpenAI-compatible Chat"]]; if(n.indexOf("custom")>=0)return [["custom_openai_chat","Custom OpenAI-compatible"],["anthropic_messages","Anthropic Messages"]]; return [["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"]]; }
+function catEntry(key){ return (catalog||[]).find(function(e){return e.key===key;}) || {key:key,label:key,base_url:"",dialect:"openai",key_env:"",key_set:false}; }
+function isLocalUrl(u){ var h=(u||"").toLowerCase(); h=h.split("://")[1]||h; h=h.split("/")[0].split(":")[0]; return h==="127.0.0.1"||h==="localhost"||h==="::1"||h.startsWith("10.")||h.startsWith("192.168.")||h.startsWith("172.16.")||h.startsWith("172.17.")||h.startsWith("172.18.")||h.startsWith("172.19.")||/^172\.(2[0-9]|3[0-1])\./.test(h); }
+
 function logsTable(rows){
   var w=el("div","table-wrap"); var t=el("table");
   var admin=mode==="admin";
