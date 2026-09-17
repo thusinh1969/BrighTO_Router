@@ -17,7 +17,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, patch, post, put},
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
@@ -26,6 +26,16 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 use crate::auth;
 use crate::config::{DbConfigLoader, resolve_backend_key};
 use crate::contract::{ApiKey, AppState, Budget, KeyHash, ModelRoute, ProviderProtocol};
+
+/// Phân biệt "field bị bỏ qua" (None) với "field = null" (Some(None)) cho Option<Option<T>>.
+/// serde mặc định map null -> None (giống bỏ qua); helper này giữ null -> Some(None).
+fn deserialize_opt_opt<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Some(Option::deserialize(deserializer)?))
+}
 
 // ===== Admin state =====
 
@@ -341,6 +351,7 @@ struct PatchKey {
     owner: Option<String>,
     allowed_models: Option<Vec<String>>,
     /// Some(Some(b)) = set budget; Some(None) = clear budget; None = leave unchanged.
+    #[serde(default, deserialize_with = "deserialize_opt_opt")]
     budget: Option<Option<Budget>>,
     rpm_limit: Option<u32>,
     concurrency_limit: Option<u32>,
@@ -358,6 +369,8 @@ struct KeyResponse {
 #[derive(Deserialize)]
 struct PatchTeam {
     name: Option<String>,
+    /// Some(Some(b)) = set; Some(None) = clear; None = leave unchanged.
+    #[serde(default, deserialize_with = "deserialize_opt_opt")]
     budget: Option<Option<Budget>>,
     enabled: Option<bool>,
 }
