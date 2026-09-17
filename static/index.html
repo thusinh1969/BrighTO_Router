@@ -227,8 +227,8 @@ var backends = [], routes = [], teams = [], keys = [];
 
 function $(id){ return document.getElementById(id); }
 function el(tag, cls, text){ var n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
-function fmt(n){ if(n===null||n===undefined)return "-"; n=Number(n); if(Math.abs(n)>=1e9)return (n/1e9).toFixed(1)+"B"; if(Math.abs(n)>=1e6)return (n/1e6).toFixed(1)+"M"; if(Math.abs(n)>=1e3)return (n/1e3).toFixed(1)+"K"; return String(Math.round(n)); }
-function fmtCount(n){ if(n===null||n===undefined)return "-"; n=Number(n); if(Math.abs(n)>=1e9)return (n/1e9).toFixed(1)+"B"; if(Math.abs(n)>=1e6)return (n/1e6).toFixed(1)+"M"; if(Math.abs(n)>=1e3)return (n/1e3).toFixed(1)+"K"; return String(Math.round(n)); }
+function fmt(n){ if(n===null||n===undefined)return "-"; n=Number(n); var a=Math.abs(n),s; if(a>=1e9)s=(n/1e9).toFixed(1)+"B"; else if(a>=1e6)s=(n/1e6).toFixed(1)+"M"; else if(a>=1e3)s=(n/1e3).toFixed(1)+"K"; else return String(Math.round(n)); return s.replace(/\.0([KMB])$/,"$1"); }
+function fmtCount(n){ return fmt(n); }
 function fmtTs(sec){ if(!sec)return "-"; var d=new Date(sec*1000); return d.toISOString().replace("T"," ").slice(0,16); }
 function fmtDate(sec){ return new Date(sec*1000).toISOString().slice(0,10); }
 function authHeaders(){
@@ -949,7 +949,7 @@ function chartBars(stats){
   wrap.appendChild(lg);
   return wrap;
 }
-function fmtNum(v){ if(v>=1000000000)return(v/1000000000).toFixed(1)+"B"; if(v>=1000000)return(v/1000000).toFixed(1)+"M"; if(v>=1000)return(v/1000).toFixed(1)+"K"; return String(Math.round(v)); }
+function fmtNum(v){ return fmt(v); }
 
 /* ===== Logs table ===== */
 function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
