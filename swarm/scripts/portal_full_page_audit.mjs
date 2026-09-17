@@ -207,6 +207,18 @@ async function inspectPage(page, label) {
         clientHeight: n.clientHeight,
       };
     });
+    const requestStatusPills = [...document.querySelectorAll('#content .request-card-head > .pill')].map((n) => {
+      const r = n.getBoundingClientRect();
+      const st = getComputedStyle(n);
+      return {
+        text: (n.innerText || n.textContent || '').trim(),
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+        justifySelf: st.justifySelf,
+        alignSelf: st.alignSelf,
+        whiteSpace: st.whiteSpace,
+      };
+    });
     return {
       title: document.querySelector('#page-title')?.textContent || '',
       panelCount,
@@ -224,6 +236,7 @@ async function inspectPage(page, label) {
       usageBreakdownStats,
       jsTruncatedLabels,
       primaryDataLabels,
+      requestStatusPills,
       disabledDangerButtons: [...document.querySelectorAll('button.btn.danger:disabled')].filter((b) => b.offsetParent !== null).map((b) => {
         const st = getComputedStyle(b);
         return { text: b.innerText.trim(), title: b.title || '', color: st.color, borderColor: st.borderColor, opacity: st.opacity };
@@ -401,6 +414,8 @@ async function runViewport(browser, name, width, height) {
       if (['dashboard', 'usage'].includes(view)) {
         const clippedPrimaryLabels = (metrics.primaryDataLabels || []).filter((l) => l.text && (/nowrap/i.test(l.whiteSpace) || /ellipsis/i.test(l.textOverflow) || l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
         if (clippedPrimaryLabels.length) fail(`${name}/${view}: mobile primary data labels should wrap instead of truncating`, { clippedPrimaryLabels, metrics });
+        const stretchedStatusPills = (metrics.requestStatusPills || []).filter((p) => p.text && (p.width > 86 || !/start|auto/i.test(String(p.justifySelf))));
+        if (stretchedStatusPills.length) fail(`${name}/${view}: mobile request status should be a compact pill, not a stretched bar`, { stretchedStatusPills, metrics });
       }
     }
     const redDisabledDanger = (metrics.disabledDangerButtons || []).filter((b) => /248, 113, 113/.test(b.color) || /248, 113, 113/.test(b.borderColor));

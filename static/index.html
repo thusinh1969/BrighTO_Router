@@ -495,7 +495,8 @@ body.nav-open{overflow:hidden}
   .table-wrap td.actions{display:block;text-align:left}
   .table-wrap td .stack-cell{align-items:flex-start}
   .table-wrap td.actions .row,.table-wrap td.actions .action-row{justify-content:flex-start;flex-wrap:wrap!important;gap:7px!important}
-  .request-card-head{grid-template-columns:1fr}
+  .request-card-head{grid-template-columns:minmax(0,1fr) auto;align-items:start}
+  .request-card-head>.pill{justify-self:start;align-self:start;width:auto;max-width:max-content;white-space:nowrap}
   .table-wrap td.mono,.table-wrap td .mono{word-break:break-word;overflow-wrap:anywhere}
   .table-wrap .truncate{white-space:normal;overflow-wrap:anywhere;text-align:left}
   .table-wrap .cell-main,.table-wrap .cell-sub,.table-wrap .mono,.metric-table td:first-child,.model-meta-grid span,.mini-meta-grid span{min-width:0;max-width:100%;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;text-overflow:clip}
