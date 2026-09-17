@@ -457,6 +457,11 @@ body.nav-open{overflow:hidden}
   .ops-primary,.ops-side,.focus-row,.request-card,.dash-split>*,.chart-wrap,.legend{max-width:100%;min-width:0;overflow:hidden}
   .legend{display:grid;grid-template-columns:1fr;gap:7px}
   .legend span{width:100%;max-width:none;min-width:0;justify-content:flex-start;border-radius:10px;padding:5px 8px}
+  .legend-label,.focus-title,.request-model{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;overflow-wrap:anywhere!important;word-break:break-word!important}
+  .focus-row{grid-template-columns:minmax(0,1fr);align-items:start}
+  .focus-value{text-align:left;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+  .focus-value span{display:inline}
+  .request-card-head{grid-template-columns:1fr auto;align-items:start}
   .panel{max-width:100%}
   .filter-grid,.settings-grid,.status-grid,.usage-breakdown-grid{grid-template-columns:1fr}
   .ops-primary::after{display:none}
