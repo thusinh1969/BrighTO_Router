@@ -159,6 +159,7 @@ async function inspectPage(page, label) {
         const r = n.getBoundingClientRect();
         return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), text: (n.innerText || '').trim().slice(0, 80) };
       }),
+      visibleUsageFilterFields: [...document.querySelectorAll('#content .usage-filter-panel .filter-grid input, #content .usage-filter-panel .filter-grid select')].filter((n) => n.offsetParent !== null).length,
       visibleButtons: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => b.innerText.trim()).filter(Boolean).slice(0, 30),
     };
   });
@@ -209,6 +210,14 @@ async function runViewport(browser, name, width, height) {
         if (firstRow.length < 2) fail(`${name}/${view}: mobile KPI cards should use a compact two-column layout`, { cardRects: metrics.cardRects, metrics });
         const crampedCards = (metrics.cardRects || []).filter((r) => r.width < 130);
         if (crampedCards.length) fail(`${name}/${view}: mobile KPI cards are too narrow to read`, { crampedCards, metrics });
+      }
+      if (view === 'usage') {
+        if (!(metrics.visibleButtons || []).includes('Show filters')) fail(`${name}/${view}: mobile Usage should default to collapsed filters with a Show filters action`, metrics);
+        if (metrics.visibleUsageFilterFields > 0) fail(`${name}/${view}: mobile Usage default filter panel renders too many fields before data`, metrics);
+        await page.getByRole('button', { name: 'Show filters' }).click({ force: true });
+        await page.waitForTimeout(250);
+        const expandedFilterFields = await page.evaluate(() => [...document.querySelectorAll('#content .usage-filter-panel .filter-grid input, #content .usage-filter-panel .filter-grid select')].filter((n) => n.offsetParent !== null).length);
+        if (expandedFilterFields < 7) fail(`${name}/${view}: Show filters did not expand the full Usage filter form`, { expandedFilterFields, metrics });
       }
       const wideTables = metrics.tableStats.filter((t) => t.scrollWidth > t.clientWidth + 8);
       if (wideTables.length) fail(`${name}/${view}: mobile table still scrolls horizontally`, { wideTables, metrics });
