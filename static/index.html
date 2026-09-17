@@ -110,6 +110,8 @@ th,td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--border);whi
 th{background:#111827;color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0}
 tr:last-child td{border-bottom:none}
 tbody tr:hover{background:#111c31}
+td.actions{position:sticky;right:0;background:#0b1220;box-shadow:-10px 0 12px -12px rgba(0,0,0,.6)}
+tbody tr:hover td.actions{background:#111c31}
 td.mono{font-family:var(--mono);font-size:12px}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 
@@ -428,22 +430,23 @@ function renderProviders(c){
   var add=el("button","btn primary sm","Add provider"); add.onclick=openProviderModal;
   h.appendChild(add);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Set provider API keys in the shell (<b>./start.sh set-key &lt;name&gt; &lt;key&gt;</b>) or edit the key reference here. Only <b>configured / missing</b> status is shown — never the secret."));
+  p.appendChild(el("p","hint","Providers are endpoint/template definitions (name, URL, type, capacity). The provider API key is entered per model route in the Route wizard — never here."));
   if(!backends.length){ p.appendChild(emptyBox("No providers yet.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table");
-    t.appendChild(thead(["","Provider","Status","Protocols","Base URL",""]));
+    t.appendChild(thead(["Provider","Type","Status","Weight","Max","Base URL",""]));
     var tb=el("tbody");
     backends.forEach(function(b){
       var tr=el("tr");
-      tr.appendChild(el("td","mono",String(b.id)));
       tr.appendChild(el("td",null,b.name));
+      tr.appendChild(el("td",null,providerTypeLabel(b)));
       var st=el("td");
       st.appendChild(pill(b.enabled?(b.key_resolved?"Enabled · key ready":"Enabled · no key"):"Disabled", b.enabled?(b.key_resolved?"on":"warn"):"off"));
       tr.appendChild(st);
-      tr.appendChild(el("td",null,protocolsForBackend(b).map(function(x){return protoLabel(x[0]);}).join(", ")));
+      tr.appendChild(el("td","num",String(b.weight||1)));
+      tr.appendChild(el("td","num",b.max_inflight?String(b.max_inflight):"∞"));
       tr.appendChild(el("td","mono",b.base_url.replace("https://","").replace("http://","")));
-      var td=el("td"); var row=el("div","row"); row.style.gap="6px";
+      var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px";
       var f=el("button","btn sm ghost","Load models"); f.onclick=function(){fetchModels(b);};
       var e=el("button","btn sm primary","Edit"); e.onclick=function(){openProviderModal(b);};
       var d=el("button","btn sm danger","Delete"); d.onclick=function(){deleteProvider(b);};
@@ -471,8 +474,13 @@ function openProviderModal(b){
   var inputs={};
   var fields=[["name","Name",b.name||""],["base_url","Base URL",b.base_url||""],["weight","Weight",String(b.weight||1)],["max_inflight","Max concurrent (0 = unlimited)",String(b.max_inflight||0)]];
   fields.forEach(function(f){ var box=el("div","field"); box.appendChild(el("label",null,f[1])); var i=el("input"); i.value=f[2]; inputs[f[0]]=i; box.appendChild(i); m.appendChild(box); });
-  var ff=el("div","field"); ff.appendChild(el("label",null,"Format"));
-  var fsel=el("select"); [["openai","OpenAI-compatible"],["anthropic","Anthropic Messages"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];fsel.appendChild(o);}); fsel.value=b.format||"openai"; ff.appendChild(fsel); m.appendChild(ff);
+  var ft=el("div","field"); ft.appendChild(el("label",null,"Provider Type"));
+  var tsel=el("select");
+  PROVIDER_TYPES.forEach(function(t){var o=el("option",null,t[1]);o.value=t[0];tsel.appendChild(o);});
+  var curType=providerTypeLabel(b);
+  tsel.value=(PROVIDER_TYPES.find(function(t){return t[1].indexOf(curType)>=0;})||PROVIDER_TYPES[0])[0];
+  tsel.onchange=function(){ var t=PROVIDER_TYPES.find(function(x){return x[0]===tsel.value;}); if(t && t[2] && !inputs.base_url.value.trim()) inputs.base_url.value=t[2]; };
+  ft.appendChild(tsel); m.appendChild(ft);
   var en=el("div","field");
   var lab=el("label","chip"+(b.enabled!==false?" selected":"")); var cb=el("input"); cb.type="checkbox"; cb.checked=b.enabled!==false;
   lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); en.appendChild(lab); m.appendChild(en);
@@ -480,7 +488,9 @@ function openProviderModal(b){
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary", b.id?"Save":"Add");
   save.onclick=async function(){
-    var payload={name:inputs.name.value.trim(),base_url:inputs.base_url.value.trim(),format:fsel.value,weight:Number(inputs.weight.value)||1,max_inflight:Number(inputs.max_inflight.value)||0,enabled:cb.checked};
+    var t=PROVIDER_TYPES.find(function(x){return x[0]===tsel.value;});
+    var format=t?t[3]:"openai";
+    var payload={name:inputs.name.value.trim(),base_url:inputs.base_url.value.trim(),format:format,weight:Number(inputs.weight.value)||1,max_inflight:Number(inputs.max_inflight.value)||0,enabled:cb.checked};
     if(!b.id) payload.api_key_ref="env:NONE"; // provider template secret-free; route owns the key
     try{
       if(b.id){ await api("/admin/backends/"+b.id,"PATCH",payload); }
@@ -502,7 +512,7 @@ async function fetchModels(b){
     var chips=el("div","chips");
     data.models.slice(0,200).forEach(function(md){
       var ch=el("button","chip",md);
-      ch.onclick=function(){ api("/admin/routes","POST",{model_name:md,backend_ids:[b.id],chars_per_token:4.0,first_byte_timeout:180}).then(function(){closeModal();toast("Route created for "+md);routes=api("/admin/routes","GET");}).catch(function(e){toast("Route failed: "+e.message,"err");}); };
+      ch.onclick=async function(){ try{ await api("/admin/routes","POST",{model_name:md,backend_ids:[b.id],chars_per_token:4.0,first_byte_timeout:180}); closeModal(); toast("Route created for "+md); routes=await api("/admin/routes","GET"); rerender(); }catch(e){ toast("Route failed: "+e.message,"err"); } };
       chips.appendChild(ch);
     });
     m.appendChild(chips);
@@ -524,16 +534,20 @@ function renderModels(c){
   if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table");
-    t.appendChild(thead(["Public model","Backends","Protocol","Fallback","Timeout",""]));
+    t.appendChild(thead(["Public model","Provider","Provider model","Protocol","Auth","Context","Max out","$ in/out","Timeout",""]));
     var tb=el("tbody");
     routes.forEach(function(r){
       var tr=el("tr");
       tr.appendChild(el("td","mono",r.model_name));
       tr.appendChild(el("td",null,r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ")));
+      tr.appendChild(el("td","mono",r.provider_model_name||"—"));
       tr.appendChild(el("td",null,protoLabel(r.protocol)));
-      tr.appendChild(el("td",null,r.fallback_backend_id===null?"—":String(r.fallback_backend_id)));
+      tr.appendChild(el("td",null,r.auth_mode||"—"));
+      tr.appendChild(el("td","num",r.context_tokens!=null?fmt(r.context_tokens):"—"));
+      tr.appendChild(el("td","num",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"));
+      tr.appendChild(el("td","num",(r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—")+" / "+(r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—")));
       tr.appendChild(el("td",null,r.first_byte_timeout+"s"));
-      var td=el("td"); var row=el("div","row"); row.style.gap="6px"; var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openRouteModal(r);}; var d=el("button","btn sm danger","Delete"); d.onclick=function(){deleteRoute(r);}; row.appendChild(b); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
+      var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px"; var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openRouteModal(r);}; var d=el("button","btn sm danger","Delete"); d.onclick=function(){deleteRoute(r);}; row.appendChild(b); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
     t.appendChild(tb); w.appendChild(t); p.appendChild(w);
@@ -627,6 +641,15 @@ function openRouteModal(route){
     var payload={model_name:name,backend_ids:[Number(ps.value)],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel};
     payload.auth_mode=am.value;
     payload.protocol=pcol.value;
+    // Validate protocol/auth compatibility (block nonsensical combos).
+    var prov=backends.find(function(x){return x.id===Number(ps.value);});
+    var pname=(prov&&prov.name||"").toLowerCase();
+    if(payload.protocol==="anthropic_messages" && payload.auth_mode==="none" && pname.indexOf("local")<0 && pname.indexOf("custom")<0){
+      toast("Anthropic Messages requires an API key (auth ≠ none).","err"); return;
+    }
+    if(payload.protocol==="local_openai_chat" && payload.auth_mode!=="none"){
+      toast("Local OpenAI-compatible chat should use 'No API key' auth.","err"); return;
+    }
     if(pk.value.trim()) payload.provider_key=pk.value.trim();
     if(ct.value) payload.context_tokens=Number(ct.value);
     if(mo.value) payload.max_output_tokens=Number(mo.value);
@@ -706,6 +729,7 @@ function openTeamModal(tm){
     var payload={name:ni.value.trim(),enabled:cb.checked};
     if(bi.value.trim()){ try{payload.budget=JSON.parse(bi.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
     else if(bt.value==="token"){ var amt=Number(ba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;} payload.budget={period:bp.value,max_tokens:amt,per_model:{}}; }
+    else { payload.budget=null; } // Unlimited -> clear any existing budget
     try{ if(tm.id){await api("/admin/teams/"+tm.id,"PATCH",payload);} else {await api("/admin/teams","POST",payload);}
       closeModal(); toast("Team saved"); teams=await api("/admin/teams","GET"); rerender(); }
     catch(e){ toast("Save failed: "+e.message,"err"); }
@@ -747,42 +771,49 @@ function renderKeys(c){
       tr.appendChild(el("td",null,k.team_name));
       tr.appendChild(el("td",null,k.allowed_models.length?k.allowed_models.join(", "):"all"));
       var en=el("td"); en.appendChild(pill(k.enabled?"Enabled":"Disabled",k.enabled?"on":"off")); tr.appendChild(en);
-      var td=el("td"); var row=el("div","row"); row.style.gap="6px";
-      var d=el("button","btn sm danger","Disable"); d.onclick=function(){disableKey(k);};
-      row.appendChild(d); td.appendChild(row); tr.appendChild(td);
+      var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px";
+      var e=el("button","btn sm ghost","Edit"); e.onclick=function(){openKeyModal(k);};
+      var d=el("button","btn sm danger",k.enabled?"Disable":"Enable"); d.onclick=function(){disableKey(k);};
+      row.appendChild(e); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
     t.appendChild(tb); w.appendChild(t); p.appendChild(w);
   }
   c.appendChild(p);
 }
-function openKeyModal(){
+function openKeyModal(k){
+  k=k||{};
+  var isEdit=!!k.id;
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
-  m.appendChild(el("h3",null,"Create API key"));
+  m.appendChild(el("h3",null,isEdit?"Edit API key · "+k.prefix:"Create API key"));
   var f=el("div","field"); f.appendChild(el("label",null,"Team")); var ts=el("select");
   teams.forEach(function(tm){var o=el("option",null,tm.name+" (id "+tm.id+")");o.value=tm.id;ts.appendChild(o);});
+  if(k.team_id) ts.value=k.team_id;
   f.appendChild(ts); m.appendChild(f);
-  var f2=el("div","field"); f2.appendChild(el("label",null,"Owner (name / email)")); var oi=el("input"); oi.placeholder="alice@example.com"; f2.appendChild(oi); m.appendChild(f2);
-  var f3=el("div","field"); f3.appendChild(el("label",null,"Allowed models (comma-separated, empty = all)")); var mi=el("input"); mi.placeholder="gpt-4o,deepseek-v3"; f3.appendChild(mi); m.appendChild(f3);
-  var f4=el("div","field"); f4.appendChild(el("label",null,"Expiry date (optional)")); var ex=el("input"); ex.type="date"; f4.appendChild(ex); m.appendChild(f4);
-  var f5=el("div","field"); f5.appendChild(el("label",null,"Requests per minute (optional)")); var rpm=el("input"); rpm.type="number"; rpm.placeholder="unlimited"; f5.appendChild(rpm); m.appendChild(f5);
-  var f6=el("div","field"); f6.appendChild(el("label",null,"Concurrency limit (optional)")); var conc=el("input"); conc.type="number"; conc.placeholder="unlimited"; f6.appendChild(conc); m.appendChild(f6);
+  var f2=el("div","field"); f2.appendChild(el("label",null,"Owner (name / email)")); var oi=el("input"); oi.placeholder="alice@example.com"; oi.value=k.owner||""; f2.appendChild(oi); m.appendChild(f2);
+  var f3=el("div","field"); f3.appendChild(el("label",null,"Allowed models (comma-separated, empty = all)")); var mi=el("input"); mi.placeholder="gpt-4o,deepseek-v3"; mi.value=(k.allowed_models||[]).join(", "); f3.appendChild(mi); m.appendChild(f3);
+  var f4=el("div","field"); f4.appendChild(el("label",null,"Expiry date (optional)")); var ex=el("input"); ex.type="date"; if(k.expires_at) ex.value=new Date(k.expires_at*1000).toISOString().slice(0,10); f4.appendChild(ex); m.appendChild(f4);
+  var f5=el("div","field"); f5.appendChild(el("label",null,"Requests per minute (optional)")); var rpm=el("input"); rpm.type="number"; rpm.placeholder="unlimited"; if(k.rpm_limit) rpm.value=k.rpm_limit; f5.appendChild(rpm); m.appendChild(f5);
+  var f6=el("div","field"); f6.appendChild(el("label",null,"Concurrency limit (optional)")); var conc=el("input"); conc.type="number"; conc.placeholder="unlimited"; if(k.concurrency_limit) conc.value=k.concurrency_limit; f6.appendChild(conc); m.appendChild(f6);
   var f7=el("div","field"); f7.appendChild(el("label",null,"Budget"));
   var kbm=el("select");
   [["inherit","Inherit team budget"],["token","Token budget"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];kbm.appendChild(o);});
+  if(k.budget&&k.budget.max_tokens>0) kbm.value="token"; else kbm.value="inherit";
   f7.appendChild(kbm); m.appendChild(f7);
   var f8=el("div","field"); f8.appendChild(el("label",null,"Period"));
   var kbp=el("select"); [["day","Daily"],["month","Monthly"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];kbp.appendChild(o);});
+  if(k.budget&&k.budget.period) kbp.value=k.budget.period;
   f8.appendChild(kbp); m.appendChild(f8);
-  var f9=el("div","field"); f9.appendChild(el("label",null,"Token amount")); var kba=el("input"); kba.type="number"; kba.placeholder="e.g. 1000000"; f9.appendChild(kba); m.appendChild(f9);
+  var f9=el("div","field"); f9.appendChild(el("label",null,"Token amount")); var kba=el("input"); kba.type="number"; kba.placeholder="e.g. 1000000"; if(k.budget&&k.budget.max_tokens>0) kba.value=k.budget.max_tokens; f9.appendChild(kba); m.appendChild(f9);
   var f10=el("div","field");
   var advBtn=el("button","linkbtn","Advanced JSON (money budget, per-model caps)");
-  var bud=el("textarea"); bud.style.display="none"; bud.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}';
+  var bud=el("textarea"); bud.style.display="none"; bud.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}'; if(k.budget) bud.value=JSON.stringify(k.budget);
   advBtn.onclick=function(){bud.style.display = bud.style.display==="none"?"block":"none";};
   f10.appendChild(advBtn); f10.appendChild(bud); m.appendChild(f10);
+  if(isEdit){ var f11=el("div","field"); var lab=el("label","chip"+(k.enabled!==false?" selected":"")); var ecb=el("input"); ecb.type="checkbox"; ecb.checked=k.enabled!==false; lab.appendChild(ecb); lab.appendChild(document.createTextNode("Enabled")); f11.appendChild(lab); m.appendChild(f11); }
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
-  var save=el("button","btn primary","Create");
+  var save=el("button","btn primary",isEdit?"Save":"Create");
   save.onclick=async function(){
     var payload={team_id:Number(ts.value),owner:oi.value.trim(),allowed_models:mi.value.split(",").map(function(s){return s.trim();}).filter(Boolean)};
     if(ex.value) payload.expires_at=Math.floor(new Date(ex.value+"T23:59:59").getTime()/1000);
@@ -790,19 +821,24 @@ function openKeyModal(){
     if(conc.value) payload.concurrency_limit=Number(conc.value);
     if(bud.value.trim()){ try{payload.budget=JSON.parse(bud.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
     else if(kbm.value==="token"){ var amt=Number(kba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;} payload.budget={period:kbp.value,max_tokens:amt,per_model:{}}; }
+    else { payload.budget=null; }
+    if(isEdit) payload.enabled=ecb.checked;
     try{
-      var data=await api("/admin/keys","POST",payload);
-      closeModal();
-      ov.innerHTML=""; var m2=el("div","modal");
-      m2.appendChild(el("h3",null,"Key created"));
-      m2.appendChild(el("div","key-reveal"));
-      var span=el("span",null,data.key); m2.querySelector(".key-reveal").appendChild(span);
-      m2.querySelector(".key-reveal").appendChild(copyIconBtn(data.key));
-      m2.appendChild(el("p","hint","Admin can view and copy this client API key again later from the <b>API Keys</b> table."));
-      var act2=el("div","actions"); var done=el("button","btn primary","Done"); done.onclick=closeModal; act2.appendChild(done); m2.appendChild(act2);
-      ov.appendChild(m2); ov.classList.remove("hidden");
+      if(isEdit){ await api("/admin/keys/"+k.id,"PATCH",payload); closeModal(); toast("Key saved"); }
+      else{
+        var data=await api("/admin/keys","POST",payload);
+        closeModal();
+        ov.innerHTML=""; var m2=el("div","modal");
+        m2.appendChild(el("h3",null,"Key created"));
+        m2.appendChild(el("div","key-reveal"));
+        var span=el("span",null,data.key); m2.querySelector(".key-reveal").appendChild(span);
+        m2.querySelector(".key-reveal").appendChild(copyIconBtn(data.key));
+        m2.appendChild(el("p","hint","Admin can view and copy this client API key again later from the <b>API Keys</b> table."));
+        var act2=el("div","actions"); var done=el("button","btn primary","Done"); done.onclick=closeModal; act2.appendChild(done); m2.appendChild(act2);
+        ov.appendChild(m2); ov.classList.remove("hidden");
+      }
       keys=await api("/admin/keys","GET"); rerender();
-    }catch(e){ toast("Create key failed: "+e.message,"err"); }
+    }catch(e){ toast((isEdit?"Save":"Create")+" key failed: "+e.message,"err"); }
   };
   act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
   ov.appendChild(m); ov.classList.remove("hidden");
@@ -903,7 +939,7 @@ async function renderSettings(c){
   var fld1=el("div","field"); fld1.style.margin="0"; fld1.appendChild(el("label",null,"Font size"));
   var fsel=el("select"); [["small","Small"],["normal","Normal"],["large","Large"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];fsel.appendChild(o);}); fsel.value=document.documentElement.dataset.font||"normal"; fsel.onchange=function(){setPref("font",fsel.value);}; fld1.appendChild(fsel); prow.appendChild(fld1);
   var fld2=el("div","field"); fld2.style.margin="0"; fld2.appendChild(el("label",null,"Density"));
-  var dsel=el("select"); [["comfortable","Comfortable"],["compact","Compact"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];dsel.appendChild(o);}); dsel.value=document.documentElement.dataset.density||"comfortable"; dsel.onchange=function(){setPref("density",dsel.value);}; fld2.appendChild(dsel); prow.appendChild(fld2);
+  var dsel=el("select"); [["compact","Compact (default)"],["comfortable","Comfortable"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];dsel.appendChild(o);}); dsel.value=document.documentElement.dataset.density||"compact"; dsel.onchange=function(){setPref("density",dsel.value);}; fld2.appendChild(dsel); prow.appendChild(fld2);
   pp.appendChild(prow);
   c.appendChild(pp);
 
@@ -958,7 +994,9 @@ function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1000) return Math.
 function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
 var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]];
-function protocolsForBackend(b){ if(b && b.format==="anthropic") return [["anthropic_messages","Anthropic Messages"]]; if(b && (b.name||"").toLowerCase().indexOf("anthropic")>=0) return [["anthropic_messages","Anthropic Messages"]]; return PROTOCOLS.filter(function(p){return p[0]!=="anthropic_messages";}); }
+var PROVIDER_TYPES=[["openai","OpenAI","https://api.openai.com","openai"],["anthropic","Anthropic","https://api.anthropic.com","anthropic"],["gemini","Gemini OpenAI-compatible","https://generativelanguage.googleapis.com/v1beta/openai","openai"],["deepseek","DeepSeek","https://api.deepseek.com","openai"],["kimi","Kimi / Moonshot","https://api.moonshot.ai/v1","openai"],["qwen","Qwen / DashScope","https://dashscope-intl.aliyuncs.com/compatible-mode/v1","openai"],["zai","Z.AI / GLM","","openai"],["openrouter","OpenRouter","https://openrouter.ai/api/v1","openai"],["muse","Meta Muse","","openai"],["local","Local OpenAI-compatible","http://127.0.0.1:8088/v1","openai"],["custom-openai","Custom OpenAI-compatible","","openai"],["custom-anthropic","Custom Anthropic-compatible","","anthropic"]];
+function providerTypeLabel(b){ var n=(b&&b.name||"").toLowerCase(); if(b&&b.format==="anthropic")return "Anthropic"; if(n.indexOf("anthropic")>=0)return "Anthropic"; if(n.indexOf("gemini")>=0)return "Gemini"; if(n.indexOf("deepseek")>=0)return "DeepSeek"; if(n.indexOf("kimi")>=0||n.indexOf("moonshot")>=0)return "Kimi"; if(n.indexOf("qwen")>=0||n.indexOf("dashscope")>=0)return "Qwen"; if(n.indexOf("zai")>=0||n.indexOf("glm")>=0)return "Z.AI"; if(n.indexOf("openrouter")>=0)return "OpenRouter"; if(n.indexOf("muse")>=0)return "Muse"; if(n.indexOf("local")>=0||n.indexOf("llama")>=0||n.indexOf("vllm")>=0||n.indexOf("ollama")>=0)return "Local"; if(n.indexOf("custom")>=0)return "Custom"; return "OpenAI"; }
+function protocolsForBackend(b){ var n=(b&&b.name||"").toLowerCase(); if(b&&b.format==="anthropic"&&n.indexOf("custom")<0)return [["anthropic_messages","Anthropic Messages"]]; if(n.indexOf("anthropic")>=0&&n.indexOf("custom")<0)return [["anthropic_messages","Anthropic Messages"]]; if(n.indexOf("local")>=0||n.indexOf("llama")>=0||n.indexOf("vllm")>=0||n.indexOf("ollama")>=0)return [["local_openai_chat","Local OpenAI-compatible Chat"]]; if(n.indexOf("custom")>=0)return [["custom_openai_chat","Custom OpenAI-compatible"],["anthropic_messages","Anthropic Messages"]]; return [["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"]]; }
 function logsTable(rows){
   var w=el("div","table-wrap"); var t=el("table");
   var admin=mode==="admin";

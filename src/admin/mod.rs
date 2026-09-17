@@ -15,7 +15,7 @@ use axum::{
     extract::{ConnectInfo, Extension, Path, Query},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::{delete, get, patch, post, put},
+    routing::{get, patch, post, put},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -274,7 +274,7 @@ pub fn router(runtime: Arc<AppState>) -> Router {
             patch(patch_route).delete(delete_route),
         )
         .route("/teams/{id}", patch(update_team))
-        .route("/keys/{id}", delete(disable_key))
+        .route("/keys/{id}", patch(update_key).delete(disable_key))
         .route("/keys/{id}/reveal", get(reveal_key))
         .route("/stats", get(get_stats))
         .route("/summary", get(get_summary))
@@ -333,6 +333,19 @@ struct CreateKey {
     rpm_limit: Option<u32>,
     concurrency_limit: Option<u32>,
     expires_at: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct PatchKey {
+    team_id: Option<i64>,
+    owner: Option<String>,
+    allowed_models: Option<Vec<String>>,
+    /// Some(Some(b)) = set budget; Some(None) = clear budget; None = leave unchanged.
+    budget: Option<Option<Budget>>,
+    rpm_limit: Option<u32>,
+    concurrency_limit: Option<u32>,
+    expires_at: Option<i64>,
+    enabled: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -1526,6 +1539,95 @@ async fn disable_key(
 
     state.reload_now().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Edit API-key metadata (owner/team/allowed models/budget/rpm/concurrency/expiry/enabled).
+/// Không regenerate secret.
+async fn update_key(
+    Extension(state): Extension<Arc<AdminState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(payload): Json<PatchKey>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let pool = state.pool().await?;
+
+    let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new("UPDATE api_keys SET ");
+    let mut first = true;
+    if let Some(v) = payload.team_id {
+        if !first {
+            builder.push(", ");
+        }
+        builder.push("team_id = ").push_bind(v);
+        first = false;
+    }
+    if let Some(v) = payload.owner {
+        if !first {
+            builder.push(", ");
+        }
+        builder
+            .push("owner = ")
+            .push_bind(non_empty_trimmed(v, "owner")?);
+        first = false;
+    }
+    if let Some(v) = payload.allowed_models {
+        if !first {
+            builder.push(", ");
+        }
+        let json = serde_json::to_string(&v)?;
+        builder.push("allowed_models = ").push_bind(json);
+        first = false;
+    }
+    if let Some(v) = payload.budget {
+        if !first {
+            builder.push(", ");
+        }
+        let json = v.map(|b| serde_json::to_string(&b)).transpose()?;
+        builder.push("budget = ").push_bind(json);
+        first = false;
+    }
+    if let Some(v) = payload.rpm_limit {
+        if !first {
+            builder.push(", ");
+        }
+        builder.push("rpm_limit = ").push_bind(v as i64);
+        first = false;
+    }
+    if let Some(v) = payload.concurrency_limit {
+        if !first {
+            builder.push(", ");
+        }
+        builder.push("concurrency_limit = ").push_bind(v as i64);
+        first = false;
+    }
+    if let Some(v) = payload.expires_at {
+        if !first {
+            builder.push(", ");
+        }
+        builder.push("expires_at = ").push_bind(v);
+        first = false;
+    }
+    if let Some(v) = payload.enabled {
+        if !first {
+            builder.push(", ");
+        }
+        builder.push("enabled = ").push_bind(v);
+        first = false;
+    }
+    if first {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "no fields to update",
+        ));
+    }
+    builder.push(" WHERE id = ").push_bind(id);
+    let result = builder.build().execute(pool).await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("key not found"));
+    }
+    state.reload_now().await?;
+    Ok(Json(json!({ "id": id })))
 }
 
 /// Prompt-size bucket theo input tokens (CODEX): tránh 200k prompt làm nhiễu latency thường.
