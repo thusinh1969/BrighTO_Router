@@ -2107,7 +2107,7 @@ function fmtNum(v){ return fmt(v); }
 
 /* ===== Logs table ===== */
 function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
-function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
+function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.0000"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
 function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1) return "<1 ms"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
 function reliableTokRate(r){ var rate=Number(r&&r.total_tokens_per_second); return Number.isFinite(rate) && rate>=0; }
 function shortTokSample(r){ var dur=Number(r&&r.total_ms); return reliableTokRate(r) && Number.isFinite(dur) && dur<1000; }
