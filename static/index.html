@@ -51,6 +51,8 @@ textarea{resize:vertical;min-height:72px}
 .btn.danger{color:var(--red)}
 .btn.danger:hover{border-color:var(--red);color:var(--red)}
 .btn.sm{padding:6px 11px;font-size:12px;border-radius:8px}
+.btn.icon-btn{padding:5px 8px;line-height:0;display:inline-flex;align-items:center;justify-content:center}
+.muted{color:var(--muted)}
 .btn.ghost{background:transparent}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn-block{width:100%}
@@ -98,7 +100,7 @@ textarea{resize:vertical;min-height:72px}
 /* ---------- Tables ---------- */
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:#0b1220}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+th,td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
 th{background:#111827;color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0}
 tr:last-child td{border-bottom:none}
 tbody tr:hover{background:#111c31}
@@ -456,9 +458,11 @@ function openProviderModal(b){
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
   m.appendChild(el("h3",null, b.id?"Edit provider · "+b.name:"Add provider"));
-  var fields=[["name","Name",b.name||""],["base_url","Base URL",b.base_url||""],["format","Format (openai / anthropic)",b.format||"openai"],["weight","Weight",String(b.weight||1)],["max_inflight","Max concurrent (0 = unlimited)",String(b.max_inflight||0)]];
   var inputs={};
+  var fields=[["name","Name",b.name||""],["base_url","Base URL",b.base_url||""],["weight","Weight",String(b.weight||1)],["max_inflight","Max concurrent (0 = unlimited)",String(b.max_inflight||0)]];
   fields.forEach(function(f){ var box=el("div","field"); box.appendChild(el("label",null,f[1])); var i=el("input"); i.value=f[2]; inputs[f[0]]=i; box.appendChild(i); m.appendChild(box); });
+  var ff=el("div","field"); ff.appendChild(el("label",null,"Format"));
+  var fsel=el("select"); [["openai","OpenAI-compatible"],["anthropic","Anthropic Messages"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];fsel.appendChild(o);}); fsel.value=b.format||"openai"; ff.appendChild(fsel); m.appendChild(ff);
   var en=el("div","field");
   var lab=el("label","chip"+(b.enabled!==false?" selected":"")); var cb=el("input"); cb.type="checkbox"; cb.checked=b.enabled!==false;
   lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); en.appendChild(lab); m.appendChild(en);
@@ -466,7 +470,8 @@ function openProviderModal(b){
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary", b.id?"Save":"Add");
   save.onclick=async function(){
-    var payload={name:inputs.name.value.trim(),base_url:inputs.base_url.value.trim(),api_key_ref:"env:NONE",format:inputs.format.value.trim(),weight:Number(inputs.weight.value)||1,max_inflight:Number(inputs.max_inflight.value)||0,enabled:cb.checked};
+    var payload={name:inputs.name.value.trim(),base_url:inputs.base_url.value.trim(),format:fsel.value,weight:Number(inputs.weight.value)||1,max_inflight:Number(inputs.max_inflight.value)||0,enabled:cb.checked};
+    if(!b.id) payload.api_key_ref="env:NONE"; // provider template secret-free; route owns the key
     try{
       if(b.id){ await api("/admin/backends/"+b.id,"PATCH",payload); }
       else { await api("/admin/backends","POST",payload); }
@@ -714,12 +719,16 @@ function renderKeys(c){
       tr.appendChild(el("td","mono",String(k.id)));
       tr.appendChild(el("td","mono",k.prefix));
       var kc=el("td");
-      kc.appendChild(el("span",null,"…"));
-      api("/admin/keys/"+k.id+"/reveal","GET").then(function(data){
-        kc.innerHTML="";
-        kc.appendChild(el("span","mono",data.key));
-        var cp=el("button","btn sm ghost","Copy"); cp.onclick=function(){navigator.clipboard.writeText(data.key).then(function(){toast("Copied");});}; kc.appendChild(cp);
-      }).catch(function(){ kc.innerHTML=""; var vb=el("button","btn sm ghost","View"); vb.onclick=function(){revealKey(k);}; kc.appendChild(vb); });
+      if(k.revealable===false){
+        kc.appendChild(el("span","muted","legacy · recreate"));
+      }else{
+        kc.appendChild(el("span",null,"…"));
+        api("/admin/keys/"+k.id+"/reveal","GET").then(function(data){
+          kc.innerHTML="";
+          kc.appendChild(el("span","mono",data.key));
+          kc.appendChild(copyIconBtn(data.key));
+        }).catch(function(){ kc.innerHTML=""; var vb=el("button","btn sm ghost","View"); vb.onclick=function(){revealKey(k);}; kc.appendChild(vb); });
+      }
       tr.appendChild(kc);
       tr.appendChild(el("td",null,k.owner));
       tr.appendChild(el("td",null,k.team_name));
@@ -775,7 +784,7 @@ function openKeyModal(){
       m2.appendChild(el("h3",null,"Key created"));
       m2.appendChild(el("div","key-reveal"));
       var span=el("span",null,data.key); m2.querySelector(".key-reveal").appendChild(span);
-      var cp=el("button","btn sm","Copy"); cp.onclick=function(){navigator.clipboard.writeText(data.key).then(function(){toast("Copied");});}; m2.querySelector(".key-reveal").appendChild(cp);
+      m2.querySelector(".key-reveal").appendChild(copyIconBtn(data.key));
       m2.appendChild(el("p","hint","Admin can view and copy this client API key again later from the <b>API Keys</b> table."));
       var act2=el("div","actions"); var done=el("button","btn primary","Done"); done.onclick=closeModal; act2.appendChild(done); m2.appendChild(act2);
       ov.appendChild(m2); ov.classList.remove("hidden");
@@ -792,7 +801,7 @@ async function revealKey(k){
     m.appendChild(el("h3",null,"Key · "+data.prefix+" · "+data.owner));
     m.appendChild(el("div","key-reveal"));
     var span=el("span",null,data.key); m.querySelector(".key-reveal").appendChild(span);
-    var cp=el("button","btn sm","Copy"); cp.onclick=function(){navigator.clipboard.writeText(data.key).then(function(){toast("Copied");});}; m.querySelector(".key-reveal").appendChild(cp);
+    m.querySelector(".key-reveal").appendChild(copyIconBtn(data.key));
     var act=el("div","actions"); var cl=el("button","btn","Close"); cl.onclick=closeModal; act.appendChild(cl); m.appendChild(act);
     ov.appendChild(m); ov.classList.remove("hidden");
   }catch(e){ toast("Reveal failed: "+e.message,"err"); }
@@ -921,6 +930,7 @@ function fmtNum(v){ if(v>=1000000000)return(v/1000000000).toFixed(1)+"B"; if(v>=
 function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
 function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
 function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
+function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
 var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]];
 function protocolsForBackend(b){ if(b && b.format==="anthropic") return [["anthropic_messages","Anthropic Messages"]]; if(b && (b.name||"").toLowerCase().indexOf("anthropic")>=0) return [["anthropic_messages","Anthropic Messages"]]; return PROTOCOLS.filter(function(p){return p[0]!=="anthropic_messages";}); }
