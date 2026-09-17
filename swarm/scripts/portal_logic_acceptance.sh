@@ -59,16 +59,38 @@ SQL
 export ROOT BASE_URL BRIGHTO_ADMIN_KEY
 cleanup_test_records
 cp "$ROOT/swarm/scripts/portal_logic_acceptance.mjs" "$OUT_DIR/portal_logic_acceptance.mjs"
-cd "$OUT_DIR"
-if [[ ! -d node_modules/playwright ]]; then
-  npm init -y >/dev/null
-  npm install playwright --no-audit --no-fund >/dev/null
-fi
-export BRIGHTO_BASE_URL="$BASE_URL"
-export BRIGHTO_PW_OUT="$OUT_DIR"
-export NODE_TLS_REJECT_UNAUTHORIZED=0
+
+run_local_gate() {
+  cd "$OUT_DIR"
+  if [[ ! -d node_modules/playwright ]]; then
+    npm init -y >/dev/null
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install playwright@1.63.0 --no-audit --no-fund >/dev/null
+  fi
+  export BRIGHTO_BASE_URL="$BASE_URL"
+  export BRIGHTO_PW_OUT="$OUT_DIR"
+  export NODE_TLS_REJECT_UNAUTHORIZED=0
+  node portal_logic_acceptance.mjs
+}
+
+run_docker_gate() {
+  docker run --rm --network host \
+    -e BRIGHTO_BASE_URL="$BASE_URL" \
+    -e BRIGHTO_ADMIN_KEY="$BRIGHTO_ADMIN_KEY" \
+    -e BRIGHTO_PW_OUT=/work \
+    -e NODE_TLS_REJECT_UNAUTHORIZED=0 \
+    -e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    -e PLAYWRIGHT_CHROMIUM_EXECUTABLE=/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell \
+    -v "$OUT_DIR:/work" \
+    mcr.microsoft.com/playwright:v1.63.0-noble \
+    bash -lc 'cd /work && npm init -y >/dev/null && npm install playwright@1.63.0 --no-audit --no-fund >/dev/null && node portal_logic_acceptance.mjs'
+}
+
 set +e
-node portal_logic_acceptance.mjs
+if [[ "${BRIGHTO_PLAYWRIGHT_LOCAL:-0}" == "1" ]]; then
+  run_local_gate
+else
+  run_docker_gate
+fi
 rc=$?
 set -e
 cleanup_test_records

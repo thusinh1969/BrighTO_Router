@@ -69,11 +69,12 @@ async function main() {
     await page.waitForTimeout(200);
     await modalField(page, 'Base URL').fill('http://127.0.0.1:9000/v1');
     await page.getByRole('button', { name: 'Load models' }).click({ force: true });
-    await page.waitForTimeout(1200);
-    const bodyText = await page.locator('body').innerText();
-    if (bodyText.includes('Select a model')) pass('models', 'Load models opens chooser'); else fail('models', 'chooser missing', { excerpt: bodyText.slice(0, 200) });
-    await page.locator('text=mock-model').first().click();
-    await page.getByRole('button', { name: 'Use this model' }).click();
+    const picker = page.locator('body > div').filter({ has: page.getByRole('heading', { name: /Select a model/ }) }).last();
+    await picker.waitFor({ state: 'visible', timeout: 10000 });
+    const bodyText = await picker.innerText();
+    if (bodyText.includes('mock-model')) pass('models', 'Load models opens chooser'); else fail('models', 'chooser missing', { excerpt: bodyText.slice(0, 200) });
+    await picker.locator('.mono', { hasText: 'mock-model' }).first().click({ force: true });
+    await picker.getByRole('button', { name: 'Use this model' }).click({ force: true });
     await page.waitForTimeout(400);
     await modalField(page, 'Public model name (shown to clients)').fill(modelName);
     await page.getByRole('button', { name: 'Test connection' }).click({ force: true });
@@ -91,6 +92,11 @@ async function main() {
     const backend = backends.find((b) => b.base_url === 'http://127.0.0.1:9000/v1');
     if (route && route.enabled === true && route.effective_enabled === true && backend) pass('models', 'model saved enabled with auto-created connection', { route, backend });
     else fail('models', 'model/connection wrong', { route, backend });
+    if (route && route.auth_mode === 'none' && route.protocol === 'local_openai_chat') {
+      pass('models', 'Custom LLM blank key saves as no-auth local route', { auth_mode: route.auth_mode, protocol: route.protocol });
+    } else {
+      fail('models', 'Custom LLM blank key saved wrong auth/protocol', { route }, 'For Custom LLM local/private URL, blank wizard API key must save auth_mode=none and protocol=local_openai_chat, even if CUSTOM_LLM_API_KEY exists in .env.');
+    }
 
     await page.getByRole('button', { name: 'Add model' }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
