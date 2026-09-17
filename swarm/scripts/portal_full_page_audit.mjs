@@ -75,6 +75,9 @@ async function inspectPage(page, label) {
       const cells = table ? [...table.querySelectorAll('tbody td')] : [];
       const labelledCells = cells.filter((td) => (td.getAttribute('data-label') || '').trim()).length;
       const rect = wrap.getBoundingClientRect();
+      const sampleCell = cells.find((td) => (td.getAttribute('data-label') || '').trim()) || cells[0];
+      const sampleStyle = sampleCell ? getComputedStyle(sampleCell) : null;
+      const beforeStyle = sampleCell ? getComputedStyle(sampleCell, '::before') : null;
       return {
         rows: rows.length,
         cells: cells.length,
@@ -84,6 +87,9 @@ async function inspectPage(page, label) {
         clientWidth: wrap.clientWidth,
         tableDisplay: table ? getComputedStyle(table).display : '',
         bodyDisplay: table ? getComputedStyle(table.querySelector('tbody') || table).display : '',
+        sampleCellDisplay: sampleStyle ? sampleStyle.display : '',
+        sampleCellTextAlign: sampleStyle ? sampleStyle.textAlign : '',
+        sampleBeforeDisplay: beforeStyle ? beforeStyle.display : '',
       };
     });
     const legendStats = [...document.querySelectorAll('#content .legend span')].map((node) => ({
@@ -134,6 +140,8 @@ async function runViewport(browser, name, width, height) {
       if (rowTablesWithoutLabels.length) fail(`${name}/${view}: mobile table rows lack readable column labels`, { rowTablesWithoutLabels, metrics });
       const tableModeFailures = metrics.tableStats.filter((t) => t.rows > 0 && (t.tableDisplay !== 'block' || t.bodyDisplay !== 'grid'));
       if (tableModeFailures.length) fail(`${name}/${view}: mobile tables are not rendered as stacked cards`, { tableModeFailures, metrics });
+      const cellLayoutFailures = metrics.tableStats.filter((t) => t.rows > 0 && (t.sampleCellDisplay !== 'block' || t.sampleCellTextAlign !== 'left' || t.sampleBeforeDisplay !== 'block'));
+      if (cellLayoutFailures.length) fail(`${name}/${view}: mobile table cells must show label above left-aligned value`, { cellLayoutFailures, metrics });
     }
   }
   await page.close();
