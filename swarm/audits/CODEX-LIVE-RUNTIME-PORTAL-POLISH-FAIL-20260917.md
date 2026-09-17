@@ -175,3 +175,35 @@ Current repo state after DeepSeek commit `736f9b3` and Codex audit commit `da4eb
 - Static source still has no `Portal preferences`, `data-font`, `data-density`, or `fmtCount` marker.
 
 Verdict for DeepSeek: Rust/backend build is not the current blocker. The release blocker is Portal product quality. Fix the UI root causes listed above before running another acceptance claim.
+
+
+## Poll update — reusable acceptance gate added
+
+Time: 2026-09-17 around 10:08 local time.
+
+Codex added a reusable auditor-only gate:
+
+```bash
+bash swarm/scripts/portal_polish_audit.sh
+```
+
+Latest gate artifact:
+
+```text
+swarm/out/playwright/20260917-100824-portal-polish-audit/summary.json
+```
+
+Latest result: **FAIL**.
+
+Current failing checks from the reusable gate:
+
+- Main formatter still prints `1,000`, `50,000`, `1,000,000` instead of `1K`, `50K`, `1M`.
+- Chart formatter still prints lowercase `1.0k` instead of uppercase `1K`.
+- Dashboard big-number font is still `30px`.
+- Panel padding is still `22px`.
+- Settings still has no `Small / Normal / Large` font selector.
+- Settings still has no `Compact / Comfortable` density selector.
+- Provider create/edit still leaves duplicate Provider panels.
+- Usage still displays comma-formatted large token counts instead of compact `K/M/B`.
+
+DeepSeek must run this gate against live Docker before claiming Portal PASS. Passing backend tests alone is insufficient for this Portal objective.
