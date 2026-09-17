@@ -88,6 +88,7 @@ async function main() {
   page.on('dialog', async (d) => { result.evidence.lastDialog = d.message(); await d.accept(); });
 
   let providerId = null;
+  let uiProviderId = null;
   let routeName = `${prefix}-route`;
   let teamId = null;
   let keyId = null;
@@ -140,32 +141,72 @@ async function main() {
         await usedRow.waitFor({ state: 'visible', timeout: 10000 });
         const deleteButton = usedRow.getByRole('button', { name: 'Delete' });
         const disabled = await deleteButton.isDisabled().catch(() => false);
-        if (disabled) {
-          pass('providers', 'Delete is disabled for provider used by routes', { provider: usedBackend.name, id: usedBackend.id });
+        const state = await deleteButton.evaluate((b) => ({
+          disabled: b.disabled,
+          ariaDisabled: b.getAttribute('aria-disabled'),
+          title: b.getAttribute('title'),
+          className: b.className,
+        })).catch(() => ({}));
+        if (disabled || state.ariaDisabled === 'true') {
+          pass('providers', 'Delete is disabled for provider used by routes', { provider: usedBackend.name, id: usedBackend.id, state });
         } else {
-          await page.locator('#toast').evaluate((e) => { e.innerHTML = ''; }).catch(() => {});
-          await deleteButton.click({ force: true });
-          const t = await toastText(page, 1200);
-          fail('providers', 'in-use Provider Delete is clickable and only fails after confirm', { provider: usedBackend.name, id: usedBackend.id, toast: t }, 'Disable Delete for providers referenced by routes, or show Used by N routes with links.');
+          fail('providers', 'in-use Provider Delete is enabled in UI', { provider: usedBackend.name, id: usedBackend.id, state }, 'Disable Delete for providers referenced by routes, or show Used by N routes with links before any destructive click.');
         }
       }
     }
 
-    const created = await adminFetch('/admin/backends', 'POST', { name: `${prefix}-provider`, base_url: 'http://127.0.0.1:65534/v1', api_key_ref: 'env:NONE', weight: 1, max_inflight: 0, format: 'openai', enabled: true });
-    providerId = created.id;
-    await page.evaluate(() => refresh());
-    await nav(page, 'providers');
+    // Full Provider CRUD through the Portal UI. This catches regressions where Edit creates a new row or Delete only fails after click.
+    await page.getByRole('button', { name: 'Add provider' }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
+    await modalField(page, 'Name').fill(`${prefix}-provider`);
+    await modalField(page, 'Base URL').fill('http://127.0.0.1:65534/v1');
+    await modalField(page, 'Weight').fill('1');
+    await modalField(page, 'Max concurrent').fill('0');
+    await modalField(page, 'Provider Type').selectOption('openai').catch(async () => {
+      await modalField(page, 'Provider Type').selectOption({ label: /OpenAI/i }).catch(() => {});
+    });
+    await page.locator('.modal').getByRole('button', { name: /Add|Create|Save/ }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
+    await row(page, `${prefix}-provider`).waitFor({ state: 'visible', timeout: 10000 });
+    backends = await adminFetch('/admin/backends');
+    const uiCreated = backends.find((b) => b.name === `${prefix}-provider`);
+    uiProviderId = uiCreated?.id || null;
+    if (uiCreated) pass('providers', 'Provider create through UI persists exactly one backend', { id: uiProviderId, name: uiCreated.name });
+    else fail('providers', 'Provider create through UI did not persist backend', { names: backends.map((b) => b.name).filter((n) => (n || '').startsWith(prefix)) }, 'Add Provider must POST exactly one backend and refresh table.');
+
     await row(page, `${prefix}-provider`).getByRole('button', { name: 'Edit' }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
     await modalField(page, 'Name').fill(`${prefix}-provider-edited`);
     await modalField(page, 'Weight').fill('7');
     await modalField(page, 'Max concurrent').fill('3');
     await page.locator('.modal').getByRole('button', { name: 'Save' }).click({ force: true });
+    await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
     await row(page, `${prefix}-provider-edited`).waitFor({ state: 'visible', timeout: 10000 });
     const providerRow = await row(page, `${prefix}-provider-edited`).innerText();
     backends = await adminFetch('/admin/backends');
-    const editedProvider = backends.find((b) => b.id === providerId);
-    if (/\b7\b/.test(providerRow) && /\b3\b/.test(providerRow) && editedProvider?.weight === 7 && editedProvider?.max_inflight === 3) pass('providers', 'edited weight/max visible and persisted', { row: providerRow, api: editedProvider });
-    else fail('providers', 'edited weight/max not visible or persisted', { row: providerRow, api: editedProvider }, 'Show Weight/Max and persist PATCH.');
+    const editedProvider = backends.find((b) => b.id === uiProviderId);
+    const duplicateEdited = backends.filter((b) => b.name === `${prefix}-provider-edited`).length;
+    if (/\b7\b/.test(providerRow) && /\b3\b/.test(providerRow) && editedProvider?.weight === 7 && editedProvider?.max_inflight === 3 && duplicateEdited === 1) pass('providers', 'Provider edit updates same row and persists weight/max', { row: providerRow, api: editedProvider });
+    else fail('providers', 'Provider edit did not update the same row cleanly', { row: providerRow, api: editedProvider, duplicateEdited }, 'Edit Provider must PATCH the existing backend id, not create a second row.');
+
+    await page.waitForTimeout(1800); // row flash animation after edit must finish before a stable click.
+    try {
+      await row(page, `${prefix}-provider-edited`).getByRole('button', { name: 'Delete' }).click({ timeout: 8000 });
+      await page.waitForTimeout(1500);
+    } catch (e) {
+      fail('providers', 'unused Provider Delete button is not reliably clickable', { error: e.stack || e.message }, 'Provider Delete must be clickable after edit/save without layout animation blocking the action.');
+    }
+    await row(page, `${prefix}-provider-edited`).waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
+    backends = await adminFetch('/admin/backends');
+    const stillThere = backends.find((b) => b.id === uiProviderId || b.name === `${prefix}-provider-edited`);
+    if (!stillThere) { pass('providers', 'unused Provider delete through UI removes backend', { id: uiProviderId }); uiProviderId = null; }
+    else fail('providers', 'unused Provider delete through UI did not remove backend', { api: stillThere }, 'Delete unused Provider must remove the backend and refresh the table.');
+
+    const created = await adminFetch('/admin/backends', 'POST', { name: `${prefix}-route-provider`, base_url: 'http://127.0.0.1:65534/v1', api_key_ref: 'env:NONE', weight: 1, max_inflight: 0, format: 'openai', enabled: true });
+    providerId = created.id;
+    await page.evaluate(() => refresh());
+    await nav(page, 'providers');
+    await row(page, `${prefix}-route-provider`).waitFor({ state: 'visible', timeout: 10000 });
 
     await nav(page, 'models');
     await page.getByRole('button', { name: 'Create model route' }).click({ force: true });
@@ -312,7 +353,8 @@ async function main() {
     fail('audit', 'portal logic acceptance crashed', { error: e.stack || e.message }, 'Fix the crashed flow and rerun this gate.');
   } finally {
     try { await adminFetch(`/admin/routes/${encodeURIComponent(routeName)}`, 'DELETE'); result.cleanup.push('route'); } catch {}
-    if (providerId) { try { await adminFetch(`/admin/backends/${providerId}`, 'DELETE'); result.cleanup.push('provider'); } catch (e) { result.cleanup.push(`provider failed: ${e.message}`); } }
+    if (providerId) { try { await adminFetch(`/admin/backends/${providerId}`, 'DELETE'); result.cleanup.push('route provider'); } catch (e) { result.cleanup.push(`route provider failed: ${e.message}`); } }
+    if (uiProviderId) { try { await adminFetch(`/admin/backends/${uiProviderId}`, 'DELETE'); result.cleanup.push('ui provider'); } catch (e) { result.cleanup.push(`ui provider failed: ${e.message}`); } }
     if (keyId) { try { await adminFetch(`/admin/keys/${keyId}`, 'DELETE'); result.cleanup.push('key disabled'); } catch {} }
     await browser.close().catch(() => {});
   }
