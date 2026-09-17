@@ -1163,7 +1163,7 @@ function openProviderModal(b){
   var loadChevron=el("span","chev",loadOpen?"Hide":"Show"); loadHead.appendChild(loadChevron); loadWrap.appendChild(loadHead);
   var loadPanel=el("div","advanced-panel"+(loadOpen?"":" hidden"));
   function redrawLoadControl(){ loadPanel.classList.toggle("hidden",!loadOpen); loadChevron.textContent=loadOpen?"Hide":"Show"; }
-  loadHead.onclick=function(e){ e.preventDefault(); loadOpen=!loadOpen; redrawLoadControl(); };
+  loadHead.onclick=function(e){ e.preventDefault(); loadOpen=!loadOpen; redrawLoadControl(); scrollAdvancedIntoView(loadOpen,loadPanel); };
   loadPanel.appendChild(el("div","section-title","Load control"));
   var loadGrid=el("div","form-grid");
   var fw=el("div","field"); fw.appendChild(el("label",null,"Weight"));
@@ -1399,6 +1399,7 @@ function openRouteModal(route){
 	    optionalOpen=!optionalOpen;
 	    advPanel.classList.toggle("hidden",!optionalOpen);
 	    advIcon.textContent=optionalOpen?"Hide":"Show";
+	    scrollAdvancedIntoView(optionalOpen,advPanel);
 	  };
 
   var act=el("div","actions");
@@ -1628,7 +1629,7 @@ function openTeamModal(tm){
   var budgetChevron=el("span","chev",teamBudgetOpen?"Hide":"Show"); budgetHead.appendChild(budgetChevron); budgetWrap.appendChild(budgetHead);
   var budgetPanel=el("div","advanced-panel"+(teamBudgetOpen?"":" hidden"));
   function redrawTeamBudget(){ budgetPanel.classList.toggle("hidden",!teamBudgetOpen); budgetChevron.textContent=teamBudgetOpen?"Hide":"Show"; }
-  budgetHead.onclick=function(e){ e.preventDefault(); teamBudgetOpen=!teamBudgetOpen; redrawTeamBudget(); };
+  budgetHead.onclick=function(e){ e.preventDefault(); teamBudgetOpen=!teamBudgetOpen; redrawTeamBudget(); scrollAdvancedIntoView(teamBudgetOpen,budgetPanel); };
   budgetPanel.appendChild(el("div","section-title","Budget"));
   var budgetGrid=el("div","form-grid");
   var f2=el("div","field"); f2.appendChild(el("label",null,"Budget type"));
@@ -1796,7 +1797,7 @@ function openKeyModal(k){
   var limitsChevron=el("span","chev",keyLimitsOpen?"Hide":"Show"); limitsHead.appendChild(limitsChevron); limitsWrap.appendChild(limitsHead);
   var limitsPanel=el("div","advanced-panel"+(keyLimitsOpen?"":" hidden"));
   function redrawKeyLimits(){ limitsPanel.classList.toggle("hidden",!keyLimitsOpen); limitsChevron.textContent=keyLimitsOpen?"Hide":"Show"; }
-  limitsHead.onclick=function(e){ e.preventDefault(); keyLimitsOpen=!keyLimitsOpen; redrawKeyLimits(); };
+  limitsHead.onclick=function(e){ e.preventDefault(); keyLimitsOpen=!keyLimitsOpen; redrawKeyLimits(); scrollAdvancedIntoView(keyLimitsOpen,limitsPanel); };
   limitsPanel.appendChild(el("div","section-title","Access limits"));
   var limitsGrid=el("div","form-grid");
   var f4=el("div","field"); f4.appendChild(el("label",null,"Expiry date (optional)")); var ex=el("input"); ex.type="date"; if(k.expires_at) ex.value=new Date(k.expires_at*1000).toISOString().slice(0,10); f4.appendChild(ex); limitsGrid.appendChild(f4);
@@ -2235,6 +2236,18 @@ function decorateTables(){
 }
 function pill(text,kind){ var p=el("span","pill "+kind); var d=el("span","dot"); p.appendChild(d); p.appendChild(document.createTextNode(text)); return p; }
 function closeModal(){ $("modal-overlay").classList.add("hidden"); $("modal-overlay").innerHTML=""; }
+function scrollAdvancedIntoView(open,panel){
+  if(!open||!panel) return;
+  setTimeout(function(){
+    var modal=panel.closest(".modal");
+    if(!modal) return;
+    var mr=modal.getBoundingClientRect();
+    var pr=panel.getBoundingClientRect();
+    var targetTop=mr.top+Math.min(120,Math.max(72,modal.clientHeight*0.18));
+    if(pr.top>targetTop){ modal.scrollTop += pr.top-targetTop; }
+    else { try{ panel.scrollIntoView({block:"nearest"}); }catch(e){} }
+  },40);
+}
 function setSidebar(open){
   var sb=$("sidebar"), bd=$("sidebar-backdrop");
   if(!sb||!bd) return;
