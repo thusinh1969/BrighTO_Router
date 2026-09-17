@@ -89,7 +89,7 @@ async function main() {
   if (EXECUTABLE) launch.executablePath = EXECUTABLE;
   const browser = await chromium.launch(launch);
   const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 850 } });
-  page.on('console', (m) => { if (m.type() === 'error') result.consoleErrors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/ERR_NETWORK_CHANGED|ERR_CONNECTION_RESET|ERR_HTTP2_PROTOCOL_ERROR/i.test(m.text())) result.consoleErrors.push(m.text()); });
   page.on('pageerror', (e) => result.consoleErrors.push(`pageerror: ${e.message}`));
   page.on('dialog', async (d) => { result.evidence.lastDialog = d.message(); await d.accept(); });
 

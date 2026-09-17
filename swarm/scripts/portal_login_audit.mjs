@@ -3,6 +3,7 @@ import { writeFile } from 'fs/promises';
 
 const BASE = process.env.BRIGHTO_BASE_URL || 'https://127.0.0.1:18443';
 const OUT = process.env.BRIGHTO_PW_OUT || process.cwd();
+const ADMIN = process.env.BRIGHTO_ADMIN_KEY || '';
 const EXECUTABLE = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
 const result = { result: 'FAIL', base: BASE, failures: [], pages: {}, screenshots: [] };
 function fail(summary, evidence = {}) { result.failures.push({ summary, evidence }); }
@@ -82,6 +83,27 @@ function checkUser(label, metrics) {
   if (!/Client API key/i.test(metrics.userLabel) || metrics.apiPlaceholder !== 'lc-...') fail(`${label}: user API key label is unclear`, metrics);
 }
 
+async function verifyEnterSignIn(browser, name, width, height) {
+  if (!ADMIN) return;
+  const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width, height } });
+  try {
+    await gotoWithRetry(page, BASE + '/');
+    await page.locator('#login-pass').fill(ADMIN);
+    await page.locator('#login-pass').press('Enter');
+    await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
+    const state = await page.evaluate(() => ({
+      loginHidden: document.querySelector('#login-view')?.classList.contains('hidden') || false,
+      appVisible: !(document.querySelector('#app-view')?.classList.contains('hidden') || false),
+      modePill: document.querySelector('#mode-pill')?.textContent || '',
+      title: document.querySelector('#page-title')?.textContent || '',
+    }));
+    result.pages[`${name}-admin-enter`] = state;
+    if (!state.loginHidden || !state.appVisible || !/Admin/i.test(state.modePill) || state.title !== 'Dashboard') fail(`${name}: Enter key should sign in from Admin key field`, state);
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
 async function runViewport(browser, name, width, height) {
   const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width, height } });
   await gotoWithRetry(page, BASE + '/');
@@ -102,6 +124,7 @@ async function runViewport(browser, name, width, height) {
   result.pages[`${name}-user`] = userMetrics;
   checkUser(`${name}-user`, userMetrics);
   await page.close();
+  await verifyEnterSignIn(browser, name, width, height);
 }
 
 async function main() {

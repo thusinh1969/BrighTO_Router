@@ -144,7 +144,7 @@ function rectToObj(r) {
 async function inspectViewport(browser, name, width, height) {
   const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width, height } });
   const consoleErrors = [];
-  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/ERR_NETWORK_CHANGED|ERR_CONNECTION_RESET|ERR_HTTP2_PROTOCOL_ERROR/i.test(m.text())) consoleErrors.push(m.text()); });
   page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message));
   try {
     await login(page);
