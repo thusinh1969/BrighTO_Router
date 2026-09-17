@@ -724,8 +724,9 @@ function readinessItem(label,note,kind){
 }
 function userHero(me,stats,logs,inT,outT,req,errRate){
   var latest=logs&&logs.length?logs[0]:null;
-  var tokRateVals=(logs||[]).filter(function(r){return reliableTokRate(r);}).map(function(r){return Number(r.total_tokens_per_second)||0;});
+  var tokRateVals=(logs||[]).filter(function(r){return sustainedTokRate(r);}).map(function(r){return Number(r.total_tokens_per_second)||0;});
   var avgTok=tokRateVals.length?Math.round(tokRateVals.reduce(function(a,b){return a+b;},0)/tokRateVals.length):null;
+  var latestShort=latest&&shortTokSample(latest);
   var hero=el("div","user-hero");
   var left=el("div","user-card");
   left.appendChild(el("div","ops-kicker","Client workspace"));
@@ -748,7 +749,7 @@ function userHero(me,stats,logs,inT,outT,req,errRate){
     var m=el("div","user-metric"); m.appendChild(el("span",null,x[0])); m.appendChild(el("b",null,x[1])); g.appendChild(m);
   });
   right.appendChild(g);
-  right.appendChild(el("p","hint",latest?"Latest request: "+fmtTs(latest.ts)+" · status "+latest.status:"No requests yet. Send one request, then refresh this dashboard."));
+  right.appendChild(el("p","hint",latest?("Latest request: "+fmtTs(latest.ts)+" · status "+latest.status+(latestShort?" · short sample; use a longer call for speed":"")):"No requests yet. Send one request, then refresh this dashboard."));
   hero.appendChild(right);
   return hero;
 }
@@ -794,9 +795,7 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
   var badProviders=sum&&sum.by_backend?sum.by_backend.filter(function(b){return (b.errors||0)>0 || (b.rate_limited||0)>0 || (b.server_errors||0)>0 || (b.timeouts||0)>0;}).length:0;
   var missingPrices=routes.filter(function(r){return r.enabled && (r.price_input_per_mtok_usd==null || r.price_output_per_mtok_usd==null);}).length;
   var healthOk=enabledRoutes>0 && activeProviders>0 && errRate===0 && badProviders===0;
-  var latest=logs&&logs.length?logs[0]:null;
-  var latestSpeed=latest?tokRateDisplay(latest):"—";
-  var latestSpeedNote=latest?(shortTokSample(latest)?"latest request · short sample":"latest request"):"no token rate yet";
+  var speed=dashboardSpeed(logs);
   var hero=el("div","ops-hero");
 
   var left=el("div","ops-primary");
@@ -808,7 +807,7 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
   var stats=el("div","ops-status-row");
   [
     ["Traffic",fmt(req)+" req",req>0?"last 30 days":"no requests yet",tone(req>0,true)],
-    ["Speed",latestSpeed,latestSpeedNote,tone(!!latest,false)],
+    ["Speed",speed.value,speed.note,speed.tone],
     ["Cost",fmtCost(cost),missingPrices?missingPrices+" unpriced route(s)":"priced routes ready",tone(missingPrices===0,missingPrices>0)],
     ["Errors",errRate+"%",badProviders?badProviders+" provider issue(s)":"no provider errors",tone(errRate===0 && badProviders===0,errRate<5)]
   ].forEach(function(x){
@@ -2026,8 +2025,18 @@ function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1)
 function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1) return "<1 ms"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
 function reliableTokRate(r){ var rate=Number(r&&r.total_tokens_per_second); return Number.isFinite(rate) && rate>=0; }
 function shortTokSample(r){ var dur=Number(r&&r.total_ms); return reliableTokRate(r) && Number.isFinite(dur) && dur<100; }
+function sustainedTokRate(r){ return reliableTokRate(r) && !shortTokSample(r); }
 function tokRateDisplay(r){ return reliableTokRate(r)?fmt(Math.round(Number(r.total_tokens_per_second)))+(shortTokSample(r)?"*":""):"—"; }
 function tokRateTitle(r){ return reliableTokRate(r)?(shortTokSample(r)?"Tokens per second from a very short request; use sustained tests for benchmark claims.":"Observed total tokens per second."):"No token speed was recorded for this request."; }
+function dashboardSpeed(logs){
+  var rows=(logs||[]);
+  var sustained=rows.find(function(r){return sustainedTokRate(r);});
+  if(sustained) return {value:tokRateDisplay(sustained), note:"latest sustained request", tone:"ok"};
+  var anyRate=rows.find(function(r){return reliableTokRate(r);});
+  if(anyRate&&shortTokSample(anyRate)) return {value:"Needs sample", note:"run a longer request", tone:"warn"};
+  return {value:"—", note:"no token rate yet", tone:"warn"};
+}
+
 function shQuote(s){ return "'"+String(s).replace(/'/g,"'\"'\"'")+"'"; }
 function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.dataset.copy=text; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
