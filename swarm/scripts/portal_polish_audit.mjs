@@ -175,11 +175,13 @@ async function main() {
       fmtNum1000: typeof fmtNum === 'function' ? fmtNum(1000) : null,
       fmtNum1000000: typeof fmtNum === 'function' ? fmtNum(1000000) : null,
       fmtDur0: typeof fmtDur === 'function' ? fmtDur(0) : null,
+      fmtCost0: typeof fmtCost === 'function' ? fmtCost(0) : null,
     }));
     if (result.evidence.formatters.fmtCount1000 !== '1K' || result.evidence.formatters.fmtCount50000 !== '50K' || result.evidence.formatters.fmtCount1000000 !== '1M') bug(`fmtCount examples wrong: ${JSON.stringify(result.evidence.formatters)}`);
     if (result.evidence.formatters.fmt1000 !== '1K') bug(`Default count formatter must use K/M/B: fmt(1000)=${result.evidence.formatters.fmt1000}`);
     if (String(result.evidence.formatters.fmtNum1000).includes('k')) bug(`Chart formatter must use uppercase K: fmtNum(1000)=${result.evidence.formatters.fmtNum1000}`);
     if (result.evidence.formatters.fmtDur0 === '0 ms') bug('Duration formatter must not show 0 ms; use <1 ms for sub-millisecond work.');
+    if (result.evidence.formatters.fmtCost0 !== '$0.0000') bug(`Cost formatter should keep four decimals for zero request spend: ${result.evidence.formatters.fmtCost0}`);
 
     await page.locator('.card .big').first().waitFor({ state: 'visible', timeout: 7000 }).catch(() => null);
     result.evidence.dashboardDensity = await page.evaluate(() => {
