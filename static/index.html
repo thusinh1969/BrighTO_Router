@@ -485,7 +485,7 @@ body.nav-open{overflow:hidden}
   .key-reveal{display:block}
   .key-reveal .btn{margin-top:10px}
 }
-.compact-line,.route-list-table .compact-line,.provider-list-table .compact-line,.team-list-table .compact-line,.key-list-table .compact-line,.table-wrap .compact-line,table.conn-table td:first-child .compact-line,table.models-table td:first-child .compact-line,table.models-table td:nth-child(3) .compact-line,table.models-table td:nth-child(4) .compact-line{display:block!important;min-width:0!important;max-width:100%!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;overflow-wrap:normal!important;word-break:normal!important}
+.compact-line,.route-list-table .compact-line,.provider-list-table .compact-line,.team-list-table .compact-line,.key-list-table .compact-line,.table-wrap .compact-line,table.conn-table td:first-child .compact-line,table.models-table td:first-child .compact-line,table.models-table td:nth-child(2) .compact-line,table.models-table td:nth-child(3) .compact-line,table.models-table td:nth-child(4) .compact-line,.key-list-table td:nth-child(2) .compact-line,.key-list-table td:nth-child(3) .compact-line{display:block!important;min-width:0!important;max-width:100%!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;overflow-wrap:normal!important;word-break:normal!important}
 </style>
 </head>
 <body>
@@ -1654,12 +1654,12 @@ function renderKeys(c){
       kc.appendChild(ks);
       tr.appendChild(kc);
       var owner=el("td"); var os=el("div","stack-cell");
-      os.appendChild(nameNode("div","cell-main",k.owner||"—",28));
-      os.appendChild(nameNode("div","cell-sub",k.team_name||("team "+k.team_id),28));
+      os.appendChild(nameNode("div","cell-main compact-line",k.owner||"—",28));
+      os.appendChild(nameNode("div","cell-sub compact-line",k.team_name||("team "+k.team_id),28));
       owner.appendChild(os); tr.appendChild(owner);
       var scope=el("td"); var ss=el("div","stack-cell");
       var allowed=(k.allowed_models||[]);
-      ss.appendChild(nameNode("div","cell-main",allowed.length?allowed.join(", "):"All models",36));
+      ss.appendChild(nameNode("div","cell-main compact-line",allowed.length?allowed.join(", "):"All models",36));
       ss.appendChild(el("div","cell-sub",k.expires_at?("Expires "+fmtDate(k.expires_at)):"No expiry"));
       scope.appendChild(ss); tr.appendChild(scope);
       var limits=el("td"); var lg=el("div","mini-meta-grid");
