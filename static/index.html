@@ -159,6 +159,10 @@ table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:an
 .action-row{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 .model-meta-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px 10px;font-size:11.5px;color:var(--muted)}
 .model-meta-grid b{color:var(--text);font-weight:750}
+.mini-meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px;font-size:11.5px;color:var(--muted)}
+.mini-meta-grid b{color:var(--text);font-weight:750}
+.key-secret{display:flex;align-items:center;gap:8px;min-width:0}
+.key-secret .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .table-wrap.pro-table{overflow:visible}
 .metric-table td:first-child{min-width:220px;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .metric-table td:first-child{overflow-wrap:anywhere}
@@ -268,8 +272,10 @@ table.models-table td:first-child .cell-main{white-space:normal;overflow-wrap:an
   .request-card-head{grid-template-columns:1fr}
   .table-wrap td.mono,.table-wrap td .mono{word-break:break-word;overflow-wrap:anywhere}
   .table-wrap .truncate{white-space:normal;overflow-wrap:anywhere;text-align:right}
-  .table-wrap .cell-main,.table-wrap .cell-sub,.table-wrap .mono,.metric-table td:first-child,.model-meta-grid span{min-width:0;max-width:100%;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;text-overflow:clip}
+  .table-wrap .cell-main,.table-wrap .cell-sub,.table-wrap .mono,.metric-table td:first-child,.model-meta-grid span,.mini-meta-grid span{min-width:0;max-width:100%;white-space:normal!important;overflow-wrap:anywhere;word-break:break-word;text-overflow:clip}
   .metric-table td:first-child{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-overflow:clip}
+  .mini-meta-grid{grid-template-columns:1fr;text-align:right}
+  .key-secret{justify-content:flex-end;text-align:right;flex-wrap:wrap}
   .table-wrap .pill{text-align:left;justify-content:flex-start}
   .key-reveal{display:block}
   .key-reveal .btn{margin-top:10px}
@@ -1078,48 +1084,78 @@ function renderTeams(c){
   var add=el("button","btn primary sm","New team"); add.onclick=function(){openTeamModal();};
   h.appendChild(add);
   p.appendChild(h);
+  p.appendChild(el("p","hint","A team owns client API keys and budgets. Use teams to separate departments, apps, or projects."));
   if(!teams.length){ p.appendChild(emptyBox("No teams yet.")); }
   else{
-    var w=el("div","table-wrap"); var t=el("table");
-    t.appendChild(thead(["ID","Name","Budget","Enabled",""]));
+    var w=el("div","table-wrap pro-table"); var t=el("table","conn-table");
+    var colg=document.createElement("colgroup");
+    ["34%","28%","18%","10%","10%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
+    t.appendChild(colg);
+    t.appendChild(thead(["Team","Budget","API keys","Status",""]));
     var tb=el("tbody");
     teams.forEach(function(tm){
       var tr=el("tr");
-      tr.appendChild(el("td","mono",String(tm.id)));
-      tr.appendChild(el("td",null,tm.name));
-      tr.appendChild(el("td",null,tm.budget?budgetText(tm.budget):"Unlimited"));
+      var name=el("td"); var ns=el("div","stack-cell");
+      ns.appendChild(el("div","cell-main",tm.name));
+      ns.appendChild(el("div","cell-sub","Team ID "+tm.id));
+      name.appendChild(ns); tr.appendChild(name);
+      var budget=el("td"); var bs=el("div","stack-cell");
+      bs.appendChild(el("div","cell-main",tm.budget?budgetText(tm.budget):"Unlimited"));
+      bs.appendChild(el("div","cell-sub",tm.budget?budgetScopeText(tm.budget):"No team-level cap"));
+      budget.appendChild(bs); tr.appendChild(budget);
+      var owned=keys.filter(function(k){return Number(k.team_id)===Number(tm.id);});
+      var active=owned.filter(function(k){return k.enabled}).length;
+      var kc=el("td"); var kg=el("div","mini-meta-grid");
+      [["Active",fmt(active)],["Total",fmt(owned.length)]].forEach(function(x){ var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,x[1])); kg.appendChild(item); });
+      kc.appendChild(kg); tr.appendChild(kc);
       tr.appendChild(el("td",null)); tr.lastChild.appendChild(pill(tm.enabled?"Enabled":"Disabled",tm.enabled?"on":"off"));
-      var td=el("td"); var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openTeamModal(tm);}; td.appendChild(b); tr.appendChild(td);
+      var td=el("td","actions"); var ar=el("div","action-row"); var b=el("button","btn sm ghost","Edit"); b.onclick=function(){openTeamModal(tm);}; ar.appendChild(b); td.appendChild(ar); tr.appendChild(td);
       tb.appendChild(tr);
     });
     t.appendChild(tb); w.appendChild(t); p.appendChild(w);
   }
   c.appendChild(p);
 }
-function budgetText(b){ return (b.period||"?")+" · "+fmt(b.max_tokens)+" tokens"; }
+function budgetText(b){
+  if(!b) return "Unlimited";
+  var parts=[];
+  if(b.max_tokens) parts.push(fmt(b.max_tokens)+" tokens");
+  if(b.max_usd_cents) parts.push(fmtCost(b.max_usd_cents/100));
+  return (parts.length?parts.join(" / "):"Configured")+" per "+(b.period||"period");
+}
+function budgetScopeText(b){
+  if(!b) return "No cap";
+  var models=b.per_model?Object.keys(b.per_model).length:0;
+  return models?models+" per-model cap(s)":"Applies to all allowed models";
+}
 function openTeamModal(tm){
   tm=tm||{};
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
   m.appendChild(el("h3",null,tm.id?"Edit team":"Create team"));
+  m.appendChild(el("div","section-title","Team identity"));
   var f=el("div","field"); f.appendChild(el("label",null,"Team name")); var ni=el("input"); ni.value=tm.name||""; f.appendChild(ni); m.appendChild(f);
+  m.appendChild(el("div","section-title","Budget"));
+  var budgetGrid=el("div","form-grid");
   var f2=el("div","field"); f2.appendChild(el("label",null,"Budget type"));
   var bt=el("select"); var o1=el("option",null,"Unlimited"); o1.value="unlimited"; bt.appendChild(o1); var o2=el("option",null,"Token budget"); o2.value="token"; bt.appendChild(o2);
   if(tm.budget && tm.budget.max_tokens>0) bt.value="token"; else bt.value="unlimited";
-  f2.appendChild(bt); m.appendChild(f2);
+  f2.appendChild(bt); budgetGrid.appendChild(f2);
   var f2p=el("div","field"); f2p.appendChild(el("label",null,"Period"));
   var bp=el("select"); var p1=el("option",null,"Daily"); p1.value="day"; bp.appendChild(p1); var p2=el("option",null,"Monthly"); p2.value="month"; bp.appendChild(p2);
   if(tm.budget&&tm.budget.period) bp.value=tm.budget.period;
-  f2p.appendChild(bp); m.appendChild(f2p);
+  f2p.appendChild(bp); budgetGrid.appendChild(f2p);
   var f2a=el("div","field"); f2a.appendChild(el("label",null,"Token amount"));
   var ba=el("input"); ba.type="number"; ba.placeholder="e.g. 1000000";
   if(tm.budget&&tm.budget.max_tokens>0) ba.value=tm.budget.max_tokens;
-  f2a.appendChild(ba); m.appendChild(f2a);
+  f2a.appendChild(ba); budgetGrid.appendChild(f2a);
+  m.appendChild(budgetGrid);
   var f2d=el("div","field");
   var advBtn=el("button","linkbtn","Advanced JSON (money budget, per-model caps)");
   var bi=el("textarea"); bi.style.display="none"; bi.value=tm.budget?JSON.stringify(tm.budget):""; bi.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}';
   advBtn.onclick=function(){bi.style.display = bi.style.display==="none"?"block":"none";};
   f2d.appendChild(advBtn); f2d.appendChild(bi); m.appendChild(f2d);
+  m.appendChild(el("div","section-title","State"));
   var f3=el("div","field"); var lab=el("label","chip"+(tm.enabled===false?"":" selected")); var cb=el("input"); cb.type="checkbox"; cb.checked=tm.enabled!==false; lab.appendChild(cb); lab.appendChild(document.createTextNode("Enabled")); f3.appendChild(lab); m.appendChild(f3);
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary",tm.id?"Save":"Create");
@@ -1144,32 +1180,49 @@ function renderKeys(c){
   var add=el("button","btn primary sm","New key"); add.onclick=openKeyModal;
   h.appendChild(add);
   p.appendChild(h);
+  p.appendChild(el("p","hint","Client keys are what apps use to call BrighTO. Admins can view and copy keys again, set expiry, budgets, rate limits, and model scope."));
   if(!keys.length){ p.appendChild(emptyBox("No keys yet.")); }
   else{
-    var w=el("div","table-wrap"); var t=el("table");
-    t.appendChild(thead(["ID","Prefix","Key","Owner","Team","Allowed models","Enabled",""]));
+    var w=el("div","table-wrap pro-table"); var t=el("table","models-table");
+    var colg=document.createElement("colgroup");
+    ["26%","22%","22%","18%","12%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
+    t.appendChild(colg);
+    t.appendChild(thead(["Client key","Owner / team","Scope","Limits",""]));
     var tb=el("tbody");
     keys.forEach(function(k){
       var tr=el("tr");
-      tr.appendChild(el("td","mono",String(k.id)));
-      tr.appendChild(el("td","mono",k.prefix));
       var kc=el("td");
+      var ks=el("div","stack-cell");
+      var secret=el("div","key-secret");
       if(k.revealable===false){
-        kc.appendChild(el("span","muted","legacy · recreate"));
+        secret.appendChild(el("span","muted","legacy · recreate"));
       }else{
-        kc.appendChild(el("span",null,"…"));
+        secret.appendChild(el("span","mono","…"));
         api("/admin/keys/"+k.id+"/reveal","GET").then(function(data){
-          kc.innerHTML="";
-          kc.appendChild(el("span","mono",data.key));
-          kc.appendChild(copyIconBtn(data.key));
-        }).catch(function(){ kc.innerHTML=""; var vb=el("button","btn sm ghost","View"); vb.onclick=function(){revealKey(k);}; kc.appendChild(vb); });
+          secret.innerHTML="";
+          var full=el("span","mono",data.key); full.title=data.key; secret.appendChild(full);
+          secret.appendChild(copyIconBtn(data.key));
+        }).catch(function(){ secret.innerHTML=""; var vb=el("button","btn sm ghost","View"); vb.onclick=function(){revealKey(k);}; secret.appendChild(vb); });
       }
+      ks.appendChild(secret);
+      ks.appendChild(el("div","cell-sub","Prefix "+k.prefix+" · key ID "+k.id));
+      kc.appendChild(ks);
       tr.appendChild(kc);
-      tr.appendChild(el("td",null,k.owner));
-      tr.appendChild(el("td",null,k.team_name));
-      tr.appendChild(el("td",null,k.allowed_models.length?k.allowed_models.join(", "):"all"));
-      var en=el("td"); en.appendChild(pill(k.enabled?"Enabled":"Disabled",k.enabled?"on":"off")); tr.appendChild(en);
-      var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px";
+      var owner=el("td"); var os=el("div","stack-cell");
+      os.appendChild(el("div","cell-main",k.owner||"—"));
+      os.appendChild(el("div","cell-sub",k.team_name||("team "+k.team_id)));
+      owner.appendChild(os); tr.appendChild(owner);
+      var scope=el("td"); var ss=el("div","stack-cell");
+      var allowed=(k.allowed_models||[]);
+      ss.appendChild(el("div","cell-main",allowed.length?allowed.join(", "):"All models"));
+      ss.appendChild(el("div","cell-sub",k.expires_at?("Expires "+fmtDate(k.expires_at)):"No expiry"));
+      scope.appendChild(ss); tr.appendChild(scope);
+      var limits=el("td"); var lg=el("div","mini-meta-grid");
+      [["RPM",k.rpm_limit?fmt(k.rpm_limit):"∞"],["Conc.",k.concurrency_limit?fmt(k.concurrency_limit):"∞"],["Budget",k.budget?budgetText(k.budget):"team"]].forEach(function(x){ var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,x[1])); lg.appendChild(item); });
+      limits.appendChild(lg);
+      var en=el("div","cell-sub"); en.appendChild(pill(k.enabled?"Enabled":"Disabled",k.enabled?"on":"off")); limits.appendChild(en);
+      tr.appendChild(limits);
+      var td=el("td","actions"); var row=el("div","action-row");
       var e=el("button","btn sm ghost","Edit"); e.onclick=function(){openKeyModal(k);};
       var d=el("button","btn sm danger",k.enabled?"Disable":"Enable"); d.onclick=function(){disableKey(k);};
       row.appendChild(e); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
@@ -1183,33 +1236,43 @@ function openKeyModal(k){
   k=k||{};
   var isEdit=!!k.id;
   var ov=$("modal-overlay"); ov.innerHTML="";
-  var m=el("div","modal");
+  var m=el("div","modal route-modal");
   m.appendChild(el("h3",null,isEdit?"Edit API key · "+k.prefix:"Create API key"));
+  m.appendChild(el("div","section-title","Owner"));
+  var ident=el("div","form-grid");
   var f=el("div","field"); f.appendChild(el("label",null,"Team")); var ts=el("select");
   teams.forEach(function(tm){var o=el("option",null,tm.name+" (id "+tm.id+")");o.value=tm.id;ts.appendChild(o);});
   if(k.team_id) ts.value=k.team_id;
-  f.appendChild(ts); m.appendChild(f);
-  var f2=el("div","field"); f2.appendChild(el("label",null,"Owner (name / email)")); var oi=el("input"); oi.placeholder="alice@example.com"; oi.value=k.owner||""; f2.appendChild(oi); m.appendChild(f2);
+  f.appendChild(ts); ident.appendChild(f);
+  var f2=el("div","field"); f2.appendChild(el("label",null,"Owner (name / email)")); var oi=el("input"); oi.placeholder="alice@example.com"; oi.value=k.owner||""; f2.appendChild(oi); ident.appendChild(f2);
+  m.appendChild(ident);
+  m.appendChild(el("div","section-title","Scope"));
   var f3=el("div","field"); f3.appendChild(el("label",null,"Allowed models (comma-separated, empty = all)")); var mi=el("input"); mi.placeholder="gpt-4o,deepseek-v3"; mi.value=(k.allowed_models||[]).join(", "); f3.appendChild(mi); m.appendChild(f3);
-  var f4=el("div","field"); f4.appendChild(el("label",null,"Expiry date (optional)")); var ex=el("input"); ex.type="date"; if(k.expires_at) ex.value=new Date(k.expires_at*1000).toISOString().slice(0,10); f4.appendChild(ex); m.appendChild(f4);
-  var f5=el("div","field"); f5.appendChild(el("label",null,"Requests per minute (optional)")); var rpm=el("input"); rpm.type="number"; rpm.placeholder="unlimited"; if(k.rpm_limit) rpm.value=k.rpm_limit; f5.appendChild(rpm); m.appendChild(f5);
-  var f6=el("div","field"); f6.appendChild(el("label",null,"Concurrency limit (optional)")); var conc=el("input"); conc.type="number"; conc.placeholder="unlimited"; if(k.concurrency_limit) conc.value=k.concurrency_limit; f6.appendChild(conc); m.appendChild(f6);
+  m.appendChild(el("div","section-title","Access limits"));
+  var limitsGrid=el("div","form-grid");
+  var f4=el("div","field"); f4.appendChild(el("label",null,"Expiry date (optional)")); var ex=el("input"); ex.type="date"; if(k.expires_at) ex.value=new Date(k.expires_at*1000).toISOString().slice(0,10); f4.appendChild(ex); limitsGrid.appendChild(f4);
+  var f5=el("div","field"); f5.appendChild(el("label",null,"Requests per minute (optional)")); var rpm=el("input"); rpm.type="number"; rpm.placeholder="unlimited"; if(k.rpm_limit) rpm.value=k.rpm_limit; f5.appendChild(rpm); limitsGrid.appendChild(f5);
+  var f6=el("div","field"); f6.appendChild(el("label",null,"Concurrency limit (optional)")); var conc=el("input"); conc.type="number"; conc.placeholder="unlimited"; if(k.concurrency_limit) conc.value=k.concurrency_limit; f6.appendChild(conc); limitsGrid.appendChild(f6);
+  m.appendChild(limitsGrid);
+  m.appendChild(el("div","section-title","Budget"));
+  var budgetGrid=el("div","form-grid");
   var f7=el("div","field"); f7.appendChild(el("label",null,"Budget"));
   var kbm=el("select");
   [["inherit","Inherit team budget"],["token","Token budget"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];kbm.appendChild(o);});
   if(k.budget&&k.budget.max_tokens>0) kbm.value="token"; else kbm.value="inherit";
-  f7.appendChild(kbm); m.appendChild(f7);
+  f7.appendChild(kbm); budgetGrid.appendChild(f7);
   var f8=el("div","field"); f8.appendChild(el("label",null,"Period"));
   var kbp=el("select"); [["day","Daily"],["month","Monthly"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];kbp.appendChild(o);});
   if(k.budget&&k.budget.period) kbp.value=k.budget.period;
-  f8.appendChild(kbp); m.appendChild(f8);
-  var f9=el("div","field"); f9.appendChild(el("label",null,"Token amount")); var kba=el("input"); kba.type="number"; kba.placeholder="e.g. 1000000"; if(k.budget&&k.budget.max_tokens>0) kba.value=k.budget.max_tokens; f9.appendChild(kba); m.appendChild(f9);
+  f8.appendChild(kbp); budgetGrid.appendChild(f8);
+  var f9=el("div","field"); f9.appendChild(el("label",null,"Token amount")); var kba=el("input"); kba.type="number"; kba.placeholder="e.g. 1000000"; if(k.budget&&k.budget.max_tokens>0) kba.value=k.budget.max_tokens; f9.appendChild(kba); budgetGrid.appendChild(f9);
+  m.appendChild(budgetGrid);
   var f10=el("div","field");
   var advBtn=el("button","linkbtn","Advanced JSON (money budget, per-model caps)");
   var bud=el("textarea"); bud.style.display="none"; bud.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}'; if(k.budget) bud.value=JSON.stringify(k.budget);
   advBtn.onclick=function(){bud.style.display = bud.style.display==="none"?"block":"none";};
   f10.appendChild(advBtn); f10.appendChild(bud); m.appendChild(f10);
-  if(isEdit){ var f11=el("div","field"); var lab=el("label","chip"+(k.enabled!==false?" selected":"")); var ecb=el("input"); ecb.type="checkbox"; ecb.checked=k.enabled!==false; lab.appendChild(ecb); lab.appendChild(document.createTextNode("Enabled")); f11.appendChild(lab); m.appendChild(f11); }
+  if(isEdit){ m.appendChild(el("div","section-title","State")); var f11=el("div","field"); var lab=el("label","chip"+(k.enabled!==false?" selected":"")); var ecb=el("input"); ecb.type="checkbox"; ecb.checked=k.enabled!==false; lab.appendChild(ecb); lab.appendChild(document.createTextNode("Enabled")); f11.appendChild(lab); m.appendChild(f11); }
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary",isEdit?"Save":"Create");
   save.onclick=async function(){
