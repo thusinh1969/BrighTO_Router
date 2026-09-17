@@ -2166,7 +2166,13 @@ setMode("admin");
 applyPrefs();
 var contentNode=$("content");
 if(contentNode && window.MutationObserver){ new MutationObserver(function(){ decorateTables(); }).observe(contentNode,{childList:true,subtree:true}); }
-document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeSidebar(); });
+document.addEventListener("keydown",function(e){
+  if(e.key==="Escape") closeSidebar();
+  if(e.key==="Enter" && $("login-view") && !$("login-view").classList.contains("hidden")){
+    var id=e.target&&e.target.id;
+    if(id==="login-user" || id==="login-pass" || id==="login-apikey"){ e.preventDefault(); login(); }
+  }
+});
 window.addEventListener("resize",function(){ if(window.innerWidth>820) closeSidebar(); });
 restoreSession();
 </script>
