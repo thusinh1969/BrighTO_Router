@@ -1418,7 +1418,16 @@ function openTeamModal(tm){
   m.appendChild(el("h3",null,tm.id?"Edit team":"Create team"));
   m.appendChild(el("div","section-title","Team identity"));
   var f=el("div","field"); f.appendChild(el("label",null,"Team name")); var ni=el("input"); ni.value=tm.name||""; f.appendChild(ni); m.appendChild(f);
-  m.appendChild(el("div","section-title","Budget"));
+  var hasTeamBudget=!!(tm.budget&&(tm.budget.max_tokens>0||tm.budget.max_usd_cents>0||(tm.budget.per_model&&Object.keys(tm.budget.per_model).length)));
+  var teamBudgetOpen=!!(tm.id&&hasTeamBudget);
+  var budgetWrap=el("div","advanced-wrap");
+  var budgetHead=el("button","advanced-toggle");
+  var budgetLabel=el("div"); budgetLabel.appendChild(el("b",null,"Optional team budget")); budgetLabel.appendChild(el("span",null,"Leave closed for unlimited team usage. Open for token, money, or per-model caps.")); budgetHead.appendChild(budgetLabel);
+  var budgetChevron=el("span","chev",teamBudgetOpen?"Hide":"Show"); budgetHead.appendChild(budgetChevron); budgetWrap.appendChild(budgetHead);
+  var budgetPanel=el("div","advanced-panel"+(teamBudgetOpen?"":" hidden"));
+  function redrawTeamBudget(){ budgetPanel.classList.toggle("hidden",!teamBudgetOpen); budgetChevron.textContent=teamBudgetOpen?"Hide":"Show"; }
+  budgetHead.onclick=function(e){ e.preventDefault(); teamBudgetOpen=!teamBudgetOpen; redrawTeamBudget(); };
+  budgetPanel.appendChild(el("div","section-title","Budget"));
   var budgetGrid=el("div","form-grid");
   var f2=el("div","field"); f2.appendChild(el("label",null,"Budget type"));
   var bt=el("select"); var o1=el("option",null,"Unlimited"); o1.value="unlimited"; bt.appendChild(o1); var o2=el("option",null,"Token budget"); o2.value="token"; bt.appendChild(o2);
@@ -1432,12 +1441,13 @@ function openTeamModal(tm){
   var ba=el("input"); ba.type="number"; ba.placeholder="e.g. 1000000";
   if(tm.budget&&tm.budget.max_tokens>0) ba.value=tm.budget.max_tokens;
   f2a.appendChild(ba); budgetGrid.appendChild(f2a);
-  m.appendChild(budgetGrid);
+  budgetPanel.appendChild(budgetGrid);
   var f2d=el("div","field");
 	  var advBtn=el("button","linkbtn","Advanced budget rules");
 	  var bi=el("textarea"); bi.style.display="none"; bi.value=tm.budget?JSON.stringify(tm.budget):""; bi.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}';
 	  advBtn.onclick=function(){bi.style.display = bi.style.display==="none"?"block":"none";};
-	  f2d.appendChild(advBtn); f2d.appendChild(el("p","hint","Optional: use this only for money caps or per-model caps.")); f2d.appendChild(bi); m.appendChild(f2d);
+	  f2d.appendChild(advBtn); f2d.appendChild(el("p","hint","Optional: use this only for money caps or per-model caps.")); f2d.appendChild(bi); budgetPanel.appendChild(f2d);
+  budgetWrap.appendChild(budgetPanel); m.appendChild(budgetWrap);
   m.appendChild(el("div","section-title","State"));
   var f3=el("div","field"); var lab=el("label","switch-field"+(tm.enabled===false?"":" selected")); var cb=el("input"); cb.type="checkbox"; cb.checked=tm.enabled!==false; cb.onchange=function(){ lab.classList.toggle("selected", cb.checked); }; var copy=el("span"); copy.appendChild(el("b",null,"Enabled")); copy.appendChild(el("small",null,"Team can own API keys and usage.")); lab.appendChild(copy); lab.appendChild(cb); f3.appendChild(lab); m.appendChild(f3);
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
