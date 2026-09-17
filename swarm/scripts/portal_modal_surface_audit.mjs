@@ -123,6 +123,10 @@ async function capture(page, name) {
   if (metrics.missing) fail(`${name}: modal missing`, metrics);
   if (metrics.clipped?.length) fail(`${name}: modal has clipped/overflowing content`, metrics);
   if (metrics.footerCoveredInputs?.length) fail(`${name}: sticky footer covers input fields`, metrics);
+  if (name.startsWith('mobile-')) {
+    if (metrics.rect && metrics.rect.bottom > metrics.clientH + 3) fail(`${name}: mobile modal extends below viewport instead of scrolling internally`, metrics);
+    if (metrics.modalScrollHeight <= metrics.modalClientHeight && name.endsWith('add-model') && metrics.rect.height > metrics.clientH - 30) fail(`${name}: long mobile modal should scroll internally`, metrics);
+  }
   if (name.endsWith('add-model')) {
     if (!/Exact upstream model name returned by the provider/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Provider model help text`, metrics);
     if (!/model name your apps send/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Public model help text`, metrics);
