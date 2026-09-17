@@ -439,6 +439,9 @@ impl RamBackendPool {
     async fn health_check_all(&self, client: &reqwest::Client) {
         // Không giữ DashMap entry guard qua .await (CODEX runtime-blocker): thu thập target
         // trước, thả guard, rồi mới await network I/O — tránh chặn Tokio worker / hang /healthz.
+        // CHỈ health-check backend local/no-auth (llama.cpp/vLLM/Ollama). Cloud provider cần key,
+        // unauthenticated /health + /v1/models trả 401/403 -> nếu tính là unhealthy sẽ mở circuit
+        // sai và mọi route cloud dính "503 no healthy backend". Cloud dựa vào request success/fail.
         let targets: Vec<(i64, String)> = self
             .states
             .iter()
@@ -454,7 +457,7 @@ impl RamBackendPool {
                     .ok()
                     .and_then(|url| url.clone())
                     .unwrap_or_default();
-                if base.is_empty() {
+                if base.is_empty() || !is_local_host(&base) {
                     None
                 } else {
                     Some((id, base))
@@ -473,6 +476,28 @@ impl Default for RamBackendPool {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// True nếu base_url là local/private (loopback hoặc RFC1918) — tức là backend không cần
+/// key để health-check. Cloud providers (https://api.openai.com ...) trả 401/403 khi gọi
+/// unauthenticated, nên KHÔNG được health-check kiểu này (CODEX: cloud circuit dựa vào request).
+fn is_local_host(base_url: &str) -> bool {
+    let u = base_url.trim().to_ascii_lowercase();
+    let host = u
+        .split_once("://")
+        .map(|(_, rest)| rest.split('/').next().unwrap_or(""))
+        .unwrap_or("");
+    host == "127.0.0.1"
+        || host == "localhost"
+        || host.starts_with("10.")
+        || host.starts_with("192.168.")
+        || host.starts_with("172.16.")
+        || host.starts_with("172.17.")
+        || host.starts_with("172.18.")
+        || host.starts_with("172.19.")
+        || host.starts_with("172.2")
+        || host.starts_with("172.3")
+        || host == "::1"
 }
 
 async fn check_backend_health(client: &reqwest::Client, base_url: &str) -> bool {

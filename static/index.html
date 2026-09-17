@@ -110,9 +110,7 @@ th,td{padding:7px 12px;text-align:left;border-bottom:1px solid var(--border);whi
 th{background:#111827;color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0}
 tr:last-child td{border-bottom:none}
 tbody tr:hover{background:#111c31}
-td.actions{position:sticky;right:0;background:#0b1220;box-shadow:-10px 0 12px -12px rgba(0,0,0,.6)}
-tr.flash td{animation:flashrow 1.6s ease}
-@keyframes flashrow{0%{background:#1d4ed8}100%{background:transparent}}
+td.actions{white-space:nowrap}
 tbody tr:hover td.actions{background:#111c31}
 td.mono{font-family:var(--mono);font-size:12px}
 .num{text-align:right;font-variant-numeric:tabular-nums}
@@ -468,7 +466,6 @@ function renderProviders(c){
   }
   c.appendChild(p);
 }
-async function flashRow(id){ var r=document.querySelector('tr[data-id="'+id+'"]'); if(r){ r.classList.add("flash"); setTimeout(function(){r.classList.remove("flash");},1600); } }
 async function deleteProvider(b){
   if(!confirm("Delete provider "+b.name+"?")) return;
   try{
@@ -508,7 +505,6 @@ function openProviderModal(b){
       if(b.id){ await api("/admin/backends/"+b.id,"PATCH",payload); }
       else { await api("/admin/backends","POST",payload); }
       closeModal(); toast("Provider saved"); backends=await api("/admin/backends","GET"); rerender();
-      if(b.id) flashRow(b.id);
     }catch(e){ toast("Save failed: "+e.message,"err"); }
   };
   act.appendChild(cancel); act.appendChild(save); m.appendChild(act);
