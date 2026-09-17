@@ -1423,10 +1423,10 @@ function openTeamModal(tm){
   f2a.appendChild(ba); budgetGrid.appendChild(f2a);
   m.appendChild(budgetGrid);
   var f2d=el("div","field");
-  var advBtn=el("button","linkbtn","Advanced JSON (money budget, per-model caps)");
-  var bi=el("textarea"); bi.style.display="none"; bi.value=tm.budget?JSON.stringify(tm.budget):""; bi.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}';
-  advBtn.onclick=function(){bi.style.display = bi.style.display==="none"?"block":"none";};
-  f2d.appendChild(advBtn); f2d.appendChild(bi); m.appendChild(f2d);
+	  var advBtn=el("button","linkbtn","Advanced budget rules");
+	  var bi=el("textarea"); bi.style.display="none"; bi.value=tm.budget?JSON.stringify(tm.budget):""; bi.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}';
+	  advBtn.onclick=function(){bi.style.display = bi.style.display==="none"?"block":"none";};
+	  f2d.appendChild(advBtn); f2d.appendChild(el("p","hint","Optional: use this only for money caps or per-model caps.")); f2d.appendChild(bi); m.appendChild(f2d);
   m.appendChild(el("div","section-title","State"));
   var f3=el("div","field"); var lab=el("label","switch-field"+(tm.enabled===false?"":" selected")); var cb=el("input"); cb.type="checkbox"; cb.checked=tm.enabled!==false; cb.onchange=function(){ lab.classList.toggle("selected", cb.checked); }; var copy=el("span"); copy.appendChild(el("b",null,"Enabled")); copy.appendChild(el("small",null,"Team can own API keys and usage.")); lab.appendChild(copy); lab.appendChild(cb); f3.appendChild(lab); m.appendChild(f3);
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
@@ -1586,10 +1586,10 @@ function openKeyModal(k){
   var f9=el("div","field"); f9.appendChild(el("label",null,"Token amount")); var kba=el("input"); kba.type="number"; kba.placeholder="e.g. 1000000"; if(k.budget&&k.budget.max_tokens>0) kba.value=k.budget.max_tokens; f9.appendChild(kba); budgetGrid.appendChild(f9);
   m.appendChild(budgetGrid);
   var f10=el("div","field");
-  var advBtn=el("button","linkbtn","Advanced JSON (money budget, per-model caps)");
-  var bud=el("textarea"); bud.style.display="none"; bud.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}'; if(k.budget) bud.value=JSON.stringify(k.budget);
-  advBtn.onclick=function(){bud.style.display = bud.style.display==="none"?"block":"none";};
-  f10.appendChild(advBtn); f10.appendChild(bud); m.appendChild(f10);
+	  var advBtn=el("button","linkbtn","Advanced budget rules");
+	  var bud=el("textarea"); bud.style.display="none"; bud.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}'; if(k.budget) bud.value=JSON.stringify(k.budget);
+	  advBtn.onclick=function(){bud.style.display = bud.style.display==="none"?"block":"none";};
+	  f10.appendChild(advBtn); f10.appendChild(el("p","hint","Optional: use this only for money caps or per-model caps.")); f10.appendChild(bud); m.appendChild(f10);
   if(isEdit){ m.appendChild(el("div","section-title","State")); var f11=el("div","field"); var lab=el("label","switch-field"+(k.enabled!==false?" selected":"")); var ecb=el("input"); ecb.type="checkbox"; ecb.checked=k.enabled!==false; ecb.onchange=function(){ lab.classList.toggle("selected", ecb.checked); }; var copy=el("span"); copy.appendChild(el("b",null,"Enabled")); copy.appendChild(el("small",null,"Client key can call allowed routes.")); lab.appendChild(copy); lab.appendChild(ecb); f11.appendChild(lab); m.appendChild(f11); }
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var save=el("button","btn primary",isEdit?"Save":"Create");
