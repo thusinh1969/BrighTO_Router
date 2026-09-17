@@ -70,6 +70,7 @@ textarea{resize:vertical;min-height:72px}
 .btn.primary:hover{background:var(--primary2)}
 .btn.danger{color:var(--red)}
 .btn.danger:hover{border-color:var(--red);color:var(--red)}
+.btn.danger:disabled,.btn.danger:disabled:hover{color:var(--faint);border-color:var(--border);background:rgba(15,23,42,.5);opacity:.55}
 .btn.sm{padding:6px 11px;font-size:12px;border-radius:8px}
 .btn.icon-btn{padding:5px 8px;line-height:0;display:inline-flex;align-items:center;justify-content:center}
 .muted{color:var(--muted)}
@@ -184,6 +185,9 @@ td.mono,.mono{font-family:var(--mono);font-size:12px}
 .cell-main{font-weight:760;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell-sub{font-size:11.5px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;color:var(--muted);font-size:11.5px}
+.model-name-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;min-width:0}
+.model-name-row .cell-main{display:block!important;-webkit-line-clamp:unset!important;-webkit-box-orient:initial!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere;text-overflow:clip!important}
+.model-name-row .icon-btn{align-self:center}
 .meta-dot{width:4px;height:4px;border-radius:50%;background:var(--faint);display:inline-block}
 .icon-btn{padding:3px 6px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
 table.models-table,table.conn-table{table-layout:fixed;min-width:0!important}
@@ -1034,8 +1038,8 @@ function renderModels(c){
       var tr=el("tr");
       var mn=el("td");
       var mns=el("div","stack-cell");
-      var mrow=el("div","cell-meta"); mrow.style.flexWrap="nowrap";
-      var mnw=el("span","cell-main mono",r.model_name); mnw.title=r.model_name; mnw.style.flex="1"; mnw.style.minWidth="0";
+      var mrow=el("div","model-name-row");
+      var mnw=el("span","cell-main mono",r.model_name); mnw.title=r.model_name;
       mrow.appendChild(mnw); mrow.appendChild(copyIconBtn(r.model_name));
       mns.appendChild(mrow);
       mns.appendChild(el("div","cell-sub","Public route name"));
