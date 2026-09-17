@@ -85,16 +85,20 @@ async function main() {
     await page.locator('.nav[data-view="usage"]').click({ force: true });
     await page.waitForTimeout(600);
     await page.screenshot({ path: `${OUT}/empty-usage.png`, fullPage: true });
-    const usage = await page.evaluate(() => ({
-      text: document.querySelector('#content')?.innerText || '',
-      emptyCount: document.querySelectorAll('#content .empty').length,
-      emptyTables: [...document.querySelectorAll('#content table')].filter((t) => t.querySelectorAll('tbody tr').length === 0).length,
-      groupTitles: [...document.querySelectorAll('#content .panel h3')].map((x) => x.textContent || ''),
-    }));
-    result.evidence.usage = usage;
-    if (!usage.text.includes('No usage data for this filter.')) fail('usage empty chart must explain no data', usage);
-    if (!usage.text.includes('No data for this filter yet.')) fail('usage empty group panels must show empty-state copy', usage);
-    if (usage.emptyTables > 0) fail('usage empty state must not render naked empty tables', usage);
+	    const usage = await page.evaluate(() => ({
+	      text: document.querySelector('#content')?.innerText || '',
+	      emptyCount: document.querySelectorAll('#content .empty').length,
+	      emptyTables: [...document.querySelectorAll('#content table')].filter((t) => t.querySelectorAll('tbody tr').length === 0).length,
+	      groupTitles: [...document.querySelectorAll('#content .panel h3')].map((x) => x.textContent || ''),
+	      launchSteps: document.querySelectorAll('#content .launch-step').length,
+	      addFirstModelButtons: [...document.querySelectorAll('#content button')].filter((b) => (b.innerText || '').trim() === 'Add first model').length,
+	    }));
+	    result.evidence.usage = usage;
+	    if (!usage.text.includes('No usage data for this filter.')) fail('usage empty chart must explain no data', usage);
+	    if (!usage.text.includes('No data for this filter yet.')) fail('usage empty group panels must show empty-state copy', usage);
+	    if (!usage.text.includes('Launch checklist') || usage.launchSteps !== 3) fail('usage empty state must show launch checklist before repeated empty panels', usage);
+	    if (usage.addFirstModelButtons !== 1) fail('usage empty state must include one Add first model CTA', usage);
+	    if (usage.emptyTables > 0) fail('usage empty state must not render naked empty tables', usage);
   } finally {
     await browser.close().catch(() => {});
   }
