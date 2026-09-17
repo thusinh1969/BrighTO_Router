@@ -41,6 +41,16 @@ check(
     '?"*"' not in text and '?"*"' not in text and '+"*"' not in text,
     'star-marked token-rate sample formatter still present',
 )
+check(
+    'copy buttons use fallback helper',
+    'function copyText(' in text and 'navigator.clipboard.writeText(value).then(ok).catch(fallback)' in text and 'execCommand("copy")' in text,
+    'missing robust copyText clipboard fallback',
+)
+check(
+    'copy actions do not call clipboard directly',
+    'navigator.clipboard.writeText(endpoint)' not in text and 'navigator.clipboard.writeText(curl)' not in text and 'navigator.clipboard.writeText(text)' not in text,
+    'direct clipboard call still present outside copyText helper',
+)
 def render_clears_container(fn: str) -> bool:
     # Direct renderX($("content")) calls are acceptable only if renderX clears
     # the target container before appending fresh DOM. This matches DeepSeek's
