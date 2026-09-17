@@ -570,7 +570,7 @@ function readinessItem(label,note,kind){
 }
 function userHero(me,stats,logs,inT,outT,req,errRate){
   var latest=logs&&logs.length?logs[0]:null;
-  var tokRateVals=(logs||[]).filter(function(r){return r.total_tokens_per_second!=null;}).map(function(r){return Number(r.total_tokens_per_second)||0;});
+  var tokRateVals=(logs||[]).filter(function(r){return reliableTokRate(r);}).map(function(r){return Number(r.total_tokens_per_second)||0;});
   var avgTok=tokRateVals.length?Math.round(tokRateVals.reduce(function(a,b){return a+b;},0)/tokRateVals.length):null;
   var hero=el("div","user-hero");
   var left=el("div","user-card");
@@ -1455,7 +1455,7 @@ async function renderUsage(c,seq){
     var bar=el("div","panel");
     var h=el("div","panel-head"); h.appendChild(el("h3",null,"Filters"));
     bar.appendChild(h);
-    bar.appendChild(el("p","hint","Narrow request history by model, status, provider, team, or key. Use short ranges while debugging live traffic."));
+    bar.appendChild(el("p","hint","Narrow request history by model, status, provider, team, or key. Tok/s is shown only when request duration is long enough to be meaningful."));
     var row=el("div","filter-grid");
     function fld(lbl, input){ var box=el("div","field"); box.appendChild(el("label",null,lbl)); box.appendChild(input); row.appendChild(box); }
     var mi=el("input"); mi.placeholder="model name"; mi.value=usageFilter.model; fld("Model",mi);
@@ -1594,6 +1594,9 @@ function fmtNum(v){ return fmt(v); }
 function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
 function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.00"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
 function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
+function reliableTokRate(r){ var rate=Number(r&&r.total_tokens_per_second); var dur=Number(r&&r.total_ms); return Number.isFinite(rate) && rate>=0 && Number.isFinite(dur) && dur>=100; }
+function tokRateDisplay(r){ return reliableTokRate(r)?fmt(Math.round(Number(r.total_tokens_per_second))):"—"; }
+function tokRateTitle(r){ return reliableTokRate(r)?"Total tokens per second":"Hidden because duration is below 100 ms; too short to be a useful production speed signal."; }
 function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){navigator.clipboard.writeText(text).then(function(){toast("Copied");});}; return b; }
 function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
 var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]];
@@ -1617,7 +1620,7 @@ function logsTable(rows){
     function kpi(k,v,primary){ var box=el("div","request-kpi"+(primary?" primary":"")); box.appendChild(el("span","k",k)); box.appendChild(el("span","v",v)); kpis.appendChild(box); }
     if(admin){ kpi("Team",String(r.team_id)); kpi("Key",keyPrefix(r.key_id)); }
     kpi("In / Out",fmt(r.input_tokens)+" / "+fmt(r.output_tokens));
-    kpi("Tok/s",r.total_tokens_per_second!=null?fmt(Math.round(r.total_tokens_per_second)):"—",true);
+    var before=kpis.children.length; kpi("Tok/s",tokRateDisplay(r),true); kpis.children[before].title=tokRateTitle(r);
     kpi("Cost",fmtCost(r.estimated_cost_usd));
     if(admin) kpi("Router",r.router_overhead_display);
     kpi("Duration",r.duration_display);
