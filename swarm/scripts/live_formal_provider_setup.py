@@ -133,12 +133,17 @@ def main() -> int:
 
     items = parse_model_file()
     selected = {
-        "openai": pick(items, lambda x: x.get("provider") == "openai", ["gpt-5.6", "gpt-5.5"]),
+        "openai": pick(items, lambda x: x.get("provider") == "openai", ["gpt-5.5", "gpt-5.6"]),
         "anthropic": pick(items, lambda x: x.get("provider") == "anthropic"),
         "deepseek": pick(items, lambda x: x.get("provider") == "deepseek", ["deepseek-v4-pro", "deepseek-v4-flash"]),
         "kimi": pick(items, lambda x: x.get("provider") in ("moonshot", "kimi"), ["kimi-k3"]),
         "qwen": pick(items, lambda x: x.get("provider") == "qwen" and "token-plan" not in (x.get("api_base") or ""), ["qwen-3.8-max"]),
         "zai": pick(items, lambda x: (x.get("model_name") or "").lower().startswith("glm") or "z.ai" in (x.get("api_base") or ""), ["glm-5.2"]),
+    }
+    # Use cheap/stable public provider model names for smoke. The API key still comes from .model.
+    provider_model_override = {
+        "openai": "gpt-4o-mini",
+        "qwen": "qwen3.8-max",
     }
 
     routes_to_delete = must("/admin/routes")
@@ -179,10 +184,11 @@ def main() -> int:
         if not item or not item.get("api_key"):
             print(f"route skip {public}: missing key/model")
             return
+        provider_key = "openai" if provider_id == 1 else "qwen" if provider_id == 6 else ""
         route_specs.append({
             "public": public,
             "provider_id": provider_id,
-            "provider_model": item["model_name"],
+            "provider_model": provider_model_override.get(provider_key) or item["model_name"],
             "protocol": protocol,
             "auth_mode": auth,
             "provider_key": item["api_key"],
@@ -222,14 +228,22 @@ def main() -> int:
     client_key = key_resp.get("key")
     print(f"client key created prefix={key_resp.get('prefix')} allowed={len(route_names)} routes")
 
-    time.sleep(6)  # allow config poll/reload and any old circuit timers to settle.
+    time.sleep(35)  # allow config poll + health loop; cloud routes must not be poisoned after this.
     results = []
     for spec in route_specs:
-        body = {"model": spec["public"], "messages": [{"role": "user", "content": "Reply exactly OK."}], "max_tokens": 8, "stream": False}
-        code, parsed, txt = http("/v1/chat/completions", "POST", body, admin=False, bearer=client_key, timeout=60)
+        if spec["protocol"] == "anthropic_messages":
+            path = "/v1/messages"
+            body = {"model": spec["public"], "messages": [{"role": "user", "content": "Reply exactly OK."}], "max_tokens": 8}
+        else:
+            path = "/v1/chat/completions"
+            body = {"model": spec["public"], "messages": [{"role": "user", "content": "Reply exactly OK."}], "max_tokens": 8, "stream": False}
+            if spec["public"] == "test-openai":
+                body.pop("max_tokens", None)
+                body["max_completion_tokens"] = 8
+        code, parsed, txt = http(path, "POST", body, admin=False, bearer=client_key, timeout=90)
         ok = 200 <= code < 300
         results.append((spec["public"], code, ok, txt[:220]))
-        print(f"smoke {spec['public']}: status={code} ok={ok}")
+        print(f"smoke {spec['public']}: path={path} status={code} ok={ok}")
         if code == 429:
             print(f"smoke {spec['public']}: rate limited, no retry")
     print("summary:")
