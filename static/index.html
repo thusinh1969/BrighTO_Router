@@ -385,7 +385,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
       <div class="login-proof">
         <div><i></i><span>Create a tested model route before clients can use it.</span></div>
         <div><i></i><span>Give each team a visible key, expiry, rate limit, and budget.</span></div>
-        <div><i></i><span>Track tokens, cost, errors, latency, and Tok/s after every request.</span></div>
+        <div><i></i><span>Track tokens, cost, errors, latency, and tokens per second after every request.</span></div>
       </div>
     </section>
     <div class="login-card">
@@ -593,7 +593,7 @@ function firstRunPanel(){
   var list=el("div","launch-list");
   [["1","Add a model","Choose a provider or Custom LLM, enter its base URL/API key, load model names, test, then save enabled."],
    ["2","Use a client key","The default demo key is available in API Keys, or create one for a team with budget/expiry."],
-   ["3","Watch usage","After the first request, Dashboard and Usage show tokens, cost, errors, latency, and Tok/s."]].forEach(function(x){
+   ["3","Watch usage","After the first request, Dashboard and Usage show tokens, cost, errors, latency, and tokens per second."]].forEach(function(x){
      var it=el("div","launch-step"); it.appendChild(el("div","num",x[0])); it.appendChild(el("b",null,x[1])); it.appendChild(el("span",null,x[2])); list.appendChild(it);
    });
   p.appendChild(list);
@@ -633,7 +633,7 @@ function userHero(me,stats,logs,inT,outT,req,errRate){
   var right=el("div","user-card");
   right.appendChild(el("div","ops-kicker","Last 30 days"));
   var g=el("div","user-metrics");
-  [["Requests",fmt(req)], ["Tokens",fmt(inT+outT)], ["Error rate",errRate+"%"], ["Tok/s",avgTok==null?"—":fmt(avgTok)]].forEach(function(x){
+  [["Requests",fmt(req)], ["Tokens",fmt(inT+outT)], ["Error rate",errRate+"%"], ["Tokens/sec",avgTok==null?"—":fmt(avgTok)]].forEach(function(x){
     var m=el("div","user-metric"); m.appendChild(el("span",null,x[0])); m.appendChild(el("b",null,x[1])); g.appendChild(m);
   });
   right.appendChild(g);
@@ -788,7 +788,7 @@ async function renderDashboard(c,seq){
     split.appendChild(focusPanel("Top consumers", (sum.by_team||[]).map(function(r){return {title:r.team_name,sub:fmt(r.requests)+" requests · "+fmt(r.errors)+" errors",value:fmt(r.input_tokens+r.output_tokens),label:"tokens"};}), "No team usage yet."));
     c.appendChild(split);
     c.appendChild(focusPanel("Top models", (sum.by_model||[]).map(function(r){return {title:r.model,sub:fmt(r.requests)+" requests · "+fmt(r.errors)+" errors · "+fmtCost(r.estimated_cost_usd),value:fmt(r.input_tokens+r.output_tokens),label:"tokens"};}), "No model usage yet."));
-    c.appendChild(groupPanel("Provider health", ["Provider","Requests","Errors","429","5xx","Timeout"],
+    c.appendChild(groupPanel("Provider health", ["Provider","Requests","Errors","Rate limits","Provider errors","Timeouts"],
       (sum.by_backend||[]).map(function(r){return [r.backend_name, fmt(r.requests), fmt(r.errors), fmt(r.rate_limited), fmt(r.server_errors), fmt(r.timeouts)];})));
   }else{
     c.appendChild(p);
@@ -798,13 +798,13 @@ async function renderDashboard(c,seq){
     var per=el("div","panel");
     var ph=el("div","panel-head"); ph.appendChild(el("h3",null,"Performance diagnostics")); per.appendChild(ph);
     var kv=el("div","kv");
-    kv.appendChild(el("span","k","Router overhead p95"));
+    kv.appendChild(el("span","k","Router overhead, p95"));
     kv.appendChild(el("span","v",fmtDur(sum.totals.p95_router_overhead_ms)));
     per.appendChild(kv);
-    per.appendChild(el("p","hint","Router overhead is the time spent inside BrighTO before forwarding. Provider/model latency is shown per prompt-size bucket below."));
+    per.appendChild(el("p","hint","Router overhead is time spent inside BrighTO before forwarding. p95 means 95% of requests were this fast or faster. First byte means the wait until the provider starts responding."));
     c.appendChild(per);
     if(sum.by_bucket && sum.by_bucket.length){
-      c.appendChild(groupPanel("Latency by prompt size", ["Bucket","Requests","P95 first byte","P95 total","P95 router"],
+      c.appendChild(groupPanel("Latency by prompt size", ["Prompt size","Requests","First byte p95","Total time p95","Router time p95"],
         sum.by_bucket.map(function(b){return [b.bucket, fmt(b.requests), fmtDur(b.p95_ttfb_ms), fmtDur(b.p95_total_ms), fmtDur(b.p95_router_overhead_ms)];})));
     }
   }
@@ -933,7 +933,7 @@ function openProviderModal(b){
   var loadGrid=el("div","form-grid");
   var fw=el("div","field"); fw.appendChild(el("label",null,"Weight"));
   var wIn=el("input"); wIn.type="number"; wIn.value=String(b.weight||1); fw.appendChild(wIn); loadGrid.appendChild(fw);
-  var fm=el("div","field"); fm.appendChild(el("label",null,"Max concurrent (0 = unlimited)"));
+  var fm=el("div","field"); fm.appendChild(el("label",null,"Simultaneous calls (0 = unlimited)"));
   var mxIn=el("input"); mxIn.type="number"; mxIn.value=String(b.max_inflight||0); fm.appendChild(mxIn); loadGrid.appendChild(fm);
   m.appendChild(loadGrid);
   m.appendChild(el("div","section-title","State"));
@@ -1037,7 +1037,7 @@ function renderModels(c){
       var pm=el("td"); var pms=el("div","stack-cell"); var pmw=el("div","cell-main mono",r.provider_model_name||"—"); pmw.title=r.provider_model_name||""; pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
       var meta=el("td");
       var mg=el("div","model-meta-grid");
-      [["Auth",r.auth_mode||"—"],["Ctx",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Out",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["$/In",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["$/Out",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){
+      [["Auth",r.auth_mode||"—"],["Context",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Max output",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["Input $/1M",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["Output $/1M",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){
         var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,String(x[1]))); mg.appendChild(item);
       });
       meta.appendChild(mg); tr.appendChild(meta);
@@ -1139,7 +1139,7 @@ function openRouteModal(route){
   (backends||[]).forEach(function(b){ var o=el("option",null,b.name+" · "+b.base_url.replace("https://","").replace("http://","")); o.value=String(b.id); fb.appendChild(o); });
   fb.value=route.fallback_backend_id?String(route.fallback_backend_id):"";
   f3.appendChild(fb); f3.appendChild(el("p","hint","Optional backup provider connection if the primary route fails.")); limits.appendChild(f3);
-  var f4=el("div","field"); f4.appendChild(el("label",null,"First-byte timeout (seconds)")); var to=el("input"); to.type="number"; to.value=route.first_byte_timeout||180; f4.appendChild(to); limits.appendChild(f4);
+  var f4=el("div","field"); f4.appendChild(el("label",null,"Provider start timeout (seconds)")); var to=el("input"); to.type="number"; to.value=route.first_byte_timeout||180; f4.appendChild(to); f4.appendChild(el("p","hint","How long to wait for the provider to start responding.")); limits.appendChild(f4);
   m.appendChild(limits);
 
   var act=el("div","actions");
@@ -1443,7 +1443,7 @@ function renderKeys(c){
       ss.appendChild(el("div","cell-sub",k.expires_at?("Expires "+fmtDate(k.expires_at)):"No expiry"));
       scope.appendChild(ss); tr.appendChild(scope);
       var limits=el("td"); var lg=el("div","mini-meta-grid");
-      [["RPM",k.rpm_limit?fmt(k.rpm_limit):"∞"],["Conc.",k.concurrency_limit?fmt(k.concurrency_limit):"∞"],["Budget",k.budget?budgetText(k.budget):"team"]].forEach(function(x){ var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,x[1])); lg.appendChild(item); });
+      [["Requests/min",k.rpm_limit?fmt(k.rpm_limit):"∞"],["Simultaneous",k.concurrency_limit?fmt(k.concurrency_limit):"∞"],["Budget",k.budget?budgetText(k.budget):"team"]].forEach(function(x){ var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,x[1])); lg.appendChild(item); });
       limits.appendChild(lg);
       var en=el("div","cell-sub"); en.appendChild(pill(k.enabled?"Enabled":"Disabled",k.enabled?"on":"off")); limits.appendChild(en);
       tr.appendChild(limits);
@@ -1477,7 +1477,7 @@ function openKeyModal(k){
   var limitsGrid=el("div","form-grid");
   var f4=el("div","field"); f4.appendChild(el("label",null,"Expiry date (optional)")); var ex=el("input"); ex.type="date"; if(k.expires_at) ex.value=new Date(k.expires_at*1000).toISOString().slice(0,10); f4.appendChild(ex); limitsGrid.appendChild(f4);
   var f5=el("div","field"); f5.appendChild(el("label",null,"Requests per minute (optional)")); var rpm=el("input"); rpm.type="number"; rpm.placeholder="unlimited"; if(k.rpm_limit) rpm.value=k.rpm_limit; f5.appendChild(rpm); limitsGrid.appendChild(f5);
-  var f6=el("div","field"); f6.appendChild(el("label",null,"Concurrency limit (optional)")); var conc=el("input"); conc.type="number"; conc.placeholder="unlimited"; if(k.concurrency_limit) conc.value=k.concurrency_limit; f6.appendChild(conc); limitsGrid.appendChild(f6);
+  var f6=el("div","field"); f6.appendChild(el("label",null,"Simultaneous request limit (optional)")); var conc=el("input"); conc.type="number"; conc.placeholder="unlimited"; if(k.concurrency_limit) conc.value=k.concurrency_limit; f6.appendChild(conc); limitsGrid.appendChild(f6);
   m.appendChild(limitsGrid);
   m.appendChild(el("div","section-title","Budget"));
   var budgetGrid=el("div","form-grid");
@@ -1574,7 +1574,7 @@ async function renderUsage(c,seq){
     var bar=el("div","panel");
     var h=el("div","panel-head"); h.appendChild(el("h3",null,"Filters"));
     bar.appendChild(h);
-    bar.appendChild(el("p","hint","Narrow request history by model, status, provider, team, or key. Tok/s is shown only when request duration is long enough to be meaningful."));
+    bar.appendChild(el("p","hint","Narrow request history by model, status, provider, team, or key. Tokens/sec is shown only when request duration is long enough to be meaningful."));
     var row=el("div","filter-grid");
     function fld(lbl, input){ var box=el("div","field"); box.appendChild(el("label",null,lbl)); box.appendChild(input); row.appendChild(box); }
     var mi=el("input"); mi.placeholder="model name"; mi.value=usageFilter.model; fld("Model",mi);
@@ -1751,7 +1751,7 @@ function logsTable(rows){
     function kpi(k,v,primary){ var box=el("div","request-kpi"+(primary?" primary":"")); box.appendChild(el("span","k",k)); box.appendChild(el("span","v",v)); kpis.appendChild(box); }
     if(admin){ kpi("Team",String(r.team_id)); kpi("Key",keyPrefix(r.key_id)); }
     kpi("In / Out",fmt(r.input_tokens)+" / "+fmt(r.output_tokens));
-    var before=kpis.children.length; kpi("Tok/s",tokRateDisplay(r),true); kpis.children[before].title=tokRateTitle(r);
+    var before=kpis.children.length; kpi("Tokens/sec",tokRateDisplay(r),true); kpis.children[before].title=tokRateTitle(r);
     kpi("Cost",fmtCost(r.estimated_cost_usd));
     if(admin) kpi("Router",fmtDur(Number(r.router_overhead_ms)));
     kpi("Duration",fmtDur(Number(r.total_ms)));

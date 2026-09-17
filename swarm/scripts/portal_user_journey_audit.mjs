@@ -136,7 +136,7 @@ async function runViewport(browser, seed, name, width, height) {
     const usage = await inspect(page);
     result.evidence[`${name}-usage`] = usage;
     if (!/Your requests and token usage/i.test(usage.desc)) fail(`${name}: user usage topbar description is not role-aware`, usage);
-    if (!usage.content.includes(seed.model) || !/Tok\/s|TOK\/S/i.test(usage.content)) fail(`${name}: user usage missing own model or Tok/s signal`, usage);
+    if (!usage.content.includes(seed.model) || !/Tokens\/sec/i.test(usage.content)) fail(`${name}: user usage missing own model or Tokens/sec signal`, usage);
     if (/Provider health|By team|By API key/i.test(usage.content)) fail(`${name}: user usage leaked admin-only aggregations`, usage);
     if (usage.bodyScrollWidth > usage.clientWidth + 8) fail(`${name}: user usage horizontal overflow`, usage);
 
