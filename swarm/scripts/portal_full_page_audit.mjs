@@ -180,6 +180,40 @@ async function inspectPage(page, label) {
           rows: table.querySelectorAll('tbody tr').length,
         };
       }),
+      teamListStats: [...document.querySelectorAll('.team-list-table')].map((table) => {
+        const tbody = table.querySelector('tbody');
+        const thead = table.querySelector('thead');
+        const firstRow = table.querySelector('tbody tr');
+        const firstAction = table.querySelector('td.actions .action-row');
+        const wrap = table.closest('.team-list-wrap');
+        return {
+          tableDisplay: getComputedStyle(table).display,
+          bodyDisplay: tbody ? getComputedStyle(tbody).display : '',
+          headDisplay: thead ? getComputedStyle(thead).display : '',
+          rowDisplay: firstRow ? getComputedStyle(firstRow).display : '',
+          rowColumns: firstRow ? getComputedStyle(firstRow).gridTemplateColumns : '',
+          actionDisplay: firstAction ? getComputedStyle(firstAction).display : '',
+          wrapBorder: wrap ? getComputedStyle(wrap).borderStyle : '',
+          rows: table.querySelectorAll('tbody tr').length,
+        };
+      }),
+      keyListStats: [...document.querySelectorAll('.key-list-table')].map((table) => {
+        const tbody = table.querySelector('tbody');
+        const thead = table.querySelector('thead');
+        const firstRow = table.querySelector('tbody tr');
+        const firstAction = table.querySelector('td.actions .action-row');
+        const wrap = table.closest('.key-list-wrap');
+        return {
+          tableDisplay: getComputedStyle(table).display,
+          bodyDisplay: tbody ? getComputedStyle(tbody).display : '',
+          headDisplay: thead ? getComputedStyle(thead).display : '',
+          rowDisplay: firstRow ? getComputedStyle(firstRow).display : '',
+          rowColumns: firstRow ? getComputedStyle(firstRow).gridTemplateColumns : '',
+          actionDisplay: firstAction ? getComputedStyle(firstAction).display : '',
+          wrapBorder: wrap ? getComputedStyle(wrap).borderStyle : '',
+          rows: table.querySelectorAll('tbody tr').length,
+        };
+      }),
       keySecretRows: [...document.querySelectorAll('.key-secret')].map((n) => {
         const st = getComputedStyle(n);
         const key = n.querySelector('.mono');
@@ -256,6 +290,14 @@ async function runViewport(browser, name, width, height) {
     if (view === 'providers' && !mobile) {
       const badProviderList = (metrics.providerListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
       if (badProviderList.length || !(metrics.providerListStats || []).length) fail(`${name}/${view}: desktop Providers should render as compact provider cards, not a wide sparse table`, { badProviderList, metrics });
+    }
+    if (view === 'teams' && !mobile) {
+      const badTeamList = (metrics.teamListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
+      if (badTeamList.length || !(metrics.teamListStats || []).length) fail(`${name}/${view}: desktop Teams should render as compact team cards, not a wide sparse table`, { badTeamList, metrics });
+    }
+    if (view === 'keys' && !mobile) {
+      const badKeyList = (metrics.keyListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
+      if (badKeyList.length || !(metrics.keyListStats || []).length) fail(`${name}/${view}: desktop API Keys should render as compact key cards, not a wide sparse table`, { badKeyList, metrics });
     }
     if (view === 'models') {
       const badModelNameRows = (metrics.modelNameRows || []).filter((r) => r.display !== 'grid' || r.copyButtons !== 1);

@@ -253,6 +253,22 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
   .provider-list-table td.actions{display:flex;align-items:center;justify-content:flex-end;text-align:left;align-self:stretch;white-space:normal}
   .provider-list-table .action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;width:100%;max-width:176px;margin-left:auto}
   .provider-list-table .action-row .btn{width:100%;justify-content:center;padding-left:8px;padding-right:8px}
+  .team-list-wrap,.key-list-wrap{overflow:visible;border:none;background:transparent}
+  .team-list-table,.key-list-table{display:block;border-collapse:separate;border-spacing:0;font-size:13px}
+  .team-list-table colgroup,.team-list-table thead,.key-list-table colgroup,.key-list-table thead{display:none}
+  .team-list-table tbody,.key-list-table tbody{display:grid;gap:12px}
+  .team-list-table tr,.key-list-table tr{display:grid;gap:12px;align-items:start;background:linear-gradient(145deg,rgba(15,23,42,.98),rgba(11,18,32,.98));border:1px solid rgba(51,65,85,.9);border-radius:16px;padding:14px;box-shadow:0 14px 34px rgba(0,0,0,.14)}
+  .team-list-table tr{grid-template-columns:minmax(220px,1fr) minmax(240px,1fr) minmax(140px,.58fr) minmax(110px,.42fr) minmax(72px,.28fr)}
+  .key-list-table tr{grid-template-columns:minmax(300px,1.25fr) minmax(190px,.78fr) minmax(170px,.68fr) minmax(170px,.68fr) minmax(86px,.32fr)}
+  .team-list-table tr:hover,.key-list-table tr:hover{background:linear-gradient(145deg,rgba(17,28,49,.98),rgba(11,18,32,.98));border-color:rgba(56,189,248,.26)}
+  .team-list-table td,.key-list-table td{display:block;border-bottom:none;padding:0;overflow:visible;min-width:0}
+  .team-list-table td::before,.key-list-table td::before{content:attr(data-label);display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.055em;font-weight:850;margin-bottom:6px;line-height:1.2}
+  .team-list-table td[data-label=""]::before,.team-list-table td.actions::before,.key-list-table td[data-label=""]::before,.key-list-table td.actions::before{display:none}
+  .team-list-table .cell-main,.team-list-table .cell-sub,.key-list-table .cell-main,.key-list-table .cell-sub{display:block!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere;text-overflow:clip!important}
+  .team-list-table .mini-meta-grid,.key-list-table .mini-meta-grid{grid-template-columns:1fr;gap:4px}
+  .team-list-table td.actions,.key-list-table td.actions{display:flex;align-items:center;justify-content:flex-end;text-align:left;align-self:stretch;white-space:normal}
+  .team-list-table .action-row,.key-list-table .action-row{display:grid;grid-template-columns:1fr;gap:7px;width:100%;max-width:86px;margin-left:auto}
+  .team-list-table .action-row .btn,.key-list-table .action-row .btn{width:100%;justify-content:center;padding-left:8px;padding-right:8px}
 }
 .metric-table td:first-child{min-width:220px;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .metric-table td:first-child{overflow-wrap:anywhere}
@@ -1461,7 +1477,7 @@ function renderTeams(c){
   p.appendChild(el("p","hint","A team owns client API keys and budgets. Use teams to separate departments, apps, or projects."));
   if(!teams.length){ p.appendChild(emptyBox("No teams yet.")); }
   else{
-    var w=el("div","table-wrap pro-table"); var t=el("table","conn-table");
+    var w=el("div","table-wrap pro-table team-list-wrap"); var t=el("table","conn-table team-list-table");
     var colg=document.createElement("colgroup");
     ["34%","28%","18%","10%","10%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
@@ -1574,7 +1590,7 @@ function renderKeys(c){
   p.appendChild(el("p","hint","Client keys are what apps use to call BrighTO. Admins can view and copy keys again, set expiry, budgets, rate limits, and model scope."));
   if(!keys.length){ p.appendChild(emptyBox("No keys yet.")); }
   else{
-    var w=el("div","table-wrap pro-table"); var t=el("table","models-table keys-table");
+    var w=el("div","table-wrap pro-table key-list-wrap"); var t=el("table","models-table keys-table key-list-table");
     var colg=document.createElement("colgroup");
     ["37%","21%","18%","14%","10%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
