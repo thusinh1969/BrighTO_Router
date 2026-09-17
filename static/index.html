@@ -348,6 +348,12 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .model-map .v.empty{color:var(--muted);font-family:var(--font);font-style:italic}
 .model-map .arrow{display:flex;align-items:center;justify-content:center;color:var(--sky);font-weight:900;padding:0 2px}
 .mobile-map-text{display:none}
+.connection-status{display:flex;align-items:center;gap:8px;background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:10px 12px;color:var(--muted);font-size:12.5px;margin:2px 0 12px}
+.connection-status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 4px rgba(148,163,184,.08);flex:0 0 auto}
+.connection-status.ok{color:var(--green);border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.08)}
+.connection-status.ok::before{background:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.1)}
+.connection-status.bad{color:var(--red);border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.08)}
+.connection-status.bad::before{background:var(--red);box-shadow:0 0 0 4px rgba(248,113,113,.1)}
 .route-modal .model-map{min-height:64px;align-items:center;overflow:hidden}
 .route-modal .model-map .box{min-height:42px;display:flex;align-items:center;gap:9px;padding:8px 10px}
 .route-modal .model-map .k{margin-bottom:0;white-space:nowrap;flex:0 0 auto}
@@ -471,10 +477,12 @@ body.nav-open{overflow:hidden}
   .route-modal .wizard-steps{margin-bottom:8px}
   .route-modal .provider-connect-grid{gap:7px;margin-bottom:6px}
   .route-modal .provider-connect-grid .field{margin-bottom:0}
-  .route-modal .wizard-step{padding:7px 6px;font-size:0}
-  .route-modal .wizard-step b{font-size:11px;margin-bottom:0}
-  .route-modal input,.route-modal select,.route-modal textarea{padding:9px 11px}
-  .route-modal .hint{margin:3px 0 6px;line-height:1.25;font-size:11.5px}
+  .route-modal .wizard-step{padding:5px 6px;font-size:0}
+  .route-modal .wizard-step b{font-size:10.5px;margin-bottom:0}
+  .route-modal input,.route-modal select,.route-modal textarea{padding:8px 10px}
+  .route-modal .hint{margin:2px 0 5px;line-height:1.18;font-size:10.8px}
+  .route-modal .connection-status{padding:6px 9px;margin:1px 0 8px;font-size:11.2px;line-height:1.22;border-radius:10px}
+  .route-modal .connection-status::before{width:6px;height:6px;box-shadow:none}
   .model-map{grid-template-columns:1fr;gap:7px}
   .model-map .arrow{justify-content:flex-start}
   #modal-overlay{padding:12px 10px;align-items:flex-start}
@@ -483,12 +491,12 @@ body.nav-open{overflow:hidden}
   .route-modal .actions{position:sticky;bottom:0;margin:18px -20px -20px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));gap:6px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-radius:0 0 18px 18px;background:linear-gradient(180deg,rgba(15,23,42,.98),var(--panel));box-shadow:0 -16px 28px rgba(2,6,18,.35)}
   .modal .actions .btn{flex:1 1 120px}
   .route-modal .actions .btn{width:100%;min-width:0;padding:7px 5px;font-size:11px;line-height:1.15;white-space:normal}
-  .route-modal .advanced-toggle{padding:6px 10px;margin:3px 0 8px;border-radius:11px}
-  .route-modal .advanced-toggle b{font-size:12.5px}
-  .route-modal .advanced-toggle span{font-size:10.5px;line-height:1.15;margin-top:1px}
-  .route-modal .model-map{display:block;height:auto;overflow:visible;padding:5px 8px;margin-bottom:7px;border-radius:12px;min-height:0}
+  .route-modal .advanced-toggle{padding:5px 9px;margin:2px 0 6px;border-radius:10px}
+  .route-modal .advanced-toggle b{font-size:12px}
+  .route-modal .advanced-toggle span{display:none}
+  .route-modal .model-map{display:block;height:auto;overflow:visible;padding:3px 7px;margin-bottom:5px;border-radius:10px;min-height:0}
   .route-modal .model-map .box,.route-modal .model-map .arrow{display:none}
-  .route-modal .mobile-map-text{display:block;color:var(--muted);font-size:10.5px;line-height:1.2;white-space:normal;overflow-wrap:anywhere}
+  .route-modal .mobile-map-text{display:block;color:var(--muted);font-size:10px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .route-modal .model-picker-row{display:grid!important;grid-template-columns:minmax(0,1fr) 104px!important;align-items:stretch}
   .route-modal .model-picker-row input{flex:initial!important;min-width:0}
   .route-modal .model-picker-row .btn{width:auto;min-width:0;padding-left:8px;padding-right:8px}
@@ -1395,7 +1403,8 @@ function openRouteModal(route){
     else if(e.key_env){ keyHint.textContent="No key in .env ("+e.key_env+") — paste the API key (stored per model, write-only)."; }
     else { keyHint.textContent="Paste the API key (stored per model, write-only)."; }
   }
-  function clearTest(msg){ testState.ok=false; save.disabled=true; save.title="Requires a passing connection test"; stat.textContent=msg||"Test connection to enable Save enabled."; stat.style.color="var(--muted)"; }
+  function setConnectionStatus(kind,msg){ stat.className="connection-status"+(kind?" "+kind:""); stat.textContent=msg; }
+  function clearTest(msg){ testState.ok=false; save.disabled=true; save.title="Run Test connection before saving an enabled route"; setConnectionStatus("",msg||"Run Test connection before saving an enabled route."); }
   ps.onchange=function(){ applyCat(); clearTest("Provider changed — test connection again before saving enabled."); };
   applyCat();
   url.oninput=function(){ clearTest(""); };
@@ -1408,7 +1417,7 @@ function openRouteModal(route){
   }
 
   m.appendChild(el("div","section-title","Model"));
-  var stat=el("p","hint","Test connection to enable Save enabled."); m.appendChild(stat);
+  var stat=el("div","connection-status","Run Test connection before saving an enabled route."); m.appendChild(stat);
   var modelGrid=el("div","form-grid route-model-grid");
   var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model"));
   var row=el("div","row model-picker-row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
@@ -1475,7 +1484,7 @@ function openRouteModal(route){
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
   var testBtn=el("button","btn","Test connection");
   var saveDisabled=el("button","btn","Save draft"); saveDisabled.title="Saves a disabled draft; it cannot receive client traffic until tested and enabled";
-  var save=el("button","btn primary","Save enabled"); save.disabled=true; save.title="Requires a passing connection test";
+  var save=el("button","btn primary","Save enabled"); save.disabled=true; save.title="Run Test connection before saving an enabled route";
   act.appendChild(cancel); act.appendChild(testBtn); act.appendChild(saveDisabled); act.appendChild(save); m.appendChild(act);
 
   function dialAuth(){
@@ -1500,8 +1509,7 @@ function openRouteModal(route){
     if(!mi.value) mi.value=chosen;
     testState.ok=false;
     save.disabled=true;
-    stat.textContent="Model chosen — click Test connection.";
-    stat.style.color="var(--muted)";
+    setConnectionStatus("","Model chosen — run Test connection before saving enabled.");
     updateModelMap();
   }
   loadBtn.onclick=async function(){
@@ -1522,17 +1530,16 @@ function openRouteModal(route){
     var da=dialAuth();
     if(!url.value.trim()){ toast("Enter a Base URL","err"); return; }
     if(!ms.value.trim()){ toast("Pick a provider model first","err"); return; }
-    testBtn.disabled=true; testBtn.textContent="Testing…"; stat.textContent="Testing connection…"; stat.style.color="var(--muted)";
+    testBtn.disabled=true; testBtn.textContent="Testing…"; setConnectionStatus("","Testing provider and selected model…");
     try{
       var payload=Object.assign({base_url:url.value.trim(), dialect:da.dialect, auth_mode:da.auth, provider_model_name:ms.value.trim()}, keyPayload());
       var r=await api("/admin/test-connection","POST",payload);
       if(r.ok){
-        stat.textContent="✓ Connected ("+r.latency_ms+" ms)"+(r.model_ok===true?" · model OK":(r.model_ok===false?" · model rejected":""));
-        stat.style.color="var(--green)"; testState.ok=true; save.disabled=false;
+        setConnectionStatus("ok","Connected ("+r.latency_ms+" ms)"+(r.model_ok===true?" · model OK":(r.model_ok===false?" · model rejected":""))); testState.ok=true; save.disabled=false;
       }else{
-        stat.textContent="✗ "+(r.error||("HTTP "+r.status)); stat.style.color="var(--red)"; testState.ok=false; save.disabled=true;
+        setConnectionStatus("bad",(r.error||("HTTP "+r.status))); testState.ok=false; save.disabled=true;
       }
-    }catch(e){ stat.textContent="✗ "+e.message; stat.style.color="var(--red)"; testState.ok=false; save.disabled=true; }
+    }catch(e){ setConnectionStatus("bad",e.message); testState.ok=false; save.disabled=true; }
     finally{ testBtn.disabled=false; testBtn.textContent="Test connection"; }
   };
 
@@ -1572,16 +1579,10 @@ function openRouteModal(route){
   if(route.model_name){
     var rb=backends.find(function(x){return x.id===route.backend_ids[0];});
     if(rb){ url.value=rb.base_url; var ck=(catalog||[]).find(function(e){return rb.name===e.label;}); if(ck) ps.value=ck.key; }
-    stat.textContent="Test connection again to re-enable Save enabled."; stat.style.color="var(--muted)";
+    setConnectionStatus("","Run Test connection again before saving this route as enabled.");
   }
 
   ov.appendChild(m); ov.classList.remove("hidden");
-  if((document.documentElement.clientWidth||1024)<=820){
-    setTimeout(function(){
-      var extra=Math.max(0,m.scrollHeight-m.clientHeight);
-      if(extra>0) m.scrollTop=Math.min(32,extra);
-    },0);
-  }
 }
 
 function pickModelModal(models, onPick){
