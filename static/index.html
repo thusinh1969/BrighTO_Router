@@ -820,7 +820,7 @@ function firstRunPanel(){
    });
   p.appendChild(list);
   var acts=el("div","launch-actions");
-  var add=el("button","btn primary","Add first model"); add.onclick=function(){ go("models"); setTimeout(function(){openRouteModal();},50); }; acts.appendChild(add);
+  var add=el("button","btn primary","Open model wizard"); add.onclick=function(){ go("models"); setTimeout(function(){openRouteModal();},50); }; acts.appendChild(add);
   var key=el("button","btn ghost","View API keys"); key.onclick=function(){ go("keys"); }; acts.appendChild(key);
   p.appendChild(acts);
   return p;
@@ -957,14 +957,14 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
   });
   left.appendChild(stats);
   var acts=el("div","quick-actions");
-  var add=el("button","btn primary sm","Add tested model"); add.onclick=function(){ go("models"); setTimeout(function(){openRouteModal();},50); };
-  var keysBtn=el("button","btn ghost sm","Create API key"); keysBtn.onclick=function(){ go("keys"); setTimeout(function(){openKeyModal();},50); };
+  var add=el("button","btn primary sm",onboarding?"Add first model":"Add tested model"); add.onclick=function(){ go("models"); setTimeout(function(){openRouteModal();},50); };
+  var keysBtn=el("button","btn ghost sm",onboarding?"View API keys":"Create API key"); keysBtn.onclick=function(){ go("keys"); if(!onboarding) setTimeout(function(){openKeyModal();},50); };
   var usageBtn=el("button","btn ghost sm","Inspect usage"); usageBtn.onclick=function(){ go("usage"); };
   var endpointBtn=el("button","btn ghost sm","Copy endpoint");
   endpointBtn.title="Copy the OpenAI-compatible router endpoint";
   endpointBtn.dataset.copy=location.origin+"/v1/chat/completions";
   endpointBtn.onclick=function(){copyText(endpointBtn.dataset.copy,"Endpoint copied");};
-  acts.appendChild(add); acts.appendChild(keysBtn); acts.appendChild(usageBtn); acts.appendChild(endpointBtn);
+  acts.appendChild(add); acts.appendChild(keysBtn); if(!onboarding) acts.appendChild(usageBtn); acts.appendChild(endpointBtn);
   left.appendChild(acts);
   hero.appendChild(left);
 
