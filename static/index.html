@@ -1705,15 +1705,17 @@ async function renderUsage(c,seq){
   var stats=[], sum=null, logs=[];
   try{ stats=await api((mode==="admin"?"/admin/stats?":"/portal/me/stats?")+qs,"GET"); }catch(e){}
   if(mode==="admin"){ try{ sum=await api("/admin/summary?"+qs,"GET"); }catch(e){} }
-  try{ logs=await api((mode==="admin"?"/admin/usage?":"/portal/me/usage?")+qs,"GET"); }catch(e){}
-  if(!isCurrentRender(c,seq)) return;
+	  try{ logs=await api((mode==="admin"?"/admin/usage?":"/portal/me/usage?")+qs,"GET"); }catch(e){}
+	  if(!isCurrentRender(c,seq)) return;
+	  var defaultUsageFilter=!usageFilter.model && usageFilter.status==="all" && !usageFilter.team && !usageFilter.backend && !usageFilter.key && !usageFilter.from && !usageFilter.to && usageFilter.days==="30";
 
-  if(sum){
-    var grid=el("div","grid");
-    var cards=[["Requests",fmt(sum.totals.requests)],["Total tokens",fmt(sum.totals.input_tokens+sum.totals.output_tokens)],["Input / Output",fmt(sum.totals.input_tokens)+" / "+fmt(sum.totals.output_tokens)],["Error rate",Math.round(sum.totals.error_rate_pct*10)/10+"% ("+fmt(sum.totals.errors)+")"]];
-    cards.forEach(function(cd){ var x=el("div","card"); x.appendChild(el("div","label",cd[0])); x.appendChild(el("div","big",cd[1])); grid.appendChild(x); });
-    c.appendChild(grid);
-  }
+	  if(sum){
+	    var grid=el("div","grid");
+	    var cards=[["Requests",fmt(sum.totals.requests)],["Total tokens",fmt(sum.totals.input_tokens+sum.totals.output_tokens)],["Input / Output",fmt(sum.totals.input_tokens)+" / "+fmt(sum.totals.output_tokens)],["Error rate",Math.round(sum.totals.error_rate_pct*10)/10+"% ("+fmt(sum.totals.errors)+")"]];
+	    cards.forEach(function(cd){ var x=el("div","card"); x.appendChild(el("div","label",cd[0])); x.appendChild(el("div","big",cd[1])); grid.appendChild(x); });
+	    c.appendChild(grid);
+	    if(mode==="admin" && defaultUsageFilter && !sum.totals.requests) c.appendChild(firstRunPanel());
+	  }
 
   var p=el("div","panel"); p.appendChild(el("h3",null,"Tokens by model"));
   if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage data for this filter."));
