@@ -39,6 +39,12 @@ check(
     'Too short' in text and 'Sample*' not in text,
     'Portal must show Too short, not Sample*, for sub-1s token-rate samples',
 )
+
+check(
+    'model route test status copy is professional',
+    'Test connection to enable Save enabled' not in text and 'connection-status' in text and 'Run Test connection before saving an enabled route' in text,
+    'old Add model test-status wording is still present or connection-status callout is missing',
+)
 check(
     'token-rate formatter does not star-mark inflated samples',
     '?"*"' not in text and '?"*"' not in text and '+"*"' not in text,

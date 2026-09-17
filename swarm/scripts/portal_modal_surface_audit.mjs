@@ -99,7 +99,7 @@ async function inspectModal(page) {
       const r = node.getBoundingClientRect();
       return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), text: (node.innerText || '').trim().replace(/\s+/g, ' ') };
     });
-    const gateCopyRects = [...modal.querySelectorAll('.hint')].filter((node) => /Test connection to enable Save enabled/i.test(node.innerText || node.textContent || '')).map((node) => {
+    const gateCopyRects = [...modal.querySelectorAll('.connection-status')].filter((node) => /Run Test connection before saving an enabled route|Model chosen .* Test connection/i.test(node.innerText || node.textContent || '')).map((node) => {
       const r = node.getBoundingClientRect();
       return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height), text: (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' ') };
     });
@@ -192,12 +192,12 @@ async function verifyModelPickerPreview(page, name) {
         providerModel: fieldValue('Provider model'),
         publicModel: fieldValue('Public model name (shown to clients)'),
         mapText: modal.querySelector('.model-map')?.innerText || '',
-        statusText: [...modal.querySelectorAll('.hint')].map((n) => n.innerText || n.textContent || '').join('\n'),
+        statusText: [...modal.querySelectorAll('.connection-status')].map((n) => n.innerText || n.textContent || '').join('\n'),
         pickerStillOpen: !!document.querySelector('.picker-overlay'),
       };
     });
     result.metrics[`${name}-picker-preview`] = state;
-    if (state.pickerStillOpen || state.providerModel !== picked || state.publicModel !== picked || !state.mapText.includes(picked) || !/Model chosen — click Test connection/i.test(state.statusText || '')) {
+    if (state.pickerStillOpen || state.providerModel !== picked || state.publicModel !== picked || !state.mapText.includes(picked) || !/Model chosen .* Test connection/i.test(state.statusText || '')) {
       fail(`${name}: choosing a loaded provider model must update inputs, mapping preview, and Save-enabled gate`, state);
     }
   } finally {
@@ -263,7 +263,7 @@ async function capture(page, name) {
     if (!/Optional limits and pricing|fallback provider/i.test(metrics.text || '')) fail(`${name}: Add model modal missing optional limits/pricing drawer`, metrics);
     if (/Fallback backend/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes backend jargon`, metrics);
     if (!/Save draft/i.test(metrics.text || '')) fail(`${name}: Add model modal must expose a disabled draft save action`, metrics);
-    if (!/Test connection to enable Save enabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must explain the Save enabled gate`, metrics);
+    if (!/Run Test connection before saving an enabled route/i.test(metrics.text || '')) fail(`${name}: Add model modal must explain the Save enabled gate`, metrics);
     if (/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes technical Save disabled wording`, metrics);
     if (name.startsWith('mobile-')) {
       const steps = metrics.wizardSteps || [];
