@@ -156,6 +156,12 @@ table.conn-table{min-width:900px}
 
 .empty{color:var(--faint);text-align:center;padding:40px 16px;font-size:13px}
 .empty svg{width:36px;height:36px;margin-bottom:8px;opacity:.4}
+.launch-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px}
+.launch-step{background:#0b1220;border:1px solid var(--border);border-radius:14px;padding:14px}
+.launch-step .num{width:24px;height:24px;border-radius:50%;background:rgba(56,189,248,.14);color:var(--accent-text);display:inline-flex;align-items:center;justify-content:center;font-weight:850;margin-bottom:8px;text-align:center}
+.launch-step b{display:block;margin-bottom:4px}
+.launch-step span{color:var(--muted);font-size:12.5px}
+.launch-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
 .key-reveal{background:#0b1220;border:1px dashed var(--sky);border-radius:12px;padding:15px;margin:14px 0;
   font-family:var(--mono);font-size:14px;word-break:break-all;color:var(--accent-text);display:flex;align-items:center;justify-content:space-between;gap:10px}
 .warn-note{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);color:var(--amber);border-radius:9px;
@@ -371,28 +377,53 @@ async function refresh(){
   }catch(e){ toast("Load failed: "+e.message,"err"); }
 }
 function rerender(){ var cur=document.querySelector(".nav.active"); if(cur) render(cur.dataset.view); else go("dashboard"); }
+var renderSerial=0;
+function isCurrentRender(c,seq){ return c && c.dataset.renderSeq===String(seq); }
+function finishRender(c,seq){ if(!isCurrentRender(c,seq)) return; decorateTables(); setTimeout(function(){ if(isCurrentRender(c,seq)) decorateTables(); },0); }
 function render(view){
-  var c=$("content"); c.innerHTML="";
+  var c=$("content");
+  var seq=++renderSerial;
+  c.dataset.renderSeq=String(seq);
+  c.innerHTML="";
   if(mode==="user" && ["providers","models","teams","keys","settings"].indexOf(view)>=0) view="dashboard";
-  if(view==="dashboard") renderDashboard(c);
-  else if(view==="providers") renderProviders(c);
-  else if(view==="models") renderModels(c);
-  else if(view==="teams") renderTeams(c);
-  else if(view==="keys") renderKeys(c);
-  else if(view==="usage") renderUsage(c);
-  else if(view==="settings") renderSettings(c);
-  decorateTables();
-  setTimeout(decorateTables,0);
+  try{
+    if(view==="dashboard") return renderDashboard(c,seq).then(function(){ finishRender(c,seq); }).catch(function(e){ if(isCurrentRender(c,seq)) toast("Dashboard failed: "+e.message,"err"); });
+    else if(view==="providers") renderProviders(c);
+    else if(view==="models") renderModels(c);
+    else if(view==="teams") renderTeams(c);
+    else if(view==="keys") renderKeys(c);
+    else if(view==="usage") return renderUsage(c,seq).then(function(){ finishRender(c,seq); }).catch(function(e){ if(isCurrentRender(c,seq)) toast("Usage failed: "+e.message,"err"); });
+    else if(view==="settings") return renderSettings(c,seq).then(function(){ finishRender(c,seq); }).catch(function(e){ if(isCurrentRender(c,seq)) toast("Settings failed: "+e.message,"err"); });
+    finishRender(c,seq);
+  }catch(e){ if(isCurrentRender(c,seq)) toast("Render failed: "+e.message,"err"); }
 }
 function emptyBox(text){ var d=el("div","empty"); d.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h10"/></svg>'; d.appendChild(document.createTextNode(text)); return d; }
+function firstRunPanel(){
+  var p=el("div","panel");
+  var h=el("div","panel-head"); h.appendChild(el("h3",null,"Launch checklist")); p.appendChild(h);
+  p.appendChild(el("p","hint","Create one tested model route first. BrighTO will create the upstream connection automatically; then use the client API key to send traffic."));
+  var list=el("div","launch-list");
+  [["1","Add a model","Choose a provider or Custom LLM, enter its base URL/API key, load model names, test, then save enabled."],
+   ["2","Use a client key","The default demo key is available in API Keys, or create one for a team with budget/expiry."],
+   ["3","Watch usage","After the first request, Dashboard and Usage show tokens, cost, errors, latency, and Tok/s."]].forEach(function(x){
+     var it=el("div","launch-step"); it.appendChild(el("div","num",x[0])); it.appendChild(el("b",null,x[1])); it.appendChild(el("span",null,x[2])); list.appendChild(it);
+   });
+  p.appendChild(list);
+  var acts=el("div","launch-actions");
+  var add=el("button","btn primary","Add first model"); add.onclick=function(){ go("models"); setTimeout(function(){openRouteModal();},50); }; acts.appendChild(add);
+  var key=el("button","btn ghost","View API keys"); key.onclick=function(){ go("keys"); }; acts.appendChild(key);
+  p.appendChild(acts);
+  return p;
+}
 
 /* ===== Dashboard ===== */
-async function renderDashboard(c){
+async function renderDashboard(c,seq){
   c.innerHTML="";
   var stats=[], logs=[], sum=null;
   try{ stats=await api(mode==="admin"?"/admin/stats?days=30":"/portal/me/stats?days=30","GET"); }catch(e){}
   try{ logs=await api(mode==="admin"?"/admin/usage":"/portal/me/usage","GET"); }catch(e){}
   if(mode==="admin"){ try{ sum=await api("/admin/summary?days=30","GET"); }catch(e){} }
+  if(!isCurrentRender(c,seq)) return;
   var inT=sum?sum.totals.input_tokens:stats.reduce(function(a,s){return a+s.input_tokens},0);
   var outT=sum?sum.totals.output_tokens:stats.reduce(function(a,s){return a+s.output_tokens},0);
   var req=sum?sum.totals.requests:stats.reduce(function(a,s){return a+s.requests},0);
@@ -422,6 +453,10 @@ async function renderDashboard(c){
     grid.appendChild(x);
   });
   c.appendChild(grid);
+
+  if(mode==="admin" && routes.length===0){
+    c.appendChild(firstRunPanel());
+  }
 
   var p=el("div","panel");
   p.appendChild(el("h3",null,"Tokens by model — last 30 days"));
@@ -1056,7 +1091,7 @@ async function disableKey(k){
 
 /* ===== Usage ===== */
 var usageFilter={model:"",status:"all",team:"",backend:"",key:"",from:"",to:"",days:"30"};
-async function renderUsage(c){
+async function renderUsage(c,seq){
   c.innerHTML="";
   var qs="days="+usageFilter.days;
   if(usageFilter.model) qs+="&model="+encodeURIComponent(usageFilter.model);
@@ -1095,6 +1130,7 @@ async function renderUsage(c){
   try{ stats=await api((mode==="admin"?"/admin/stats?":"/portal/me/stats?")+qs,"GET"); }catch(e){}
   if(mode==="admin"){ try{ sum=await api("/admin/summary?"+qs,"GET"); }catch(e){} }
   try{ logs=await api((mode==="admin"?"/admin/usage?":"/portal/me/usage?")+qs,"GET"); }catch(e){}
+  if(!isCurrentRender(c,seq)) return;
 
   if(sum){
     var grid=el("div","grid");
@@ -1117,6 +1153,7 @@ async function renderUsage(c){
 }
 function groupPanel(title,cols,rows){
   var p=el("div","panel"); p.appendChild(el("h3",null,title));
+  if(!rows.length){ p.appendChild(emptyBox("No data for this filter yet.")); return p; }
   var w=el("div","table-wrap"); var t=el("table"); t.appendChild(thead(cols)); var tb=el("tbody");
   rows.forEach(function(r){ var tr=el("tr"); r.forEach(function(v,i){ tr.appendChild(el("td", i>0?"num":null, v)); }); tb.appendChild(tr); });
   t.appendChild(tb); w.appendChild(t); p.appendChild(w);
@@ -1124,7 +1161,7 @@ function groupPanel(title,cols,rows){
 }
 
 /* ===== Settings ===== */
-async function renderSettings(c){
+async function renderSettings(c,seq){
   var pp=el("div","panel");
   pp.appendChild(el("h3",null,"Portal preferences"));
   pp.appendChild(el("p","hint","Personal display settings — stored in this browser only."));
@@ -1142,9 +1179,10 @@ async function renderSettings(c){
   if(mode==="admin"){
     try{
       var s=await api("/admin/settings","GET");
+      if(!isCurrentRender(c,seq)) return;
       var rows=[["Router address",s.listen_addr],["Database",s.database_ok?"connected":"unreachable"],["Config reload",s.config_reload_ok?"healthy":"stale"],["Max body bytes",fmt(s.max_body_bytes)],["Version",s.version]];
       rows.forEach(function(r){ var kv=el("div","kv"); kv.appendChild(el("span","k",r[0])); kv.appendChild(el("span","v",r[1])); p.appendChild(kv); });
-    }catch(e){ p.appendChild(el("div","warn-note","Could not load settings: "+e.message)); }
+    }catch(e){ if(!isCurrentRender(c,seq)) return; p.appendChild(el("div","warn-note","Could not load settings: "+e.message)); }
   }else{
     p.appendChild(el("div","empty","Settings are admin-only."));
   }
