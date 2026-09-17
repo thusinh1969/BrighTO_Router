@@ -9,6 +9,22 @@ const stamp = Date.now().toString().slice(-7);
 const prefix = `pw-fullvisual-${stamp}`;
 const result = { result: 'FAIL', base: BASE, prefix, failures: [], pages: {}, screenshots: [], consoleErrors: [] };
 function fail(summary, evidence = {}) { result.failures.push({ summary, evidence }); }
+
+async function gotoWithRetry(page, url, attempts = 3) {
+  let lastError = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      return;
+    } catch (e) {
+      lastError = e;
+      if (!/ERR_NETWORK_CHANGED|ERR_CONNECTION_RESET|ERR_HTTP2_PROTOCOL_ERROR/i.test(String(e && (e.message || e)))) break;
+      await page.waitForTimeout(500 + i * 500);
+    }
+  }
+  throw lastError;
+}
+
 async function adminFetch(path, method = 'GET', body) {
   const res = await fetch(BASE + path, { method, headers: { 'content-type': 'application/json', 'x-admin-key': ADMIN }, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await res.text();
@@ -33,7 +49,7 @@ async function seedDemo() {
   }
 }
 async function login(page) {
-  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+  await gotoWithRetry(page, BASE + '/');
   await page.locator('#login-user').fill('admin');
   await page.locator('#login-pass').fill(ADMIN);
   await page.evaluate(() => login());

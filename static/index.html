@@ -1332,7 +1332,8 @@ function renderKeys(c){
           secret.innerHTML="";
           var full=el("span","mono",data.key); full.title=data.key; secret.appendChild(full);
           secret.appendChild(copyIconBtn(data.key));
-        }).catch(function(){ secret.innerHTML=""; var vb=el("button","btn sm ghost","View"); vb.onclick=function(){revealKey(k);}; secret.appendChild(vb); });
+          var view=el("button","btn sm ghost","Reveal"); view.onclick=function(){revealKey(k);}; secret.appendChild(view);
+        }).catch(function(){ secret.innerHTML=""; var vb=el("button","btn sm ghost","Reveal"); vb.onclick=function(){revealKey(k);}; secret.appendChild(vb); });
       }
       ks.appendChild(secret);
       ks.appendChild(el("div","cell-sub","Prefix "+k.prefix+" · key ID "+k.id));
@@ -1354,7 +1355,7 @@ function renderKeys(c){
       tr.appendChild(limits);
       var td=el("td","actions"); var row=el("div","action-row");
       var e=el("button","btn sm ghost","Edit"); e.onclick=function(){openKeyModal(k);};
-      var d=el("button","btn sm danger",k.enabled?"Disable":"Enable"); d.onclick=function(){disableKey(k);};
+      var d=el("button","btn sm "+(k.enabled?"danger":"ghost"),k.enabled?"Disable":"Enable"); d.onclick=function(){toggleKey(k);};
       row.appendChild(e); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
@@ -1424,7 +1425,7 @@ function openKeyModal(k){
         m2.appendChild(el("div","key-reveal"));
         var span=el("span",null,data.key); m2.querySelector(".key-reveal").appendChild(span);
         m2.querySelector(".key-reveal").appendChild(copyIconBtn(data.key));
-        m2.appendChild(el("p","hint","Admin can view and copy this client API key again later from the <b>API Keys</b> table."));
+        var note=el("p","hint"); note.innerHTML="Admin can view and copy this client API key again later from the <b>API Keys</b> table."; m2.appendChild(note);
         var act2=el("div","actions"); var done=el("button","btn primary","Done"); done.onclick=closeModal; act2.appendChild(done); m2.appendChild(act2);
         ov.appendChild(m2); ov.classList.remove("hidden");
       }
@@ -1446,10 +1447,15 @@ async function revealKey(k){
     ov.appendChild(m); ov.classList.remove("hidden");
   }catch(e){ toast("Reveal failed: "+e.message,"err"); }
 }
-async function disableKey(k){
-  if(!confirm("Disable key "+k.prefix+" for "+k.owner+"?")) return;
-  try{ await api("/admin/keys/"+k.id,"DELETE"); toast("Key disabled"); keys=await api("/admin/keys","GET"); rerender(); }
-  catch(e){ toast(e.message,"err"); }
+async function toggleKey(k){
+  if(k.enabled){
+    if(!confirm("Disable key "+k.prefix+" for "+k.owner+"?")) return;
+    try{ await api("/admin/keys/"+k.id,"DELETE"); toast("Key disabled"); keys=await api("/admin/keys","GET"); rerender(); }
+    catch(e){ toast(e.message,"err"); }
+  }else{
+    try{ await api("/admin/keys/"+k.id,"PATCH",{enabled:true}); toast("Key enabled"); keys=await api("/admin/keys","GET"); rerender(); }
+    catch(e){ toast("Enable failed: "+e.message,"err"); }
+  }
 }
 
 /* ===== Usage ===== */
