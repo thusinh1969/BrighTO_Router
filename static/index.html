@@ -326,6 +326,7 @@ var descs={dashboard:"Gateway overview",providers:"Connect LLM backends",models:
 function go(view){
   document.querySelectorAll(".nav").forEach(function(n){ n.classList.toggle("active", n.dataset.view===view); });
   $("page-title").textContent=titles[view]; $("page-desc").textContent=descs[view];
+  $("sidebar").classList.remove("open"); // close mobile sidebar after navigation
   render(view);
 }
 async function refresh(){
