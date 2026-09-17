@@ -188,6 +188,9 @@ async function inspectPage(page, label) {
         })),
       };
     });
+    const jsTruncatedLabels = [...document.querySelectorAll('#content .focus-title, #content .legend-label, #content .breakdown-title, #content .request-model, #content .model-name-row .cell-main, #content .compact-line')]
+      .filter((n) => (n.textContent || '').includes('…'))
+      .map((n) => ({ className: n.className || '', text: (n.textContent || '').trim(), title: n.title || '' }));
     return {
       title: document.querySelector('#page-title')?.textContent || '',
       panelCount,
@@ -203,6 +206,7 @@ async function inspectPage(page, label) {
       diagnosticDetails,
       opsStatus,
       usageBreakdownStats,
+      jsTruncatedLabels,
       disabledDangerButtons: [...document.querySelectorAll('button.btn.danger:disabled')].filter((b) => b.offsetParent !== null).map((b) => {
         const st = getComputedStyle(b);
         return { text: b.innerText.trim(), title: b.title || '', color: st.color, borderColor: st.borderColor, opacity: st.opacity };
@@ -361,6 +365,8 @@ async function runViewport(browser, name, width, height) {
       const diag = metrics.diagnosticDetails || [];
       if (!diag.length || diag.some((d) => d.open)) fail(`${name}/${view}: desktop dashboard technical diagnostics should default collapsed`, metrics);
     }
+    const jsTruncatedLabels = metrics.jsTruncatedLabels || [];
+    if (jsTruncatedLabels.length) fail(`${name}/${view}: data labels are shortened in JavaScript instead of CSS/title`, { jsTruncatedLabels, metrics });
     const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
     if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });
     if (['dashboard', 'usage'].includes(view) && (metrics.legendStats || []).length && !(metrics.chartValueLabels || []).some((l) => /^\d|[KMB]/.test(l.text))) {
