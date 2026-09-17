@@ -449,10 +449,9 @@ function renderProviders(c){
       tr.appendChild(el("td","num",b.max_inflight?String(b.max_inflight):"∞"));
       tr.appendChild(el("td","mono",b.base_url.replace("https://","").replace("http://","")));
       var td=el("td","actions"); var row=el("div","row"); row.style.gap="6px";
-      var f=el("button","btn sm ghost","Load models"); f.onclick=function(){fetchModels(b);};
       var e=el("button","btn sm primary","Edit"); e.onclick=function(){openProviderModal(b);};
       var d=el("button","btn sm danger","Delete"); d.onclick=function(){deleteProvider(b);};
-      row.appendChild(f); row.appendChild(e); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
+      row.appendChild(e); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
       tb.appendChild(tr);
     });
     t.appendChild(tb); w.appendChild(t); p.appendChild(w);
