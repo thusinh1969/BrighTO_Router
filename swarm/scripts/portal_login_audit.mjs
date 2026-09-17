@@ -64,6 +64,8 @@ function checkCommon(label, metrics) {
   if (metrics.appVisible) fail(`${label}: app visible before login`, metrics);
   if (metrics.bodyScrollWidth > metrics.clientWidth + 8) fail(`${label}: horizontal overflow`, metrics);
   if (!/Sign in/i.test(metrics.signInText)) fail(`${label}: missing sign-in button`, metrics);
+  if (/control plane/i.test(metrics.text)) fail(`${label}: login hero uses control-plane jargon`, metrics);
+  if (!/One endpoint for every AI model/i.test(metrics.text)) fail(`${label}: login hero must state the product in plain language`, metrics);
 }
 function checkAdmin(label, metrics) {
   checkCommon(label, metrics);

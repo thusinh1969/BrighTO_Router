@@ -53,6 +53,7 @@ code{font-family:var(--mono);background:rgba(30,41,59,.6);padding:2px 7px;border
 .brand h1{font-size:21px;margin:0;letter-spacing:-.02em;font-weight:800}
 .brand .sub{font-size:12px;color:var(--accent-text);font-weight:600}
 .subtitle{color:var(--muted);margin:0 0 14px;font-size:13.5px}
+.login-product-line{color:var(--text);font-size:13.5px;font-weight:750;margin:4px 0 8px;line-height:1.35}
 .login-help{color:var(--muted);font-size:12.5px;line-height:1.45;margin:-4px 0 18px}
 .field{margin-bottom:16px}
 .field label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
@@ -394,12 +395,12 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 <div id="login-view">
   <div class="login-shell">
     <section class="login-copy" aria-label="Product overview">
-      <div class="eyebrow">Rust LLM gateway</div>
-      <h2>Route, budget, and observe every model call from one control plane.</h2>
-      <p>BrighTO Router gives teams one OpenAI-compatible endpoint with provider choice, API keys, budgets, token accounting, and live production signals.</p>
+      <div class="eyebrow">Fast Rust LLM gateway</div>
+      <h2>One endpoint for every AI model your team uses.</h2>
+      <p>BrighTO Router lets teams choose providers, protect access with API keys, set budgets, and see token usage from a clean web portal.</p>
       <div class="login-metrics">
-        <div class="login-metric"><b>1</b><span>simple portal</span></div>
-        <div class="login-metric"><b>5s</b><span>config reload</span></div>
+        <div class="login-metric"><b>1</b><span>team endpoint</span></div>
+        <div class="login-metric"><b>5s</b><span>config refresh</span></div>
         <div class="login-metric"><b>PostgreSQL</b><span>runtime store</span></div>
       </div>
       <div class="login-proof">
@@ -413,6 +414,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
         <div class="logo">B</div>
         <div><h1>BrighTO</h1><div class="sub">Router</div></div>
       </div>
+      <p class="login-product-line">One endpoint for every AI model your team uses.</p>
       <p class="subtitle" id="login-sub">Admin signs in with the master key from .env.</p>
       <div class="seg">
         <button id="seg-admin" class="active" onclick="setMode('admin')">Admin</button>
