@@ -41,7 +41,7 @@ Default local admin key:
 brightoIsGreat@2026
 ```
 
-If the page opens but **Load providers** returns `403: ip not allowed`, set `ADMIN_ALLOW_CIDR` in `.env` to include your client network and run `./start.sh restart`. For a quick private test, use `ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0`; for shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW_CIDR` to your VPN, office subnet, or reverse proxy.
+If the page opens but an Admin API call returns `403: ip not allowed`, set `ADMIN_ALLOW_CIDR` in `.env` to include your client network and run `./start.sh restart`. For a quick private test, use `ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0`; for shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW_CIDR` to your VPN, office subnet, or reverse proxy.
 
 ## What install creates by default
 
@@ -49,23 +49,24 @@ If the page opens but **Load providers** returns `403: ip not allowed`, set `ADM
 
 Default database records:
 
-| Record | Created value | Enabled by default | Purpose |
-|---|---|---:|---|
-| Team | `Default Team` | Yes | Lets a first-time user create API keys immediately. |
-| Provider templates | OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, Custom OpenAI-compatible | No | Gives each provider a ready base URL and env key reference. |
-| API keys | None | No | Client keys must be created by an admin. |
-| Model routes | None | No | Routes are created after you choose which provider/model to expose. |
+| Record | Created value | Purpose |
+|---|---|---|
+| Team | `Default Team` | Lets a first-time admin create client API keys immediately. |
+| Demo client key | `lc-0123456789abcdef0123456789abcdef` | Local smoke testing only. Replace or disable it before shared use. |
+| Model routes | None | You decide which provider model is exposed to clients. |
+| Provider connections | None on a clean first run | The Portal creates the connection automatically when you save a tested model route. |
 
-Provider API keys are stored in `.env`, not in SQL. The database stores references such as `env:OPENAI_API_KEY`.
+The provider catalog is read from `.env` through `PROVIDER_CATALOG`. It gives the Portal a friendly dropdown for OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, and Custom LLM. The catalog is a preset list, not a route by itself.
 
-Example:
+To add a model, open **Models & Routes → Add model**:
 
-```bash
-./start.sh set-key openai sk-your-key
-./start.sh restart
-```
+1. Pick a provider preset or **Custom LLM**.
+2. Enter or accept the Base URL.
+3. Paste the provider API key, or leave it blank to use the matching `.env` key if one is configured.
+4. Click **Load models**, choose one provider model, then click **Test connection**.
+5. Save enabled only after the test passes.
 
-Then open the portal, load providers, enable the provider, fetch models, choose a model, and create a route.
+The provider API key belongs to the model route. Admin can paste it in the wizard; cloud defaults may also come from `.env` variables such as `OPENAI_API_KEY`.
 
 ## Install options
 
@@ -107,6 +108,24 @@ Daily commands:
 
 More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROVIDERS.md), [k8s/README.md](k8s/README.md).
 
+## Portal front-end development
+
+The Portal is intentionally simple: one file contains the HTML, CSS, and JavaScript:
+
+```text
+static/index.html
+```
+
+In production, Rust embeds this file into the `brighto-router` binary. That keeps deployment to one Docker image and avoids a separate Node/React build pipeline.
+
+For live UI design work, enable disk-backed Portal mode in `.env`:
+
+```bash
+PORTAL_STATIC_FILE=/app/static/index.html
+docker compose up -d --force-recreate router
+```
+
+`docker-compose.yml` mounts `./static` into the container at `/app/static`. After this one restart, edit `static/index.html` and press F5 in the browser. You only need to rebuild Docker again when Rust code changes or when you want to bake the final HTML into the production image.
 
 ## Optional HTTPS with custom PEM files
 

@@ -133,6 +133,13 @@ table.conn-table{min-width:900px}
 .modal{background:var(--panel);border:1px solid var(--border);border-radius:20px;width:100%;max-width:580px;
   padding:26px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
 .modal h3{margin:0 0 16px;font-size:18px;font-weight:800}
+.route-modal{max-width:760px!important}
+.wizard-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:-2px 0 18px}
+.wizard-step{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:10px 12px;color:var(--muted);font-size:12px}
+.wizard-step b{display:block;color:var(--text);font-size:12.5px;margin-bottom:2px}
+.section-title{margin:18px 0 8px;color:var(--accent-text);font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.form-grid .field{margin-bottom:0}
 .modal .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .chip{display:flex;align-items:center;gap:7px;background:#111827;border:1px solid var(--border2);border-radius:99px;
@@ -171,6 +178,7 @@ table.conn-table{min-width:900px}
 .kv .k{color:var(--muted)} .kv .v{font-weight:600}
 .hamburger{display:none}
 @media(max-width:820px){
+  .wizard-steps,.form-grid{grid-template-columns:1fr}
   .hamburger{display:inline-flex}
   .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s}
   .sidebar.open{transform:none}
@@ -707,9 +715,13 @@ async function toggleRoute(r){
 function openRouteModal(route){
   route=route||{};
   var ov=$("modal-overlay"); ov.innerHTML="";
-  var m=el("div","modal"); m.style.maxWidth="640px";
+  var m=el("div","modal route-modal");
   m.appendChild(el("h3",null, route.model_name?"Edit model":"Add model"));
+  var steps=el("div","wizard-steps");
+  [["1","Connect","Provider, URL, and API key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]].forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
+  m.appendChild(steps);
 
+  m.appendChild(el("div","section-title","Connection"));
   var f0=el("div","field"); f0.appendChild(el("label",null,"Provider"));
   var ps=el("select");
   (catalog||[]).forEach(function(e){ var o=el("option",null,e.label); o.value=e.key; ps.appendChild(o); });
@@ -742,10 +754,11 @@ function openRouteModal(route){
   if(window.presetConnection){
     var pc=window.presetConnection; window.presetConnection=null;
     var ck=(catalog||[]).find(function(e){ return pc.name===e.label || pc.name.toLowerCase().indexOf(e.key)>=0; });
-    if(ck && ck.enabled!==false){ psel.value=ck.key; applyCat(); }
+    if(ck && ck.enabled!==false){ ps.value=ck.key; applyCat(); }
     url.value=pc.base_url||url.value;
   }
 
+  m.appendChild(el("div","section-title","Model"));
   var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model"));
   var row=el("div","row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
   var ms=el("input"); ms.style.flex="1"; ms.placeholder="Load models to pick one, or type a name"; ms.value=route.provider_model_name||"";
@@ -759,13 +772,15 @@ function openRouteModal(route){
   var stat=el("p","hint"); m.appendChild(stat);
   var testState={ok:false};
 
-  var opt=el("p",null,"Limits & pricing (optional)"); opt.style.margin="14px 0 2px"; opt.style.fontWeight="700"; opt.style.fontSize="12px"; opt.style.color="var(--muted)"; m.appendChild(opt);
-  var f5=el("div","field"); f5.appendChild(el("label",null,"Context window (tokens, optional)")); var ct=el("input"); ct.type="number"; ct.value=route.context_tokens||""; f5.appendChild(ct); m.appendChild(f5);
-  var f6=el("div","field"); f6.appendChild(el("label",null,"Max output tokens (optional)")); var mo=el("input"); mo.type="number"; mo.value=route.max_output_tokens||""; f6.appendChild(mo); m.appendChild(f6);
-  var f7=el("div","field"); f7.appendChild(el("label",null,"Price per 1M input tokens (USD, optional)")); var pi=el("input"); pi.type="number"; pi.step="0.01"; pi.value=route.price_input_per_mtok_usd||""; f7.appendChild(pi); m.appendChild(f7);
-  var f8=el("div","field"); f8.appendChild(el("label",null,"Price per 1M output tokens (USD, optional)")); var po=el("input"); po.type="number"; po.step="0.01"; po.value=route.price_output_per_mtok_usd||""; f8.appendChild(po); m.appendChild(f8);
-  var f3=el("div","field"); f3.appendChild(el("label",null,"Fallback backend (optional)")); var fb=el("input"); fb.type="number"; fb.value=route.fallback_backend_id||""; f3.appendChild(fb); m.appendChild(f3);
-  var f4=el("div","field"); f4.appendChild(el("label",null,"First-byte timeout (seconds)")); var to=el("input"); to.type="number"; to.value=route.first_byte_timeout||180; f4.appendChild(to); m.appendChild(f4);
+  m.appendChild(el("div","section-title","Limits and pricing (optional)"));
+  var limits=el("div","form-grid");
+  var f5=el("div","field"); f5.appendChild(el("label",null,"Context window (tokens, optional)")); var ct=el("input"); ct.type="number"; ct.value=route.context_tokens||""; f5.appendChild(ct); limits.appendChild(f5);
+  var f6=el("div","field"); f6.appendChild(el("label",null,"Max output tokens (optional)")); var mo=el("input"); mo.type="number"; mo.value=route.max_output_tokens||""; f6.appendChild(mo); limits.appendChild(f6);
+  var f7=el("div","field"); f7.appendChild(el("label",null,"Price per 1M input tokens (USD, optional)")); var pi=el("input"); pi.type="number"; pi.step="0.01"; pi.value=route.price_input_per_mtok_usd||""; f7.appendChild(pi); limits.appendChild(f7);
+  var f8=el("div","field"); f8.appendChild(el("label",null,"Price per 1M output tokens (USD, optional)")); var po=el("input"); po.type="number"; po.step="0.01"; po.value=route.price_output_per_mtok_usd||""; f8.appendChild(po); limits.appendChild(f8);
+  var f3=el("div","field"); f3.appendChild(el("label",null,"Fallback backend (optional)")); var fb=el("input"); fb.type="number"; fb.value=route.fallback_backend_id||""; f3.appendChild(fb); limits.appendChild(f3);
+  var f4=el("div","field"); f4.appendChild(el("label",null,"First-byte timeout (seconds)")); var to=el("input"); to.type="number"; to.value=route.first_byte_timeout||180; f4.appendChild(to); limits.appendChild(f4);
+  m.appendChild(limits);
 
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
