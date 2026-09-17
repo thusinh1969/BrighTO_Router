@@ -77,6 +77,18 @@ async function inspectModal(page) {
     }
     const footer = modal.querySelector('.actions');
     const footerRect = footer ? footer.getBoundingClientRect() : null;
+    const switches = [...modal.querySelectorAll('.switch-field')].map((node) => {
+      const r = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return {
+        text: (node.innerText || node.textContent || '').trim().replace(/\s+/g, ' '),
+        display: style.display,
+        justifyContent: style.justifyContent,
+        textTransform: style.textTransform,
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+      };
+    });
     const inputs = [...modal.querySelectorAll('input,select,textarea')].map((node) => {
       const r = node.getBoundingClientRect();
       const label = node.closest('.field')?.querySelector('label')?.innerText?.trim() || node.placeholder || node.tagName;
@@ -95,6 +107,7 @@ async function inspectModal(page) {
       overlayScrollHeight: overlay ? overlay.scrollHeight : null,
       footer: footerRect ? { top: Math.round(footerRect.top), bottom: Math.round(footerRect.bottom), height: Math.round(footerRect.height) } : null,
       footerCoveredInputs,
+      switches,
       text: modal.innerText.slice(0, 2400),
       clipped: clipped.slice(0, 25),
     };
@@ -113,6 +126,11 @@ async function capture(page, name) {
   if (name.endsWith('add-model')) {
     if (!/Exact upstream model name returned by the provider/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Provider model help text`, metrics);
     if (!/model name your apps send/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Public model help text`, metrics);
+  }
+  if (name.endsWith('add-provider') || name.endsWith('new-team')) {
+    const badSwitches = (metrics.switches || []).filter((s) => s.display !== 'flex' || s.justifyContent !== 'space-between' || s.textTransform !== 'none');
+    if (!(metrics.switches || []).length) fail(`${name}: state switch missing`, metrics);
+    if (badSwitches.length) fail(`${name}: state switch layout regressed`, { badSwitches, metrics });
   }
 }
 
