@@ -71,6 +71,7 @@ def main():
                 os.environ,
                 DATABASE_URL=db,
                 LISTEN_ADDR="127.0.0.1:%d" % router_port,
+                TLS_CERT_PATH="", TLS_KEY_PATH="",  # disable TLS for the temp HTTP router
                 ADMIN_MASTER_KEY=ADMIN_KEY,
                 RUST_LOG="error",
             ),

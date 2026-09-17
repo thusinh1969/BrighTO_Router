@@ -501,6 +501,8 @@ struct KeyListRow {
     concurrency_limit: Option<i64>,
     expires_at: Option<i64>,
     enabled: bool,
+    /// true nếu key_secret còn lưu (có thể xem lại plaintext); false = legacy (recreate để xem).
+    revealable: bool,
 }
 
 #[derive(Serialize)]
@@ -1746,7 +1748,8 @@ async fn list_keys(
     let pool = state.pool().await?;
     let rows = sqlx::query::<sqlx::Postgres>(
         "SELECT k.id, k.key_prefix, k.team_id, COALESCE(t.name, '') AS team_name, k.owner, \
-         k.allowed_models, k.budget, k.rpm_limit, k.concurrency_limit, k.expires_at, k.enabled \
+         k.allowed_models, k.budget, k.rpm_limit, k.concurrency_limit, k.expires_at, k.enabled, \
+         (k.key_secret IS NOT NULL) AS revealable \
          FROM api_keys k LEFT JOIN teams t ON t.id = k.team_id ORDER BY k.id",
     )
     .fetch_all(pool)
@@ -1767,6 +1770,7 @@ async fn list_keys(
             concurrency_limit: row.try_get("concurrency_limit")?,
             expires_at: row.try_get("expires_at")?,
             enabled: row.try_get("enabled")?,
+            revealable: row.try_get("revealable")?,
         });
     }
     Ok(Json(out))
