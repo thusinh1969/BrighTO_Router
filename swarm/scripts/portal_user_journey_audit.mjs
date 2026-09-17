@@ -114,6 +114,14 @@ async function inspect(page) {
           textOverflow: st.textOverflow,
         };
       }),
+      allowedModels: [...document.querySelectorAll('.allowed-models')].map((n) => {
+        const r = n.getBoundingClientRect();
+        return {
+          text: (n.innerText || n.textContent || '').trim(),
+          width: Math.round(r.width),
+          pills: [...n.querySelectorAll('.allowed-model-pill')].map((p) => ({ text: (p.innerText || p.textContent || '').trim(), scrollWidth: p.scrollWidth, clientWidth: p.clientWidth, scrollHeight: p.scrollHeight, clientHeight: p.clientHeight })),
+        };
+      }),
       bodyScrollWidth: document.body.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
     };
@@ -141,6 +149,10 @@ async function runViewport(browser, seed, name, width, height) {
     if (!/Call endpoint|POST|\/v1\/chat\/completions|Authorization: Bearer <your API key>/i.test(dash.content)) fail(`${name}: user dashboard missing call endpoint quick start`, dash);
     if (/too short for stable speed/i.test(dash.content) && !/TOKENS\/SEC\s+Too short/i.test(dash.content)) fail(`${name}: user dashboard must show Too short instead of an inflated or blank Tokens/sec value for sub-1s samples`, dash);
     if (!dash.content.includes(seed.model)) fail(`${name}: user dashboard missing allowed/used model`, dash);
+    if (!dash.allowedModels || dash.allowedModels.length < 1) fail(`${name}: user dashboard should render allowed models as a readable card`, dash);
+    if (/Allowed models:\s/i.test(dash.content)) fail(`${name}: user dashboard still renders allowed models as flat text`, dash);
+    const clippedAllowedModels = (dash.allowedModels || []).flatMap((box) => (box.pills || []).filter((p) => p.scrollWidth > p.clientWidth + 4 || p.scrollHeight > p.clientHeight + 4));
+    if (clippedAllowedModels.length) fail(`${name}: user dashboard allowed model pills are clipped`, { clippedAllowedModels, dash });
     if (dash.callItems.length < 4) fail(`${name}: user call endpoint panel missing fields`, dash);
     const curlButton = (dash.callButtons || []).find((b) => b.text === 'Copy cURL');
     const endpointButton = (dash.callButtons || []).find((b) => b.text === 'Copy endpoint');
