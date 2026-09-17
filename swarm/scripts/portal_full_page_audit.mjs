@@ -111,6 +111,22 @@ async function inspectPage(page, label) {
       const r = node.getBoundingClientRect();
       return { open: node.open, text: (node.innerText || node.textContent || '').trim().slice(0, 240), y: Math.round(r.y), height: Math.round(r.height) };
     });
+    const usageBreakdownStats = [...document.querySelectorAll('#content .usage-breakdown-grid')].map((grid) => {
+      const st = getComputedStyle(grid);
+      return {
+        display: st.display,
+        columns: st.gridTemplateColumns,
+        cards: grid.querySelectorAll('.breakdown-card').length,
+        tables: grid.querySelectorAll('table').length,
+        clippedTitles: [...grid.querySelectorAll('.breakdown-title')].filter((n) => n.scrollHeight > n.clientHeight + 4 || n.scrollWidth > n.clientWidth + 4).map((n) => ({
+          text: (n.textContent || '').trim(),
+          scrollHeight: n.scrollHeight,
+          clientHeight: n.clientHeight,
+          scrollWidth: n.scrollWidth,
+          clientWidth: n.clientWidth,
+        })),
+      };
+    });
     return {
       title: document.querySelector('#page-title')?.textContent || '',
       panelCount,
@@ -124,6 +140,7 @@ async function inspectPage(page, label) {
       chartValueLabels,
       sectionPositions,
       diagnosticDetails,
+      usageBreakdownStats,
       disabledDangerButtons: [...document.querySelectorAll('button.btn.danger:disabled')].filter((b) => b.offsetParent !== null).map((b) => {
         const st = getComputedStyle(b);
         return { text: b.innerText.trim(), title: b.title || '', color: st.color, borderColor: st.borderColor, opacity: st.opacity };
@@ -271,10 +288,14 @@ async function runViewport(browser, name, width, height) {
         if (!(metrics.visibleButtons || []).includes(label)) fail(`${name}/${view}: Usage collapsed filters should keep ${label} quick range visible`, metrics);
       }
       if (metrics.visibleUsageFilterFields > 0) fail(`${name}/${view}: Usage default filter panel renders too many fields before data`, metrics);
+      if (!mobile) {
+        const badBreakdowns = (metrics.usageBreakdownStats || []).filter((g) => g.display !== 'grid' || g.cards < 3 || g.tables > 0 || (g.clippedTitles || []).length);
+        if (badBreakdowns.length || !(metrics.usageBreakdownStats || []).length) fail(`${name}/${view}: desktop Usage breakdowns should be readable cards, not narrow tables`, { badBreakdowns, metrics });
+      }
     }
     if (!mobile && view === 'dashboard') {
       const diag = metrics.diagnosticDetails || [];
-      if (!diag.length || diag.some((d) => !d.open)) fail(`${name}/${view}: desktop dashboard diagnostics should stay open`, metrics);
+      if (!diag.length || diag.some((d) => d.open)) fail(`${name}/${view}: desktop dashboard technical diagnostics should default collapsed`, metrics);
     }
     const clippedLegends = (metrics.legendStats || []).filter((l) => l.text && (l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
     if (clippedLegends.length) fail(`${name}/${view}: chart legend text is clipped`, { clippedLegends, metrics });

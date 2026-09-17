@@ -169,6 +169,16 @@ textarea{resize:vertical;min-height:72px}
 .filter-grid .field{margin:0}
 .range-pills{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
 .range-pills .btn.active{background:rgba(56,189,248,.16);border-color:var(--sky);color:var(--accent-text)}
+.usage-breakdown-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.breakdown-card{background:#0b1220;border:1px solid var(--border);border-radius:14px;padding:13px;min-width:0}
+.breakdown-card h4{margin:0 0 10px;font-size:14px;font-weight:850}
+.breakdown-list{display:grid;gap:8px}
+.breakdown-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;background:#090f1d;border:1px solid rgba(51,65,85,.72);border-radius:11px;padding:10px}
+.breakdown-title{font-weight:800;line-height:1.28;overflow-wrap:anywhere;word-break:break-word}
+.breakdown-sub{color:var(--muted);font-size:11.5px;margin-top:3px}
+.breakdown-metrics{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;max-width:170px}
+.breakdown-metrics span{display:inline-flex;gap:4px;align-items:center;background:rgba(15,23,42,.95);border:1px solid rgba(51,65,85,.75);border-radius:999px;padding:3px 7px;color:var(--muted);font-size:11px;white-space:nowrap}
+.breakdown-metrics b{color:var(--text);font-weight:850}
 .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
 .setting-card{background:#0b1220;border:1px solid var(--border);border-radius:16px;padding:16px;min-width:0}
 .setting-card h4{margin:0 0 10px;font-size:14px}
@@ -421,7 +431,7 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
   .ops-hero,.dash-split,.ops-status-row{grid-template-columns:1fr;max-width:100%;min-width:0}
   .ops-primary,.ops-side,.focus-row,.request-card,.dash-split>*,.chart-wrap,.legend{max-width:100%;min-width:0;overflow:hidden}
   .panel{max-width:100%}
-  .filter-grid,.settings-grid,.status-grid{grid-template-columns:1fr}
+  .filter-grid,.settings-grid,.status-grid,.usage-breakdown-grid{grid-template-columns:1fr}
   .ops-primary::after{display:none}
   .quick-actions .btn{flex:1 1 120px;min-width:0;padding-left:9px;padding-right:9px}
   .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
@@ -863,7 +873,7 @@ function detailsBlock(title, subtitle, nodes, open, extraClass){
   return d;
 }
 function diagnosticDetails(nodes){
-  return detailsBlock("Technical diagnostics", "Provider health, router overhead, and latency buckets.", nodes, (document.documentElement.clientWidth||1024)>820, "dashboard-diagnostics");
+  return detailsBlock("Technical diagnostics", "Provider health, router overhead, and latency buckets.", nodes, false, "dashboard-diagnostics");
 }
 
 /* ===== Dashboard ===== */
@@ -1885,9 +1895,38 @@ async function renderUsage(c,seq){
       c.appendChild(detailsBlock("Usage breakdowns","Model, team, and API-key totals for this range.",breakdowns,false,"usage-breakdowns"));
       return;
     }
-    breakdowns.forEach(function(panel){ c.appendChild(panel); });
+    c.appendChild(usageBreakdownPanel([
+      {title:"By model",rows:sum.by_model.map(function(r){return {name:r.model,sub:fmt(r.requests)+" requests · "+fmt(r.errors)+" errors",metrics:[["In",fmt(r.input_tokens)],["Out",fmt(r.output_tokens)]]};})},
+      {title:"By team",rows:sum.by_team.map(function(r){return {name:r.team_name,sub:fmt(r.requests)+" requests · "+fmt(r.errors)+" errors",metrics:[["In",fmt(r.input_tokens)],["Out",fmt(r.output_tokens)]]};})},
+      {title:"By API key",rows:sum.by_key.map(function(r){return {name:r.key_prefix,sub:fmt(r.requests)+" requests · "+fmt(r.errors)+" errors",metrics:[["In",fmt(r.input_tokens)],["Out",fmt(r.output_tokens)]]};})}
+    ]));
   }
   c.appendChild(p2);
+}
+function usageBreakdownPanel(groups){
+  var p=el("div","panel usage-breakdown-panel");
+  p.appendChild(el("h3",null,"Usage breakdowns"));
+  p.appendChild(el("p","hint","Model, team, and API-key totals for this range."));
+  var grid=el("div","usage-breakdown-grid");
+  groups.forEach(function(group){
+    var card=el("div","breakdown-card");
+    card.appendChild(el("h4",null,group.title));
+    if(!group.rows.length){ card.appendChild(emptyBox("No data for this filter yet.")); grid.appendChild(card); return; }
+    var list=el("div","breakdown-list");
+    group.rows.slice(0,5).forEach(function(r){
+      var item=el("div","breakdown-item");
+      var main=el("div");
+      var title=el("div","breakdown-title",r.name||"—"); title.title=r.name||""; main.appendChild(title);
+      main.appendChild(el("div","breakdown-sub",r.sub||""));
+      var metrics=el("div","breakdown-metrics");
+      (r.metrics||[]).forEach(function(m){ var sp=el("span"); sp.appendChild(document.createTextNode(m[0]+": ")); sp.appendChild(el("b",null,m[1])); metrics.appendChild(sp); });
+      item.appendChild(main); item.appendChild(metrics); list.appendChild(item);
+    });
+    if(group.rows.length>5) list.appendChild(el("div","cell-sub","Showing top 5 of "+fmt(group.rows.length)+" rows. Use filters for detail."));
+    card.appendChild(list); grid.appendChild(card);
+  });
+  p.appendChild(grid);
+  return p;
 }
 function groupPanel(title,cols,rows){
   var p=el("div","panel"); p.appendChild(el("h3",null,title));
