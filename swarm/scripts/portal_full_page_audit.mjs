@@ -286,7 +286,9 @@ async function inspectPage(page, label) {
         const thead = table.querySelector('thead');
         const firstRow = table.querySelector('tbody tr');
         const firstAction = table.querySelector('td.actions .action-row');
+        const firstNameCell = table.querySelector('tbody tr td:nth-child(1)');
         const wrap = table.closest('.route-list-wrap');
+        const nr = firstNameCell ? firstNameCell.getBoundingClientRect() : null;
         return {
           tableDisplay: getComputedStyle(table).display,
           bodyDisplay: tbody ? getComputedStyle(tbody).display : '',
@@ -294,6 +296,7 @@ async function inspectPage(page, label) {
           rowDisplay: firstRow ? getComputedStyle(firstRow).display : '',
           rowColumns: firstRow ? getComputedStyle(firstRow).gridTemplateColumns : '',
           actionDisplay: firstAction ? getComputedStyle(firstAction).display : '',
+          publicNameCellWidth: nr ? Math.round(nr.width) : 0,
           wrapBorder: wrap ? getComputedStyle(wrap).borderStyle : '',
           rows: table.querySelectorAll('tbody tr').length,
         };
@@ -532,6 +535,8 @@ async function runViewport(browser, name, width, height) {
       if (!mobile) {
         const badRouteList = (metrics.routeListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
         if (badRouteList.length || !(metrics.routeListStats || []).length) fail(`${name}/${view}: desktop Models should render as compact route cards, not a wide sparse table`, { badRouteList, metrics });
+        const narrowPublicNameCells = (metrics.routeListStats || []).filter((r) => r.rows > 0 && width >= 1200 && r.publicNameCellWidth < 380);
+        if (narrowPublicNameCells.length) fail(`${name}/${view}: desktop public model column is too narrow for real provider names`, { narrowPublicNameCells, metrics });
       }
     }
     if (view === 'keys') {
