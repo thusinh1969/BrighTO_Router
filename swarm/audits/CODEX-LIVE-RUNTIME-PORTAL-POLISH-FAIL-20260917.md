@@ -152,3 +152,26 @@ Run a Playwright test against the live Docker portal and attach the result. It m
 6. No raw huge dashboard values like `251,336` where compact `251.3K` is expected.
 
 Until this passes, Portal remains below the OpenRouter/Hermes-style professional bar.
+
+
+## Poll update — backend gate green, Portal blockers unchanged
+
+Time: 2026-09-17 around 10:10 local time.
+
+Current repo state after DeepSeek commit `736f9b3` and Codex audit commit `da4eb4b`:
+
+- `git status`: clean.
+- `cargo fmt --check`: PASS.
+- `cargo check --locked --all-targets`: PASS.
+- Docker runtime health: `https://127.0.0.1:18443/healthz` returns `200 ok`.
+- Static source still contains direct post-CRUD renderer calls:
+  - `renderProviders($("content"))`
+  - `renderModels($("content"))`
+  - `renderTeams($("content"))`
+  - `renderKeys($("content"))`
+  - `renderUsage($("content"))`
+- Static source still contains `function fmt(n){ ... Number(n).toLocaleString(); }`.
+- Static source still contains chart formatter lowercase `k`.
+- Static source still has no `Portal preferences`, `data-font`, `data-density`, or `fmtCount` marker.
+
+Verdict for DeepSeek: Rust/backend build is not the current blocker. The release blocker is Portal product quality. Fix the UI root causes listed above before running another acceptance claim.
