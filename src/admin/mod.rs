@@ -308,10 +308,12 @@ pub fn user_router(runtime: Arc<AppState>) -> Router {
 }
 
 async fn portal() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        include_str!("../../static/index.html"),
-    )
+    let body = std::env::var("PORTAL_STATIC_FILE")
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .unwrap_or_else(|| include_str!("../../static/index.html").to_string());
+    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], body)
 }
 
 // ===== Request/response types =====
@@ -1079,7 +1081,10 @@ async fn delete_backend(
         active_in_use.sort();
         return Err(ApiError::new(
             StatusCode::CONFLICT,
-            format!("provider used by active routes: {}", active_in_use.join(", ")),
+            format!(
+                "provider used by active routes: {}",
+                active_in_use.join(", ")
+            ),
         ));
     }
 
@@ -1213,7 +1218,10 @@ async fn preview_models(
         .unwrap_or("bearer")
         .trim()
         .to_string();
-    let key = resolve_route_key(payload.provider_key.as_deref(), payload.provider_key_ref.as_deref())?;
+    let key = resolve_route_key(
+        payload.provider_key.as_deref(),
+        payload.provider_key_ref.as_deref(),
+    )?;
     // Blank key cho auth bắt buộc -> chặn ngay (không gọi provider rồi dính 401/502).
     if auth_mode != "none" && key.is_empty() {
         return Err(ApiError::new(
@@ -1304,10 +1312,7 @@ fn provider_catalog_from_env() -> Vec<ProviderCatalogEntry> {
             let base_url = it.next()?.trim().to_string();
             let dialect = it.next()?.trim().to_string();
             let key_env = it.next().map(str::trim).unwrap_or("").to_string();
-            let enabled = it
-                .next()
-                .map(|v| v.trim() != "0")
-                .unwrap_or(true);
+            let enabled = it.next().map(|v| v.trim() != "0").unwrap_or(true);
             if key.is_empty() || label.is_empty() {
                 return None;
             }
@@ -1322,7 +1327,11 @@ fn provider_catalog_from_env() -> Vec<ProviderCatalogEntry> {
                 key,
                 label,
                 base_url,
-                dialect: if dialect == "anthropic" { "anthropic".into() } else { "openai".into() },
+                dialect: if dialect == "anthropic" {
+                    "anthropic".into()
+                } else {
+                    "openai".into()
+                },
                 key_env,
                 key_set,
                 enabled,
@@ -1428,7 +1437,10 @@ async fn test_connection(
     let base_url = non_empty_trimmed(payload.base_url, "base_url")?;
     let dialect = normalize_backend_format(&payload.dialect)?;
     let auth_mode = payload.auth_mode.trim().to_string();
-    let key = resolve_route_key(payload.provider_key.as_deref(), payload.provider_key_ref.as_deref())?;
+    let key = resolve_route_key(
+        payload.provider_key.as_deref(),
+        payload.provider_key_ref.as_deref(),
+    )?;
     let started = std::time::Instant::now();
 
     let url = join_provider_url(&base_url, "/v1/models");
@@ -1499,7 +1511,6 @@ async fn test_connection(
         })),
     }
 }
-
 
 async fn list_routes(
     Extension(state): Extension<Arc<AdminState>>,
@@ -1822,13 +1833,12 @@ async fn delete_route(
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
     // Block delete if model has transaction history (only disable is allowed).
-    let usage: i64 = sqlx::query::<sqlx::Postgres>(
-        "SELECT COUNT(*) AS c FROM usage_ledger WHERE model = $1",
-    )
-    .bind(&model_name)
-    .fetch_one(pool)
-    .await?
-    .try_get("c")?;
+    let usage: i64 =
+        sqlx::query::<sqlx::Postgres>("SELECT COUNT(*) AS c FROM usage_ledger WHERE model = $1")
+            .bind(&model_name)
+            .fetch_one(pool)
+            .await?
+            .try_get("c")?;
     if usage > 0 {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
@@ -1861,16 +1871,19 @@ async fn toggle_route_enabled(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
-    let result = sqlx::query::<sqlx::Postgres>("UPDATE model_routes SET enabled = $1 WHERE model_name = $2")
-        .bind(payload.enabled)
-        .bind(&model_name)
-        .execute(pool)
-        .await?;
+    let result =
+        sqlx::query::<sqlx::Postgres>("UPDATE model_routes SET enabled = $1 WHERE model_name = $2")
+            .bind(payload.enabled)
+            .bind(&model_name)
+            .execute(pool)
+            .await?;
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("route not found"));
     }
     state.reload_now().await?;
-    Ok(Json(json!({ "model_name": model_name, "enabled": payload.enabled })))
+    Ok(Json(
+        json!({ "model_name": model_name, "enabled": payload.enabled }),
+    ))
 }
 
 async fn create_team(

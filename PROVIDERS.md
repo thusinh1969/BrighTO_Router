@@ -1,57 +1,58 @@
 # Provider setup
 
-BrighTO-Router seeds provider templates so a new team does not have to write SQL before trying the product.
+BrighTO-Router keeps provider setup simple: the Portal shows a provider catalog from `.env`, and the database stores only the real connections and model routes you create.
 
-The templates are disabled by default. Add a provider key, enable the provider in the portal, fetch or type model names, then create model routes.
+A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
 
-## Seeded templates
+A **model route** is what clients use. It maps one public model name to one upstream provider model, with its provider API key/reference, price, limits, and enabled/disabled state.
 
-| Provider name | Base URL seeded in DB | Key variable in `.env` | Format |
+## Provider catalog
+
+The catalog is configured by `PROVIDER_CATALOG` in `.env`. The default catalog includes:
+
+| Provider | Default Base URL | Protocol family | Env key |
 |---|---|---|---|
-| `openai` | `https://api.openai.com` | `OPENAI_API_KEY` | OpenAI-style |
-| `anthropic` | `https://api.anthropic.com` | `ANTHROPIC_API_KEY` | Anthropic Messages |
-| `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai` | `GEMINI_API_KEY` | OpenAI-style |
-| `deepseek` | `https://api.deepseek.com` | `DEEPSEEK_API_KEY` | OpenAI-style |
-| `kimi` | `https://api.moonshot.ai/v1` | `KIMI_API_KEY` | OpenAI-style |
-| `qwen` | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | `QWEN_API_KEY` | OpenAI-style |
-| `zai` | `https://api.z.ai/api/coding/paas/v4` | `ZAI_API_KEY` | OpenAI-style |
-| `openrouter` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | OpenAI-style |
-| `meta-muse` | `https://api.meta.ai/v1` | `META_MUSE_API_KEY` | OpenAI-style |
-| `custom-openai` | `http://127.0.0.1:8000/v1` | `CUSTOM_LLM_API_KEY` | OpenAI-style |
+| OpenAI | `https://api.openai.com` | OpenAI-compatible | `OPENAI_API_KEY` |
+| Anthropic | `https://api.anthropic.com` | Anthropic Messages | `ANTHROPIC_API_KEY` |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | OpenAI-compatible | `GEMINI_API_KEY` |
+| DeepSeek | `https://api.deepseek.com` | OpenAI-compatible | `DEEPSEEK_API_KEY` |
+| Kimi | `https://api.moonshot.ai/v1` | OpenAI-compatible | `KIMI_API_KEY` |
+| Qwen | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | OpenAI-compatible | `QWEN_API_KEY` |
+| Z.AI | `https://api.z.ai/api/paas/v4` | OpenAI-compatible | `ZAI_API_KEY` |
+| OpenRouter | `https://openrouter.ai/api/v1` | OpenAI-compatible | `OPENROUTER_API_KEY` |
+| Meta Muse | `https://api.meta.ai/v1` | OpenAI-compatible | `META_MUSE_API_KEY` |
+| Custom LLM | `http://127.0.0.1:8088/v1` | OpenAI-compatible | `CUSTOM_LLM_API_KEY` |
 
-**OpenAI-style** means the backend accepts routes such as `/v1/chat/completions` and usually returns models from `/v1/models`.
+**OpenAI-compatible** means the backend accepts routes such as `/v1/chat/completions` and usually returns models from `/v1/models`.
 
-## Fast path for a new provider
+## Add a model route
 
-```bash
-./start.sh set-key openai sk-your-key
-./start.sh restart
+In the Portal:
+
+1. Open **Models & Routes**.
+2. Click **Add model**.
+3. Pick a provider preset or **Custom LLM**.
+4. Enter the Base URL.
+5. Paste the provider API key, or leave it blank to use the provider `.env` key when it is configured.
+6. Click **Load models** and select exactly one model. If model listing is unsupported, type the provider model name manually.
+7. Click **Test connection**.
+8. Save enabled only after the test passes.
+
+The Portal automatically creates or reuses the provider connection for the Base URL. You do not need to create a provider first.
+
+## Local OpenAI-compatible endpoint
+
+For llama.cpp, vLLM, LiteLLM, or another local OpenAI-compatible server, choose **Custom LLM** and use a Base URL such as:
+
+```text
+http://127.0.0.1:8088/v1
 ```
 
-Then in the portal:
+If the local endpoint does not require auth, leave API key blank. BrighTO saves that route as no-auth local routing.
 
-1. Enter `ADMIN_MASTER_KEY`.
-2. Click **Load providers**.
-3. Enable the provider.
-4. Click **Fetch models**.
-5. Click a model to create a route.
-6. Create a team API key.
+## URL handling
 
-The router never returns provider API keys from the admin API. It only reports whether the configured env/file reference resolves to a non-empty value.
-
-## Custom OpenAI-compatible endpoint
-
-Use `custom-openai` for vLLM, llama-server, LiteLLM, local gateways, or any compatible service.
-
-Set the key value if the endpoint needs one:
-
-```bash
-./start.sh set-key custom-openai your-key
-```
-
-The router expects a non-empty backend key before forwarding to a backend. If your local endpoint ignores authentication, set `CUSTOM_LLM_API_KEY` to a dummy value such as `local-dev-key`.
-
-Update the base URL in the portal. Both host-only URLs and SDK-style URLs are supported:
+Both host-only and SDK-style Base URLs work:
 
 | Base URL | Incoming route | Forwarded URL |
 |---|---|---|
@@ -59,8 +60,11 @@ Update the base URL in the portal. Both host-only URLs and SDK-style URLs are su
 | `https://api.moonshot.ai/v1` | `/v1/chat/completions` | `https://api.moonshot.ai/v1/chat/completions` |
 | `https://example.com/compatible-mode/v1` | `/v1/models` | `https://example.com/compatible-mode/v1/models` |
 
-## Model fetch behavior
+## Client API keys
 
-The portal fetches models by calling the provider model-list endpoint through the admin API. This works for OpenAI-style providers that expose `/models` with a `data[].id` response.
+Provider API keys are different from client API keys.
 
-If a provider does not expose that shape, type the model name manually and create the route. Routing itself does not require model fetch.
+- Provider API key: used by BrighTO to call OpenAI, Anthropic, DeepSeek, or another upstream.
+- Client API key: used by your app/team to call BrighTO.
+
+Create client keys in **API Keys**. Admin can view and copy them again later.

@@ -412,10 +412,12 @@ fn now_ms() -> u64 {
 }
 
 async fn portal(_: State<Arc<AppState>>) -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        include_str!("../static/index.html"),
-    )
+    let body = std::env::var("PORTAL_STATIC_FILE")
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .unwrap_or_else(|| include_str!("../static/index.html").to_string());
+    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], body)
 }
 
 async fn handle_generate(
@@ -493,14 +495,22 @@ async fn handle_generate(
 
     // Effective-enabled guard (CODEX lifecycle): route enabled nhưng mọi backend tham chiếu đều
     // disabled -> từ chối RÕ RÀNG trước khi acquire/forward, KHÔNG trả "503 no healthy backend".
-    let any_backend_enabled = route
-        .backend_ids
-        .iter()
-        .any(|id| snapshot.backends.get(id).map(|b| b.enabled).unwrap_or(false))
-        || route
-            .fallback_backend_id
-            .map(|id| snapshot.backends.get(&id).map(|b| b.enabled).unwrap_or(false))
-            .unwrap_or(false);
+    let any_backend_enabled = route.backend_ids.iter().any(|id| {
+        snapshot
+            .backends
+            .get(id)
+            .map(|b| b.enabled)
+            .unwrap_or(false)
+    }) || route
+        .fallback_backend_id
+        .map(|id| {
+            snapshot
+                .backends
+                .get(&id)
+                .map(|b| b.enabled)
+                .unwrap_or(false)
+        })
+        .unwrap_or(false);
     if !any_backend_enabled {
         return build_error(
             &request_id,

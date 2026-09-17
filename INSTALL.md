@@ -16,7 +16,7 @@ What happens:
 1. `.env` is created from `.env.example` if it does not exist.
 2. Docker starts PostgreSQL 16.
 3. SQL migrations run.
-4. Default team and provider templates are seeded.
+4. The default team and local demo client key are seeded.
 5. Docker pulls and starts `thusinh1969/brighto_airouter:v1`.
 
 Open on the same server:
@@ -37,7 +37,7 @@ Default local admin key:
 brightoIsGreat@2026
 ```
 
-If the page opens but **Load providers** returns `403: ip not allowed`, allow your client network in `.env` and restart:
+If the page opens but an Admin API call returns `403: ip not allowed`, allow your client network in `.env` and restart:
 
 ```bash
 ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0
@@ -57,35 +57,32 @@ For shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW
 | `./start.sh status` | Show containers plus `/healthz` and `/readyz`. |
 | `./start.sh logs` | Follow router logs. |
 | `./start.sh migrate` | Run SQL migrations only. |
-| `./start.sh seed` | Seed default team and provider templates only. |
-| `./start.sh set-key openai sk-...` | Store a provider key in `.env` and recreate router if running. |
+| `./start.sh seed` | Seed default team/demo key and safe defaults. |
+| `./start.sh set-key openai sk-...` | Store a cloud provider key in `.env` and recreate router if running. The Add model wizard can also accept a pasted route key. |
 | `./start.sh smoke` | Run a short non-release benchmark smoke. |
 
-## Configure a provider
+## Add a model route
 
-Example for OpenAI:
+The first useful setup is a model route. A route exposes one public model name to your applications and points it to one upstream provider model.
 
-```bash
-./start.sh set-key openai sk-your-key
-./start.sh restart
-```
+Use the portal:
 
-Then use the portal:
+1. Enter the admin key.
+2. Open **Models & Routes**.
+3. Click **Add model**.
+4. Pick a provider preset or **Custom LLM**.
+5. Enter the Base URL and provider API key. You can paste the key in the wizard, or leave it blank to use the matching `.env` key when configured.
+6. Click **Load models**, choose one model, then click **Test connection**.
+7. Click **Save enabled** only after the test passes.
+8. Create or reuse a client API key under **API Keys**.
 
-1. Enter admin key.
-2. Click **Load providers**.
-3. Enable the provider.
-4. Click **Fetch models**.
-5. Choose a model and create a route.
-6. Create a team API key for your application.
-
-Provider key names supported by `set-key`:
+Provider key names supported by `set-key` if you prefer `.env` secrets:
 
 ```text
 openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-openai
 ```
 
-For providers that do not expose an OpenAI-style `/models` endpoint, type the model name manually in the portal.
+For providers that do not expose a compatible `/models` endpoint, type the provider model name manually and still use **Test connection** before saving enabled.
 
 
 ## HTTPS with custom PEM files
@@ -142,6 +139,19 @@ Production-style Kubernetes with an existing PostgreSQL database:
 ```
 
 The Kubernetes command creates or updates the namespace, secret, config map, deployment, and service. With local K8s PostgreSQL, it waits for PostgreSQL and runs migrations/seed inside the cluster before starting the router. With external PostgreSQL, it runs migrations/seed against the supplied database URL and skips the development PostgreSQL manifest.
+
+## Portal UI development
+
+The Portal front-end is one file: `static/index.html`. It contains HTML, CSS, and JavaScript. Rust embeds that file into the production binary.
+
+For fast UI design work under Docker Compose, set this in `.env`:
+
+```bash
+PORTAL_STATIC_FILE=/app/static/index.html
+docker compose up -d --force-recreate router
+```
+
+After that one restart, edit `static/index.html` and refresh the browser. Rebuild Docker only when Rust code changes or when you want the final Portal baked into the production image.
 
 ## Files operators usually edit
 

@@ -142,6 +142,20 @@ async function main() {
       const delBtn = connRow.getByRole('button', { name: 'Delete' });
       if (await delBtn.isDisabled()) pass('lifecycle', 'in-use connection Delete disabled');
       else fail('lifecycle', 'in-use connection Delete should be disabled', { rowText: await connRow.innerText() });
+
+      await connRow.getByRole('button', { name: 'Route' }).click({ force: true });
+      await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
+      const routeFromProvider = {
+        text: (await page.locator('.modal').innerText()).slice(0, 1200),
+        baseUrl: await modalField(page, 'Base URL').inputValue(),
+        stepCount: await page.locator('.modal .wizard-step').count(),
+      };
+      if (routeFromProvider.baseUrl === 'http://127.0.0.1:9000/v1' && routeFromProvider.stepCount === 3 && /Test connection/.test(routeFromProvider.text)) {
+        pass('providers', 'Route button opens guided Add model wizard with connection prefilled', routeFromProvider);
+      } else {
+        fail('providers', 'Route button wizard is wrong', routeFromProvider);
+      }
+      await page.evaluate(() => closeModal());
     } else {
       fail('lifecycle', 'test connection row not visible in Connections UI', { base_url: 'http://127.0.0.1:9000/v1' });
     }
