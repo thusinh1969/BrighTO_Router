@@ -311,6 +311,7 @@ async function inspectPage(page, label) {
           rowDisplay: firstRow ? getComputedStyle(firstRow).display : '',
           rowColumns: firstRow ? getComputedStyle(firstRow).gridTemplateColumns : '',
           actionDisplay: firstAction ? getComputedStyle(firstAction).display : '',
+          actionButtons: firstAction ? [...firstAction.querySelectorAll('button')].map((button) => { const r = button.getBoundingClientRect(); return { text: (button.innerText || button.textContent || '').trim(), x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }; }) : [],
           wrapBorder: wrap ? getComputedStyle(wrap).borderStyle : '',
           rows: table.querySelectorAll('tbody tr').length,
         };
@@ -507,6 +508,10 @@ async function runViewport(browser, name, width, height) {
     if (view === 'providers' && !mobile) {
       const badProviderList = (metrics.providerListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
       if (badProviderList.length || !(metrics.providerListStats || []).length) fail(`${name}/${view}: desktop Providers should render as compact provider cards, not a wide sparse table`, { badProviderList, metrics });
+      if (width >= 1200) {
+        const wrappedProviderActions = (metrics.providerListStats || []).filter((r) => (r.actionButtons || []).length >= 4 && (Math.max(...r.actionButtons.map((b) => b.y)) - Math.min(...r.actionButtons.map((b) => b.y)) > 5));
+        if (wrappedProviderActions.length) fail(`${name}/${view}: desktop provider actions should fit on one row`, { wrappedProviderActions, metrics });
+      }
     }
     if (['providers', 'models'].includes(view) && (metrics.contentText || '').includes(`${prefix}-Custom LLM`)) {
       fail(`${name}/${view}: generated provider test prefixes should not leak into primary provider labels`, metrics);
