@@ -24,6 +24,22 @@ if [[ -z "${PLAYWRIGHT_CHROMIUM_EXECUTABLE:-}" ]]; then
   fi
 fi
 
+cleanup_test_records() {
+  if command -v docker >/dev/null 2>&1 && [[ -f "$ROOT/docker-compose.yml" ]]; then
+    db_cid="$(cd "$ROOT" && docker compose ps -q postgres 2>/dev/null || true)"
+    if [[ -n "$db_cid" ]]; then
+      docker exec -i "$db_cid" psql -U "${DB_USER:-brighto_router}" -d "${DB_NAME:-brighto_router}" >/dev/null 2>&1 <<'SQL' || true
+DELETE FROM api_keys WHERE owner LIKE 'pw-polish-%';
+DELETE FROM usage_ledger WHERE model LIKE 'pw-polish-%';
+DELETE FROM model_routes WHERE model_name LIKE 'pw-polish-%';
+DELETE FROM backends WHERE name LIKE 'pw-polish-%' OR (base_url = 'http://127.0.0.1:9000/v1' AND name LIKE 'pw-polish-%');
+SQL
+    fi
+  fi
+}
+trap cleanup_test_records EXIT
+cleanup_test_records
+
 cp "$ROOT/swarm/scripts/portal_polish_audit.mjs" "$OUT_DIR/portal_polish_audit.mjs"
 cd "$OUT_DIR"
 if [[ ! -d node_modules/playwright ]]; then

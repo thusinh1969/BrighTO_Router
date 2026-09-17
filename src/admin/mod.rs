@@ -2168,12 +2168,17 @@ fn format_duration(ms: i64) -> String {
     format!("{m}m {rem}s")
 }
 
-/// tokens/giây quan sát được; None khi không tính nổi (ms <= 0).
+/// tokens/giây quan sát được.
+///
+/// Millisecond timers can record ultra-fast mock/local calls as 0ms even when the
+/// response contains tokens. Clamp those positive-token samples to 1ms so the
+/// admin log still shows useful throughput instead of `—`.
 fn tokens_per_second(tokens: i64, ms: i64) -> Option<f64> {
-    if ms <= 0 {
+    if tokens <= 0 {
         return None;
     }
-    Some(tokens as f64 / (ms as f64 / 1_000.0))
+    let effective_ms = ms.max(1);
+    Some(tokens as f64 / (effective_ms as f64 / 1_000.0))
 }
 
 /// Ước lượng cost từ route prices (per 1M tokens). None khi chưa cấu hình cả 2 giá.
@@ -3144,8 +3149,9 @@ mod tests {
         // 200066 tokens in 228453ms ~ 875.8 tok/s (CODEX call-log ví dụ).
         let t = tokens_per_second(200_066, 228_453).unwrap();
         assert!((t - 875.8).abs() < 0.5, "got {t}");
-        assert_eq!(tokens_per_second(100, 0), None);
-        assert_eq!(tokens_per_second(100, -5), None);
+        assert_eq!(tokens_per_second(100, 0), Some(100_000.0));
+        assert_eq!(tokens_per_second(100, -5), Some(100_000.0));
+        assert_eq!(tokens_per_second(0, 0), None);
     }
 
     #[test]
