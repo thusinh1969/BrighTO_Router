@@ -146,6 +146,23 @@ async function inspectPage(page, label) {
           nameOverflow: ns ? ns.overflow : '',
         };
       }),
+      routeListStats: [...document.querySelectorAll('.route-list-table')].map((table) => {
+        const tbody = table.querySelector('tbody');
+        const thead = table.querySelector('thead');
+        const firstRow = table.querySelector('tbody tr');
+        const firstAction = table.querySelector('td.actions .action-row');
+        const wrap = table.closest('.route-list-wrap');
+        return {
+          tableDisplay: getComputedStyle(table).display,
+          bodyDisplay: tbody ? getComputedStyle(tbody).display : '',
+          headDisplay: thead ? getComputedStyle(thead).display : '',
+          rowDisplay: firstRow ? getComputedStyle(firstRow).display : '',
+          rowColumns: firstRow ? getComputedStyle(firstRow).gridTemplateColumns : '',
+          actionDisplay: firstAction ? getComputedStyle(firstAction).display : '',
+          wrapBorder: wrap ? getComputedStyle(wrap).borderStyle : '',
+          rows: table.querySelectorAll('tbody tr').length,
+        };
+      }),
       keySecretRows: [...document.querySelectorAll('.key-secret')].map((n) => {
         const st = getComputedStyle(n);
         const key = n.querySelector('.mono');
@@ -224,6 +241,10 @@ async function runViewport(browser, name, width, height) {
       if (badModelNameRows.length) fail(`${name}/${view}: public model name and copy action are not aligned as a stable grid`, { badModelNameRows, metrics });
       const clippedModelNames = (metrics.modelNameRows || []).filter((r) => /ellipsis/i.test(r.nameTextOverflow) || r.nameLineClamp !== 'none' || r.nameOverflow !== 'visible' || r.nameScrollHeight > r.nameClientHeight + 4);
       if (clippedModelNames.length) fail(`${name}/${view}: public model names are clipped`, { clippedModelNames, metrics });
+      if (!mobile) {
+        const badRouteList = (metrics.routeListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
+        if (badRouteList.length || !(metrics.routeListStats || []).length) fail(`${name}/${view}: desktop Models should render as compact route cards, not a wide sparse table`, { badRouteList, metrics });
+      }
     }
     if (view === 'keys') {
       const badKeyRows = (metrics.keySecretRows || []).filter((r) => r.keyText && r.keyText !== 'legacy · recreate' && (r.keyText === '…' || r.copyButtons !== 1 || r.revealButtons !== 0));
