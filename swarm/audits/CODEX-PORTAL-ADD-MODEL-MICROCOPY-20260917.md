@@ -45,3 +45,20 @@ Evidence logs:
 - `swarm/out/portal_full_page_audit-model-help-full-204055.log`
 - `swarm/out/portal_modal_surface_audit-model-help-full-204114.log`
 - `swarm/out/portal_user_journey_audit-model-help-full-204125.log`
+
+## Follow-up visual polish
+
+After inspecting the desktop Providers screenshot, the actions column was still cramped when a connection name and URL were realistic. Adjusted the Providers table column split from `30/22/7/7/22/12` to `30/20/7/7/18/18`, giving Route/Disable/Edit/Delete enough room while keeping Base URL truncated with a title tooltip.
+
+Additional verification:
+
+- `python3 swarm/scripts/portal_static_gate.py`
+- JavaScript syntax extraction + `node --check /tmp/brighto-portal.js`
+- `git diff --check`
+- `bash swarm/scripts/portal_visual_audit.sh`
+- `bash swarm/scripts/portal_full_page_audit.sh`
+
+Evidence logs:
+
+- `swarm/out/portal_visual_audit-provider-actions-204643.log`
+- `swarm/out/portal_full_page_audit-provider-actions-204652.log`
