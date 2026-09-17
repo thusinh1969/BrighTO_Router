@@ -155,6 +155,10 @@ async function inspectPage(page, label) {
         scrollHeight: n.scrollHeight,
         clientHeight: n.clientHeight,
       })),
+      cardRects: [...document.querySelectorAll('#content .grid .card')].map((n) => {
+        const r = n.getBoundingClientRect();
+        return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), text: (n.innerText || '').trim().slice(0, 80) };
+      }),
       visibleButtons: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => b.innerText.trim()).filter(Boolean).slice(0, 30),
     };
   });
@@ -200,6 +204,12 @@ async function runViewport(browser, name, width, height) {
       }
     }
     if (mobile) {
+      if (view === 'dashboard' && metrics.cards >= 4) {
+        const firstRow = (metrics.cardRects || []).filter((r) => Math.abs(r.y - metrics.cardRects[0].y) <= 4);
+        if (firstRow.length < 2) fail(`${name}/${view}: mobile KPI cards should use a compact two-column layout`, { cardRects: metrics.cardRects, metrics });
+        const crampedCards = (metrics.cardRects || []).filter((r) => r.width < 130);
+        if (crampedCards.length) fail(`${name}/${view}: mobile KPI cards are too narrow to read`, { crampedCards, metrics });
+      }
       const wideTables = metrics.tableStats.filter((t) => t.scrollWidth > t.clientWidth + 8);
       if (wideTables.length) fail(`${name}/${view}: mobile table still scrolls horizontally`, { wideTables, metrics });
       const rowTablesWithoutLabels = metrics.tableStats.filter((t) => t.rows > 0 && t.cells > 0 && t.labelledCells < Math.max(1, t.cells - t.rows));
