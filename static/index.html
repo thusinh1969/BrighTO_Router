@@ -116,7 +116,7 @@ td.mono{font-family:var(--mono);font-size:12px}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;max-width:100%}
 .icon-btn{padding:3px 6px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
-table.models-table{min-width:1180px}
+table.models-table{min-width:1350px}
 table.conn-table{min-width:900px}
 
 /* ---------- Pills ---------- */
@@ -593,6 +593,9 @@ function renderModels(c){
   else if(!shown.length){ p.appendChild(emptyBox("No models match this filter.")); }
   else{
     var w=el("div","table-wrap"); var t=el("table","models-table");
+    var colg=document.createElement("colgroup");
+    [280,130,140,220,90,80,80,110,220].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid+"px"; colg.appendChild(c); });
+    t.appendChild(colg);
     t.appendChild(thead(["Public model","Status","Provider","Provider model","Auth","Context","Max out","$ in/out",""]));
     var tb=el("tbody");
     shown.forEach(function(r){
