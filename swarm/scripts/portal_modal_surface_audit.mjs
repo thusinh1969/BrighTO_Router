@@ -130,6 +130,7 @@ async function capture(page, name) {
   if (name.endsWith('add-model')) {
     if (!/Exact upstream model name returned by the provider/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Provider model help text`, metrics);
     if (!/model name your apps send/i.test(metrics.text || '')) fail(`${name}: Add model modal missing Public model help text`, metrics);
+    if (!/Client sends|Provider receives/i.test(metrics.text || '')) fail(`${name}: Add model modal missing public-to-provider model mapping preview`, metrics);
     if (!/Fallback provider \(optional\)/i.test(metrics.text || '')) fail(`${name}: Add model modal must expose fallback as provider selection`, metrics);
     if (/Fallback backend/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes backend jargon`, metrics);
     if (!/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must make disabled save explicit`, metrics);
