@@ -335,12 +335,19 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
   .wizard-steps{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:12px}
   .wizard-step{padding:8px 7px;font-size:10.5px;line-height:1.25}
   .wizard-step b{font-size:11px}
+  .route-modal h3{margin-bottom:12px}
+  .route-modal .wizard-steps{margin-bottom:10px}
+  .route-modal .wizard-step{padding:7px 6px}
+  .route-modal input,.route-modal select,.route-modal textarea{padding:9px 11px}
+  .route-modal .hint{margin:4px 0 8px;line-height:1.35}
   .model-map{grid-template-columns:1fr;gap:7px}
   .model-map .arrow{justify-content:flex-start}
   #modal-overlay{padding:12px 10px;align-items:flex-start}
   .modal{padding:20px;max-height:calc(100dvh - 24px);overflow:auto;border-radius:18px}
-  .modal .actions,.route-modal .actions{position:static;bottom:auto;margin:18px -20px -20px;padding:14px 20px;flex-wrap:wrap;border-radius:0 0 18px 18px}
+  .modal .actions{position:static;bottom:auto;margin:18px -20px -20px;padding:14px 20px;flex-wrap:wrap;border-radius:0 0 18px 18px}
+  .route-modal .actions{position:sticky;bottom:-20px;margin:14px -20px -20px;padding:8px 12px;gap:6px;flex-wrap:wrap;border-radius:0 0 18px 18px;box-shadow:0 -16px 28px rgba(2,6,18,.45)}
   .modal .actions .btn{flex:1 1 120px}
+  .route-modal .actions .btn{flex:1 1 calc(50% - 6px);padding:7px 8px;font-size:12px}
   .model-picker-row{flex-wrap:wrap!important}
   .model-picker-row input{flex:1 1 100%!important}
   .model-picker-row .btn{width:100%}

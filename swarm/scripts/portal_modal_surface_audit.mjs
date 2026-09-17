@@ -150,6 +150,9 @@ async function capture(page, name) {
       if (steps.length !== 3 || firstRow.length !== 3) fail(`${name}: Add model wizard steps must stay compact on one mobile row`, metrics);
       const cramped = steps.filter((r) => r.width < 90 || r.height > 72);
       if (cramped.length) fail(`${name}: Add model wizard step chips are cramped on mobile`, { cramped, metrics });
+      if (!metrics.footer || metrics.footer.top < 0 || metrics.footer.bottom > metrics.clientH + 3) {
+        fail(`${name}: Add model Test/Save actions must stay visible on mobile`, metrics);
+      }
     }
   }
   if (name.endsWith('new-key')) {
