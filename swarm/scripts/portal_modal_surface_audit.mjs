@@ -1,0 +1,141 @@
+import { chromium } from 'playwright';
+import { writeFile } from 'fs/promises';
+
+const BASE = process.env.BRIGHTO_BASE_URL || 'https://127.0.0.1:18443';
+const ADMIN = process.env.BRIGHTO_ADMIN_KEY;
+const OUT = process.env.BRIGHTO_PW_OUT || process.cwd();
+const EXECUTABLE = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
+const result = { result: 'FAIL', base: BASE, failures: [], screenshots: [], metrics: {}, consoleErrors: [] };
+
+function fail(summary, evidence = {}) { result.failures.push({ summary, evidence }); }
+
+async function login(page) {
+  await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+  await page.locator('#login-user').fill('admin');
+  await page.locator('#login-pass').fill(ADMIN);
+  await page.evaluate(() => login());
+  await page.locator('#app-view:not(.hidden)').waitFor({ state: 'visible', timeout: 12000 });
+}
+
+async function nav(page, view) {
+  await page.evaluate((v) => go(v), view);
+  await page.waitForTimeout(500);
+}
+
+async function resetModal(page) {
+  await page.evaluate(() => {
+    const overlay = document.querySelector('#modal-overlay');
+    if (overlay) {
+      overlay.classList.add('hidden');
+      overlay.innerHTML = '';
+    }
+    document.querySelectorAll('.picker-overlay').forEach((node) => node.remove());
+  });
+  await page.waitForTimeout(100);
+}
+
+async function inspectModal(page) {
+  return page.evaluate(() => {
+    const modal = document.querySelector('.modal');
+    const overlay = document.querySelector('#modal-overlay:not(.hidden), .picker-overlay');
+    const clientW = document.documentElement.clientWidth;
+    const clientH = document.documentElement.clientHeight;
+    if (!modal) return { missing: true, clientW, clientH };
+    const rect = modal.getBoundingClientRect();
+    const clipped = [];
+    for (const node of modal.querySelectorAll('*')) {
+      const r = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      if (r.right > Math.min(clientW, rect.right) + 3 || node.scrollWidth > node.clientWidth + 5) {
+        clipped.push({
+          tag: node.tagName,
+          cls: String(node.className),
+          text: (node.innerText || node.textContent || '').slice(0, 140).replace(/\s+/g, ' '),
+          right: Math.round(r.right),
+          clientW,
+          scrollWidth: node.scrollWidth,
+          clientWidth: node.clientWidth,
+          overflowX: style.overflowX,
+        });
+      }
+    }
+    const footer = modal.querySelector('.actions');
+    const footerRect = footer ? footer.getBoundingClientRect() : null;
+    const inputs = [...modal.querySelectorAll('input,select,textarea')].map((node) => {
+      const r = node.getBoundingClientRect();
+      const label = node.closest('.field')?.querySelector('label')?.innerText?.trim() || node.placeholder || node.tagName;
+      return { label, top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width) };
+    });
+    const footerCoveredInputs = footerRect
+      ? inputs.filter((i) => i.bottom > footerRect.top + 4 && i.top < footerRect.bottom - 4)
+      : [];
+    return {
+      missing: false,
+      rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height), bottom: Math.round(rect.bottom) },
+      clientW,
+      clientH,
+      modalScrollHeight: modal.scrollHeight,
+      modalClientHeight: modal.clientHeight,
+      overlayScrollHeight: overlay ? overlay.scrollHeight : null,
+      footer: footerRect ? { top: Math.round(footerRect.top), bottom: Math.round(footerRect.bottom), height: Math.round(footerRect.height) } : null,
+      footerCoveredInputs,
+      text: modal.innerText.slice(0, 2400),
+      clipped: clipped.slice(0, 25),
+    };
+  });
+}
+
+async function capture(page, name) {
+  const shot = `${OUT}/${name}.png`;
+  await page.screenshot({ path: shot, fullPage: true });
+  result.screenshots.push(shot);
+  const metrics = await inspectModal(page);
+  result.metrics[name] = metrics;
+  if (metrics.missing) fail(`${name}: modal missing`, metrics);
+  if (metrics.clipped?.length) fail(`${name}: modal has clipped/overflowing content`, metrics);
+  if (metrics.footerCoveredInputs?.length) fail(`${name}: sticky footer covers input fields`, metrics);
+}
+
+async function runViewport(browser, name, width, height) {
+  const page = await browser.newPage({ viewport: { width, height }, ignoreHTTPSErrors: true });
+  page.on('console', (m) => { if (m.type() === 'error') result.consoleErrors.push(`${name}: ${m.text()}`); });
+  page.on('pageerror', (e) => result.consoleErrors.push(`${name}: pageerror ${e.message}`));
+  try {
+    await login(page);
+    for (const item of [
+      ['add-model', 'models', () => page.evaluate(() => openRouteModal())],
+      ['add-provider', 'providers', () => page.evaluate(() => openProviderModal())],
+      ['new-team', 'teams', () => page.evaluate(() => openTeamModal())],
+      ['new-key', 'keys', () => page.evaluate(() => openKeyModal())],
+    ]) {
+      const [suffix, view, open] = item;
+      await nav(page, view);
+      await open();
+      await page.locator('.modal').waitFor({ state: 'visible', timeout: 7000 });
+      await capture(page, `${name}-${suffix}`);
+      await resetModal(page);
+    }
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+async function main() {
+  if (!ADMIN) { fail('BRIGHTO_ADMIN_KEY is required'); return; }
+  const launch = { headless: true };
+  if (EXECUTABLE) launch.executablePath = EXECUTABLE;
+  const browser = await chromium.launch(launch);
+  try {
+    await runViewport(browser, 'desktop', 1440, 1000);
+    await runViewport(browser, 'mobile', 390, 844);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+  if (result.consoleErrors.length) fail('console errors during modal audit', { consoleErrors: result.consoleErrors });
+}
+
+await main();
+result.result = result.failures.length ? 'FAIL' : 'PASS';
+await writeFile(`${OUT}/summary.json`, JSON.stringify(result, null, 2));
+console.log(JSON.stringify(result, null, 2));
+process.exit(result.result === 'PASS' ? 0 : 1);

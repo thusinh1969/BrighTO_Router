@@ -209,13 +209,16 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 .modal{background:var(--panel);border:1px solid var(--border);border-radius:20px;width:100%;max-width:580px;
   padding:26px;box-shadow:0 30px 80px rgba(0,0,0,.6);max-height:calc(100vh - 84px);overflow:auto}
 .modal h3{margin:0 0 16px;font-size:18px;font-weight:800}
+.modal .hint{color:var(--muted);font-size:12.5px;margin:6px 0 12px;line-height:1.45}
+.modal .field{margin-bottom:13px}
 .route-modal{max-width:760px!important}
-.wizard-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:-2px 0 18px}
+.wizard-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:-2px 0 16px}
 .wizard-step{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:10px 12px;color:var(--muted);font-size:12px}
 .wizard-step b{display:block;color:var(--text);font-size:12.5px;margin-bottom:2px}
 .section-title{margin:18px 0 8px;color:var(--accent-text);font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .form-grid .field{margin-bottom:0}
+.route-model-grid{grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);align-items:end;margin-bottom:13px}
 .modal .actions{display:flex;justify-content:flex-end;gap:10px;margin:22px -26px -26px;padding:16px 26px;background:linear-gradient(180deg,rgba(15,23,42,.82),var(--panel));border-top:1px solid var(--border);position:sticky;bottom:-26px;z-index:2;border-radius:0 0 20px 20px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .chip{display:flex;align-items:center;gap:7px;background:#111827;border:1px solid var(--border2);border-radius:99px;
@@ -289,7 +292,13 @@ table.models-table td:first-child .cell-main,table.conn-table td:first-child .ce
 @media(max-width:820px){
   .login-shell{grid-template-columns:1fr;max-width:480px}
   .login-copy{display:none}
-  .wizard-steps,.form-grid,.user-hero{grid-template-columns:1fr}
+  .wizard-steps,.form-grid,.route-model-grid,.user-hero{grid-template-columns:1fr}
+  .modal{padding:20px;max-height:none;overflow:visible}
+  .modal .actions{position:static;bottom:auto;margin:18px -20px -20px;padding:14px 20px;flex-wrap:wrap}
+  .modal .actions .btn{flex:1 1 120px}
+  .model-picker-row{flex-wrap:wrap!important}
+  .model-picker-row input{flex:1 1 100%!important}
+  .model-picker-row .btn{width:100%}
   .hamburger{display:inline-flex}
   .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s}
   .sidebar.open{transform:none}
@@ -1030,14 +1039,16 @@ function openRouteModal(route){
   }
 
   m.appendChild(el("div","section-title","Model"));
+  var modelGrid=el("div","form-grid route-model-grid");
   var f1=el("div","field"); f1.appendChild(el("label",null,"Provider model"));
-  var row=el("div","row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
+  var row=el("div","row model-picker-row"); row.style.gap="6px"; row.style.flexWrap="nowrap";
   var ms=el("input"); ms.style.flex="1"; ms.placeholder="Load models to pick one, or type a name"; ms.value=route.provider_model_name||"";
   var loadBtn=el("button","btn sm","Load models");
-  row.appendChild(ms); row.appendChild(loadBtn); f1.appendChild(row); m.appendChild(f1);
+  row.appendChild(ms); row.appendChild(loadBtn); f1.appendChild(row); modelGrid.appendChild(f1);
 
   var f=el("div","field"); f.appendChild(el("label",null,"Public model name (shown to clients)"));
-  var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi); m.appendChild(f);
+  var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi); modelGrid.appendChild(f);
+  m.appendChild(modelGrid);
   ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; clearTest(""); };
 
   var stat=el("p","hint"); m.appendChild(stat);
