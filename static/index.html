@@ -611,7 +611,8 @@ function renderModels(c){
       else { statusTxt="Disabled manually"; statusKind="off"; }
       st.appendChild(pill(statusTxt, statusKind));
       tr.appendChild(st);
-      tr.appendChild(el("td",null,r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ")));
+      var providerName=r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ");
+      var pv=el("td"); var pvw=el("span","truncate",providerName||"—"); pvw.title=providerName||""; pv.appendChild(pvw); tr.appendChild(pv);
       var pm=el("td","mono"); var pmw=el("span","truncate",r.provider_model_name||"—"); pmw.title=r.provider_model_name||""; pm.appendChild(pmw); tr.appendChild(pm);
       tr.appendChild(el("td",null,r.auth_mode||"—"));
       tr.appendChild(el("td","num",r.context_tokens!=null?fmt(r.context_tokens):"—"));
