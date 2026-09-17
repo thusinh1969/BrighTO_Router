@@ -83,9 +83,9 @@ async function main() {
     await page.getByRole('button', { name: 'Add model' }).click({ force: true });
     await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
     const saveEnabled = page.getByRole('button', { name: 'Save enabled' });
-    const saveDisabled = page.getByRole('button', { name: 'Save disabled' });
+    const saveDisabled = page.getByRole('button', { name: 'Save draft' });
     if (await saveEnabled.isDisabled()) pass('gating', 'Save enabled disabled before test'); else fail('gating', 'Save enabled should be disabled before test');
-    if (await saveDisabled.isEnabled()) pass('gating', 'Save disabled available without test'); else fail('gating', 'Save disabled should be available');
+    if (await saveDisabled.isEnabled()) pass('gating', 'Save draft available without test'); else fail('gating', 'Save draft should be available');
     const providerOptions = await modalField(page, 'Provider').locator('option').evaluateAll((opts) => opts.map((o) => ({ value: o.value, text: o.textContent || '', disabled: o.disabled })));
     const geminiOption = providerOptions.find((o) => o.value === 'gemini');
     const metaMuseOption = providerOptions.find((o) => o.value === 'meta-muse');

@@ -198,9 +198,9 @@ async function capture(page, name) {
     await verifyModelPickerPreview(page, name);
     if (!/Optional limits and pricing|fallback provider/i.test(metrics.text || '')) fail(`${name}: Add model modal missing optional limits/pricing drawer`, metrics);
     if (/Fallback backend/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes backend jargon`, metrics);
-    if (!/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must make disabled save explicit`, metrics);
+    if (!/Save draft/i.test(metrics.text || '')) fail(`${name}: Add model modal must expose a disabled draft save action`, metrics);
     if (!/Test connection to enable Save enabled/i.test(metrics.text || '')) fail(`${name}: Add model modal must explain the Save enabled gate`, metrics);
-    if (/Save draft/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes ambiguous Save draft action`, metrics);
+    if (/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes technical Save disabled wording`, metrics);
     if (name.startsWith('mobile-')) {
       const steps = metrics.wizardSteps || [];
       const firstRow = steps.filter((r) => steps[0] && Math.abs(r.y - steps[0].y) <= 4);
