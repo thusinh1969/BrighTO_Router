@@ -53,7 +53,7 @@ openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
   -subj "/CN=<SERVER_IP>" \
   -addext "subjectAltName=IP:<SERVER_IP>,DNS:localhost,IP:127.0.0.1"
 
-chmod 600 ssl/privkey.pem
+chmod 644 ssl/privkey.pem
 chmod 644 ssl/fullchain.pem
 ```
 
@@ -63,7 +63,7 @@ For a real domain, copy your real certificate files instead:
 mkdir -p ssl
 cp /path/to/fullchain.pem ssl/fullchain.pem
 cp /path/to/privkey.pem ssl/privkey.pem
-chmod 600 ssl/privkey.pem
+chmod 644 ssl/privkey.pem
 chmod 644 ssl/fullchain.pem
 ```
 

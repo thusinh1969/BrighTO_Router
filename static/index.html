@@ -2050,7 +2050,7 @@ async function renderUsage(c,seq){
       function fld(lbl, input){ var box=el("div","field"); box.appendChild(el("label",null,lbl)); box.appendChild(input); row.appendChild(box); }
       var mi=el("input"); mi.placeholder="model name"; mi.value=usageFilter.model; fld("Model",mi);
       var st=el("select"); [["all","All statuses"],["success","Success"],["error","Error"]].forEach(function(s){var o=el("option",null,s[1]);o.value=s[0];st.appendChild(o);}); st.value=usageFilter.status; fld("Status",st);
-      var bk=el("select"); var bo=el("option",null,"All providers"); bo.value=""; bk.appendChild(bo); backends.forEach(function(b){var o=el("option",null,b.name);o.value=b.id;bk.appendChild(o);}); bk.value=usageFilter.backend; fld("Provider",bk);
+      var bk=el("select"); var bo=el("option",null,"All providers"); bo.value=""; bk.appendChild(bo); backends.forEach(function(b){var o=el("option",null,providerDisplayName(b.name));o.title=b.name;o.value=b.id;bk.appendChild(o);}); bk.value=usageFilter.backend; fld("Provider",bk);
       var ts=el("select"); var to=el("option",null,"All teams"); to.value=""; ts.appendChild(to); teams.forEach(function(tm){var o=el("option",null,tm.name);o.value=tm.id;ts.appendChild(o);}); ts.value=usageFilter.team; fld("Team",ts);
       var ks=el("select"); var ko=el("option",null,"All keys"); ko.value=""; ks.appendChild(ko); keys.forEach(function(k){var o=el("option",null,k.prefix);o.value=k.id;ks.appendChild(o);}); ks.value=usageFilter.key; fld("Key",ks);
       var fr=el("input"); fr.type="date"; fr.value=usageFilter.from; fld("From",fr);
@@ -2272,7 +2272,8 @@ function providerDisplayName(raw){
   var hit=(catalog||[]).find(function(e){
     var label=String(e.label||"").trim();
     var key=String(e.key||"").trim();
-    return (label && full===label) || (label && full.toLowerCase().endsWith("-"+label.toLowerCase())) || (key && full.toLowerCase().endsWith("-"+key.toLowerCase()));
+    var low=full.toLowerCase();
+    return (key && low===key.toLowerCase()) || (label && low===label.toLowerCase()) || (label && low.endsWith("-"+label.toLowerCase())) || (key && low.endsWith("-"+key.toLowerCase()));
   });
   if(hit && hit.label) return hit.label;
   var common=["Custom LLM","OpenAI","Anthropic","Gemini","DeepSeek","Kimi","Qwen","Z.AI","OpenRouter","Meta Muse"];
@@ -2314,8 +2315,8 @@ function copyText(text,label){
 }
 function copyIconBtn(text){ var b=el("button","btn sm ghost icon-btn"); b.title="Copy"; b.setAttribute("aria-label","Copy"); b.dataset.copy=text; b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'; b.onclick=function(){copyText(text,"Copied");}; return b; }
 function copyKeyBtn(text){ var b=copyIconBtn(text); b.classList.add("copy-key-btn"); b.title="Copy API key"; b.setAttribute("aria-label","Copy API key"); b.appendChild(el("span",null,"Copy key")); return b; }
-function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom"}; return m[p]||p||"openai_chat"; }
-var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom OpenAI-compatible"]];
+function protoLabel(p){ var m={"openai_chat":"OpenAI Chat","openai_completions":"Completions","openai_embeddings":"Embeddings","anthropic_messages":"Anthropic Messages","local_openai_chat":"Local Chat","custom_openai_chat":"Custom LLM"}; return m[p]||p||"openai_chat"; }
+var PROTOCOLS=[["openai_chat","OpenAI Chat Completions"],["openai_completions","OpenAI Completions"],["openai_embeddings","OpenAI Embeddings"],["anthropic_messages","Anthropic Messages"],["local_openai_chat","Local OpenAI-compatible Chat"],["custom_openai_chat","Custom LLM"]];
 function catEntry(key){ return (catalog||[]).find(function(e){return e.key===key;}) || {key:key,label:key,base_url:"",dialect:"openai",key_env:"",key_set:false}; }
 function isLocalUrl(u){ var h=(u||"").toLowerCase(); h=h.split("://")[1]||h; h=h.split("/")[0].split(":")[0]; return h==="127.0.0.1"||h==="localhost"||h==="::1"||h.startsWith("10.")||h.startsWith("192.168.")||h.startsWith("172.16.")||h.startsWith("172.17.")||h.startsWith("172.18.")||h.startsWith("172.19.")||/^172\.(2[0-9]|3[0-1])\./.test(h); }
 

@@ -5,7 +5,7 @@ name: brighto-airouter
 services:
   router:
     image: ${BRIGHTO_ROUTER_IMAGE:-thusinh1969/brighto_airouter:v1}
-    pull_policy: missing
+    pull_policy: always
     network_mode: host                 # lowest local overhead; see README production notes
     env_file: .env
     environment:
