@@ -309,8 +309,14 @@ PORTAL_STATIC_FILE=/app/static/index.html
 
 The open-source edition focuses on the fast router, PostgreSQL-backed control plane, local/team setup, provider templates, the Portal, and transparent benchmark artifacts.
 
-Enterprise features belong in a separate edition or service package:
+The first enterprise priority is a production Kubernetes implementation for very large deployments. The core architecture is already designed for that path: router instances are stateless, configuration is reloaded from PostgreSQL, and traffic can be spread across many pods behind a load balancer. With a properly sized Kubernetes cluster, managed or highly available PostgreSQL, provider capacity planning, and standard observability, the same architecture can scale toward serving millions of customers without a major rewrite.
 
+Enterprise work will focus on packaging and operating that architecture professionally for teams serving very large traffic:
+
+- Production Kubernetes manifests and Helm-style configuration.
+- Horizontal router scaling across many pods.
+- PostgreSQL high-availability guidance or managed PostgreSQL integration.
+- Rolling upgrades with zero planned downtime.
 - SSO: Single Sign-On through OIDC or SAML.
 - RBAC: role-based admin permissions.
 - Organization and project hierarchy.
@@ -339,4 +345,10 @@ Review generated files under `bench/results/<timestamp>/` before turning a candi
 
 ## License
 
-See [LICENSE](LICENSE).
+BrighTO-Router is released under the Apache License 2.0. See [LICENSE](LICENSE).
+
+---
+
+Copyright © 2026 **Nguyễn Anh Nguyên**, **BrighTO AI**.
+
+Created and maintained by Nguyễn Anh Nguyên. Contact: `nguyen@hatto.com`.
