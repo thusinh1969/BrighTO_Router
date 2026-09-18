@@ -150,19 +150,23 @@ The installer runs migrations and seeds provider templates against that database
 
 ## Kubernetes
 
-Local starter with an in-cluster development PostgreSQL:
+Kubernetes is optional. Use it when your team already has a cluster, wants multiple router pods, or needs rolling upgrades. For a normal team trial, Docker Compose is simpler.
+
+Local single-node starter with an in-cluster development PostgreSQL:
 
 ```bash
 ./start.sh install --k8s --replicas 2
 ```
 
-Production-style Kubernetes with an existing PostgreSQL database:
+Production-style single-node or multi-node Kubernetes with an existing PostgreSQL database:
 
 ```bash
-./start.sh install --database-url 'postgres://user:pass@db-host:5432/brighto_router' --k8s --replicas 2
+./start.sh install --database-url 'postgres://user:pass@db-host:5432/brighto_router' --k8s --replicas 3
 ```
 
 The Kubernetes command creates or updates the namespace, secret, config map, deployment, and service. With local K8s PostgreSQL, it waits for PostgreSQL and runs migrations/seed inside the cluster before starting the router. With external PostgreSQL, it runs migrations/seed against the supplied database URL and skips the development PostgreSQL manifest.
+
+For real multi-node use, do not use `k8s/postgres.dev.yaml`; it is a temporary development database. Use managed PostgreSQL or your own highly available PostgreSQL, put the router Service behind your Ingress or load balancer, and choose replicas based on traffic. The open-source manifests stay small on purpose. Enterprise packaging can add Helm-style configuration, autoscaling, pod disruption budgets, network policy, and production ingress templates without changing the router core.
 
 ## Portal UI development
 

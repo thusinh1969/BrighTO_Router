@@ -208,6 +208,20 @@ Install variants:
 ./start.sh install --database-url 'postgres://user:pass@db-host:5432/brighto_router' --k8s --replicas 2
 ```
 
+### Optional Kubernetes scale-out
+
+Most teams should start with Docker Compose. The Rust router is fast enough that one well-sized node can handle serious traffic while staying simple to operate. Kubernetes is optional for teams that already run Kubernetes or need operational scale-out.
+
+If `kubectl` already points to a single-node or multi-node cluster, BrighTO-Router can install router replicas with one command:
+
+```bash
+./start.sh install --database-url 'postgres://user:pass@db-host:5432/brighto_router' --k8s --replicas 3
+```
+
+Use an external or managed PostgreSQL database for any real multi-node deployment. The included `k8s/postgres.dev.yaml` is only a local development starter and uses temporary pod storage. The router pods are stateless; they reload config from PostgreSQL, enforce policy from an in-memory snapshot, and can sit behind your Kubernetes Service, Ingress, or load balancer.
+
+Why use Kubernetes if the router is already very fast? Availability and operations: multiple pods survive one pod/node restart, rolling upgrades avoid planned downtime, long streams from many developers can be spread across pods, and traffic can grow without changing the application endpoint.
+
 More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROVIDERS.md), [k8s/README.md](k8s/README.md).
 
 ## What teams get in V1.0
