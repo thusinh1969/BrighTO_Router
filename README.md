@@ -1,10 +1,17 @@
-# BrighTO-Router — King of sub-millisecond large-context LLM routing: **0.958 ms p99 router overhead at 200k-token mock pass-through, 50 concurrent requests, Intel Xeon Gold 6148 release artifact**.
+# BrighTO-Router
 
-**A free, self-hosted LLM router built for three things: ultra-fast pass-through, simple architecture, and scale from one team to very large customer traffic.**
+**The ultra-fast, self-hosted LLM router for teams that want speed, control, and simple operations.**
 
-BrighTO-Router is built for a simple job: sit between your applications and your model providers, forward requests with very low overhead, enforce team controls, and record usage. The request path is Rust. PostgreSQL is the only required production datastore for V1.0. The router instances are stateless, so production scaling is straightforward: run more router pods behind a load balancer and keep PostgreSQL as the shared source of truth. There is no Python gateway process and no separate front-end build system.
+BrighTO-Router gives your team one clean endpoint for OpenAI-compatible, Anthropic-compatible, cloud, and local models. It is built in Rust for low-overhead pass-through, uses PostgreSQL as the single durable store, and scales by running stateless router replicas behind a load balancer.
 
-Use BrighTO-Router when you want a practical open-source gateway that your team can install, operate, and benchmark without a large platform stack.
+| V1.0 proof point | Result |
+|---|---:|
+| 200k-token mock pass-through, 50 concurrent requests | `0.958 ms p99 router overhead` |
+| 50k-token mock pass-through, 50 concurrent requests | `0.707 ms p99 router overhead` |
+| 1k-token mock pass-through, 50 concurrent requests | `0.418 ms p99 router overhead` |
+| Router memory during the release artifact | `26.12 MB max RSS` |
+
+Measured on Intel Xeon Gold 6148 using the same-machine benchmark artifact at `bench/results/20260917-025033/summary.json`.
 
 Official repository: `https://github.com/thusinh1969/Brighto_AIRouter`
 
@@ -31,9 +38,9 @@ For V1.0, the product promise is deliberately narrow and strong: Rust on the req
 
 BrighTO-Router is not trying to win by listing hundreds of integrations. It is trying to be the router a serious team can understand, run, audit, and tune.
 
-## Benchmark proof at a glance
+## Benchmark proof
 
-Release artifact: `bench/results/20260917-025033/summary.json` on Intel Xeon Gold 6148. Method: same client, same machine, same mock backend, direct call versus router call.
+Method: same client, same machine, same mock backend, direct call versus router call. Release artifact: `bench/results/20260917-025033/summary.json` on Intel Xeon Gold 6148.
 
 | Payload | Concurrency | p50 router overhead | p99 router overhead | Streaming first-byte delta | Router memory max |
 |---|---:|---:|---:|---:|---:|
