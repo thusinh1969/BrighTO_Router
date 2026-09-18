@@ -903,11 +903,13 @@ function userCallPanel(me,logs){
   var endpoint=location.origin+"/v1/chat/completions";
   var firstModel=(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length)?me.key.allowed_models[0]:((logs&&logs.length&&logs[0].model)||"<model>");
   var curlBody=JSON.stringify({model:firstModel,messages:[{role:"user",content:"Reply OK"}],max_tokens:16},null,2);
+  var bearerKey=authKey||"<your API key>";
+  var authHeader="Authorization: Bearer "+bearerKey;
   var cont=" "+String.fromCharCode(92);
   var curl=[
     "BRIGHTO_ENDPOINT="+shQuote(endpoint),
     "curl -k \"$BRIGHTO_ENDPOINT\""+cont,
-    "  -H "+shQuote("Authorization: Bearer <your API key>")+cont,
+    "  -H "+shQuote(authHeader)+cont,
     "  -H "+shQuote("Content-Type: application/json")+cont,
     "  -d "+shQuote(curlBody)
   ].join("\n");
@@ -926,7 +928,7 @@ function userCallPanel(me,logs){
   item("Method","POST");
   item("Base URL",location.origin);
   item("Endpoint path","/v1/chat/completions");
-  item("Auth","Authorization: Bearer <your API key>");
+  item("Auth",authHeader);
   var allowed=(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length)?me.key.allowed_models.join(", "):"All enabled routes";
   item("Model scope",allowed);
   p.appendChild(grid);

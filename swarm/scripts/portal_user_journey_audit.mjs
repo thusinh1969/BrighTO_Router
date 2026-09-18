@@ -162,7 +162,7 @@ async function runViewport(browser, seed, name, width, height) {
       if (dash.visibleNav.includes(forbidden)) fail(`${name}: user nav exposes admin menu ${forbidden}`, dash);
     }
     if (!/Your API access and usage/i.test(dash.desc)) fail(`${name}: user dashboard topbar description is not role-aware`, dash);
-    if (!/Call endpoint|POST|\/v1\/chat\/completions|Authorization: Bearer <your API key>/i.test(dash.content)) fail(`${name}: user dashboard missing call endpoint quick start`, dash);
+    if (!/Call endpoint|POST|\/v1\/chat\/completions/i.test(dash.content) || !dash.content.includes('Authorization: Bearer ' + seed.key)) fail(`${name}: user dashboard missing runnable call endpoint quick start with the signed-in key`, dash);
     if (/too short for stable speed/i.test(dash.content) && !/TOKENS\/SEC\s+Too short/i.test(dash.content)) fail(`${name}: user dashboard must show Too short instead of an inflated or blank Tokens/sec value for sub-1s samples`, dash);
     if (!dash.content.includes(seed.model)) fail(`${name}: user dashboard missing allowed/used model`, dash);
     if (!dash.allowedModels || dash.allowedModels.length < 1) fail(`${name}: user dashboard should render allowed models as a readable card`, dash);
@@ -174,14 +174,14 @@ async function runViewport(browser, seed, name, width, height) {
     const curlButton = (dash.callButtons || []).find((b) => b.text === 'Copy cURL');
     const endpointButton = (dash.callButtons || []).find((b) => b.text === 'Copy endpoint');
     if (!endpointButton || !endpointButton.copy.includes('/v1/chat/completions')) fail(`${name}: user call endpoint copy URL action missing`, dash);
-    if (!curlButton || !curlButton.copy.includes('/v1/chat/completions') || !curlButton.copy.includes('Authorization: Bearer <your API key>') || !curlButton.copy.includes(seed.model) || !curlButton.copy.includes('Reply OK')) {
-      fail(`${name}: user call endpoint copy cURL action is incomplete`, { callButtons: dash.callButtons, model: seed.model });
+    if (!curlButton || !curlButton.copy.includes('/v1/chat/completions') || !curlButton.copy.includes('Authorization: Bearer ' + seed.key) || curlButton.copy.includes('<your API key>') || !curlButton.copy.includes(seed.model) || !curlButton.copy.includes('Reply OK')) {
+      fail(`${name}: user call endpoint copy cURL action is incomplete or still uses an API-key placeholder`, { callButtons: dash.callButtons, model: seed.model, keyPrefix: seed.prefix });
     }
     const clippedCallCodes = (dash.callCodeStats || []).filter((c) => c.scrollWidth > c.clientWidth + 4 || c.whiteSpace === 'nowrap' || c.textOverflow === 'ellipsis');
     if (clippedCallCodes.length) fail(`${name}: user call endpoint code is clipped`, { clippedCallCodes, dash });
     const curlPreview = (dash.curlPreviews || [])[0];
-    if (!curlPreview || !curlPreview.text.includes('/v1/chat/completions') || !curlPreview.text.includes('Authorization: Bearer <your API key>') || !curlPreview.text.includes(seed.model) || !/Reply OK/i.test(curlPreview.text)) {
-      fail(`${name}: user dashboard should show a ready cURL preview, not only a copy button`, { curlPreview, dash });
+    if (!curlPreview || !curlPreview.text.includes('/v1/chat/completions') || !curlPreview.text.includes('Authorization: Bearer ' + seed.key) || curlPreview.text.includes('<your API key>') || !curlPreview.text.includes(seed.model) || !/Reply OK/i.test(curlPreview.text)) {
+      fail(`${name}: user dashboard should show a ready cURL preview with the signed-in key, not only a placeholder`, { curlPreview, dash, keyPrefix: seed.prefix });
     }
     if (curlPreview && (curlPreview.whiteSpace !== 'pre-wrap' || !/auto|scroll|hidden|visible/i.test(curlPreview.overflowX || ''))) fail(`${name}: user cURL preview must keep command formatting readable`, { curlPreview, dash });
     if (mobile && curlPreview && (curlPreview.height > 235 || !/auto|scroll/i.test(curlPreview.overflowY || '') || curlPreview.scrollHeight <= curlPreview.clientHeight)) fail(`${name}: mobile user cURL preview should be readable but height-limited with internal scroll`, { curlPreview, dash });
