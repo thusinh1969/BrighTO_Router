@@ -447,6 +447,7 @@ async function inspectPage(page, label) {
       visibleUsageFilterFields: [...document.querySelectorAll('#content .usage-filter-panel .filter-grid input, #content .usage-filter-panel .filter-grid select')].filter((n) => n.offsetParent !== null).length,
       visibleButtons: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => b.innerText.trim()).filter(Boolean).slice(0, 30),
       visibleButtonDetails: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => ({ text: b.innerText.trim(), copy: b.dataset.copy || '', title: b.title || '' })).filter((b) => b.text).slice(0, 40),
+      providerPageActionRects: [...document.querySelectorAll('#content .providers-actions > button, #content .providers-actions > select')].map((n) => { const r = n.getBoundingClientRect(); return { tag: n.tagName, text: (n.innerText || n.textContent || n.value || '').trim(), x: Math.round(r.x), y: Math.round(r.y), centerY: Math.round(r.y + r.height / 2), width: Math.round(r.width), height: Math.round(r.height) }; }),
     };
   });
 }
@@ -580,6 +581,12 @@ async function runViewport(browser, name, width, height) {
       if (!advancedAction || !/Optional/i.test(advancedAction.title || '')) fail(`${name}/${view}: Provider connection setup should be clearly marked as optional/advanced`, metrics);
       if ((metrics.visibleButtons || []).includes('Prepare connection')) fail(`${name}/${view}: Providers page still promotes Prepare connection as a primary setup action`, metrics);
       if (/upstream endpoint/i.test(metrics.contentText || '')) fail(`${name}/${view}: Providers page should use plain provider endpoint wording instead of upstream jargon`, metrics);
+      if (!mobile) {
+        const rects = metrics.providerPageActionRects || [];
+        const firstCenterY = rects[0]?.centerY;
+        const splitRows = rects.length >= 3 && rects.some((r) => Math.abs(r.centerY - firstCenterY) > 4);
+        if (rects.length < 3 || splitRows) fail(`${name}/${view}: desktop Providers actions should fit on one row`, { rects, metrics });
+      }
     }
     if (view === 'providers' && !mobile) {
       const badProviderList = (metrics.providerListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
