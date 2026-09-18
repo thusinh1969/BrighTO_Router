@@ -573,6 +573,14 @@ async function runViewport(browser, name, width, height) {
     }
     const redDisabledDanger = (metrics.disabledDangerButtons || []).filter((b) => /248, 113, 113/.test(b.color) || /248, 113, 113/.test(b.borderColor));
     if (redDisabledDanger.length) fail(`${name}/${view}: disabled destructive actions still look clickable/red`, { redDisabledDanger, metrics });
+    if (view === 'providers') {
+      const addModelAction = (metrics.visibleButtonDetails || []).find((b) => b.text === 'Add model');
+      const advancedAction = (metrics.visibleButtonDetails || []).find((b) => b.text === 'Advanced connection');
+      if (!addModelAction || !/Recommended flow/i.test(addModelAction.title || '')) fail(`${name}/${view}: Providers should lead admins to Add model as the recommended flow`, metrics);
+      if (!advancedAction || !/Optional/i.test(advancedAction.title || '')) fail(`${name}/${view}: Provider connection setup should be clearly marked as optional/advanced`, metrics);
+      if ((metrics.visibleButtons || []).includes('Prepare connection')) fail(`${name}/${view}: Providers page still promotes Prepare connection as a primary setup action`, metrics);
+      if (/upstream endpoint/i.test(metrics.contentText || '')) fail(`${name}/${view}: Providers page should use plain provider endpoint wording instead of upstream jargon`, metrics);
+    }
     if (view === 'providers' && !mobile) {
       const badProviderList = (metrics.providerListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
       if (badProviderList.length || !(metrics.providerListStats || []).length) fail(`${name}/${view}: desktop Providers should render as compact provider cards, not a wide sparse table`, { badProviderList, metrics });
