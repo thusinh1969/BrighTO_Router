@@ -440,9 +440,11 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 /* ---------- Charts ---------- */
 .chart-wrap{width:100%;max-width:100%;min-width:0;overflow-x:auto}
 .chart-wrap svg{display:block}
-.legend{display:flex;flex-wrap:wrap;gap:8px 10px;margin-top:12px;min-width:0;max-width:100%}
-.legend span{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);max-width:min(100%,420px);min-width:0;line-height:1.35;background:rgba(15,23,42,.52);border:1px solid rgba(51,65,85,.55);border-radius:999px;padding:4px 9px}
-.legend i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:0 0 auto}
+.legend{display:flex;flex-wrap:nowrap;gap:8px;margin:4px 0 12px;min-width:0;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:2px 1px 6px;scrollbar-width:thin;scrollbar-color:rgba(125,211,252,.45) transparent}
+.legend::-webkit-scrollbar{height:6px}
+.legend::-webkit-scrollbar-thumb{background:rgba(125,211,252,.35);border-radius:999px}
+.legend span{display:inline-flex;align-items:flex-start;gap:7px;font-size:11.7px;color:var(--muted);width:max-content;max-width:min(360px,72vw);min-width:150px;line-height:1.25;background:rgba(15,23,42,.52);border:1px solid rgba(51,65,85,.55);border-radius:12px;padding:6px 9px;flex:0 0 auto}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:0 0 auto;margin-top:2px}
 .legend-label{display:block;min-width:0;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;word-break:break-word;font-style:normal;flex:1 1 auto}
 
 .empty{color:var(--faint);text-align:center;padding:40px 16px;font-size:13px}
@@ -517,9 +519,10 @@ body.nav-open{overflow:hidden}
   .topbar{flex-direction:column;align-items:flex-start;margin-bottom:16px}
   .topbar h2{font-size:24px}
   .ops-hero,.dash-split,.ops-status-row{grid-template-columns:1fr;max-width:100%;min-width:0}
-  .ops-primary,.ops-side,.focus-row,.request-card,.dash-split>*,.chart-wrap,.legend{max-width:100%;min-width:0;overflow:hidden}
-  .legend{display:grid;grid-template-columns:1fr;gap:7px}
-  .legend span{width:100%;max-width:none;min-width:0;justify-content:flex-start;border-radius:10px;padding:5px 8px}
+  .ops-primary,.ops-side,.focus-row,.request-card,.dash-split>*{max-width:100%;min-width:0;overflow:hidden}
+  .chart-wrap{max-width:100%;min-width:0;overflow-x:auto}
+  .legend{max-width:100%;min-width:0;display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:7px}
+  .legend span{width:max-content;max-width:min(300px,84vw);min-width:132px;justify-content:flex-start;border-radius:10px;padding:5px 8px}
   .legend-label,.focus-title,.request-model{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;overflow-wrap:anywhere!important;word-break:break-word!important}
   .focus-row{grid-template-columns:minmax(0,1fr);align-items:start}
   .focus-value{text-align:left;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
@@ -2183,10 +2186,11 @@ function chartBars(stats){
     if(total>0 && n<=14){ var vl=document.createElementNS("http://www.w3.org/2000/svg","text");vl.setAttribute("class","chart-value-label");vl.setAttribute("x",x+bw/2);vl.setAttribute("y",Math.max(padT+10,yT-7));vl.setAttribute("text-anchor","middle");vl.setAttribute("fill","#e2e8f0");vl.setAttribute("font-size","11");vl.setAttribute("font-weight","850");vl.textContent=fmtNum(total);svg.appendChild(vl); }
     if(n<=16||i%Math.ceil(n/14)===0){ var lb=document.createElementNS("http://www.w3.org/2000/svg","text");lb.setAttribute("x",x+bw/2);lb.setAttribute("y",H-8);lb.setAttribute("text-anchor","middle");lb.setAttribute("fill","#94a3b8");lb.setAttribute("font-size","10");lb.textContent=fmtDate(d).slice(5);svg.appendChild(lb); }
   });
-  var wrap=el("div","chart-wrap"); wrap.appendChild(svg);
+  var wrap=el("div","chart-wrap");
   var lg=el("div","legend");
   models.forEach(function(m,i){ var s=el("span"); s.title=m; var dot=el("i");dot.style.background=color(i); var label=nameNode("em","legend-label",m,44); s.appendChild(dot); s.appendChild(label); lg.appendChild(s); });
   wrap.appendChild(lg);
+  wrap.appendChild(svg);
   return wrap;
 }
 function fmtNum(v){ return fmt(v); }

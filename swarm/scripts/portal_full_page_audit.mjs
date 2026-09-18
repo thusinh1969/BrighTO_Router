@@ -148,6 +148,21 @@ async function inspectPage(page, label) {
         sampleBeforeDisplay: beforeStyle ? beforeStyle.display : '',
       };
     });
+    const legendContainerStats = [...document.querySelectorAll('#content .legend')].map((node) => {
+      const r = node.getBoundingClientRect();
+      const st = getComputedStyle(node);
+      return {
+        display: st.display,
+        flexWrap: st.flexWrap,
+        overflowX: st.overflowX,
+        overflowY: st.overflowY,
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+        scrollWidth: node.scrollWidth,
+        clientWidth: node.clientWidth,
+        itemCount: node.querySelectorAll('span').length,
+      };
+    });
     const legendStats = [...document.querySelectorAll('#content .legend span')].map((node) => ({
       text: (node.innerText || node.textContent || '').trim(),
       scrollWidth: node.scrollWidth,
@@ -248,6 +263,7 @@ async function inspectPage(page, label) {
       clientWidth: document.documentElement.clientWidth,
       contentText: text.slice(0, 1200),
       tableStats,
+      legendContainerStats,
       legendStats,
       chartValueLabels,
       chartDataBars,
@@ -513,6 +529,8 @@ async function runViewport(browser, name, width, height) {
     if (['dashboard', 'usage'].includes(view)) {
       const badLegendLabels = (metrics.primaryDataLabels || []).filter((l) => /legend-label/.test(l.className || '') && l.text && (/nowrap/i.test(l.whiteSpace) || /ellipsis/i.test(l.textOverflow) || l.scrollWidth > l.clientWidth + 4 || l.scrollHeight > l.clientHeight + 4));
       if (badLegendLabels.length) fail(`${name}/${view}: chart legend labels should wrap instead of truncating`, { badLegendLabels, metrics });
+      const badLegendContainers = (metrics.legendContainerStats || []).filter((l) => l.itemCount > 0 && (l.display !== 'flex' || !/auto|scroll/i.test(l.overflowX || '') || (!mobile && l.flexWrap !== 'nowrap') || l.height > (mobile ? 90 : 64)));
+      if (badLegendContainers.length) fail(`${name}/${view}: chart legend should be compact horizontal chips with controlled height`, { badLegendContainers, metrics });
     }
     if (['dashboard', 'usage'].includes(view) && (metrics.legendStats || []).length && !(metrics.chartValueLabels || []).some((l) => /^\d|[KMB]/.test(l.text))) {
       fail(`${name}/${view}: sparse chart bars need visible value labels`, metrics);
