@@ -85,6 +85,29 @@ openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-llm
 
 For providers that do not expose a compatible `/models` endpoint, type the provider model name manually and still use **Test connection** before saving enabled.
 
+## Test from the command line
+
+After saving a model route and creating a client API key, run one request with the helper script:
+
+```bash
+python3 test_router.py --router http://127.0.0.1:18080 --api-key lc-... --model <public-model-name> --text "Reply OK"
+```
+
+If you use the seeded local demo key, the script can read it from `.env`:
+
+```bash
+python3 test_router.py --model <public-model-name> --text "Reply OK"
+```
+
+Other quick modes:
+
+```bash
+python3 test_router.py --mode embeddings --model <public-embedding-route> --text "hello"
+python3 test_router.py --model <vision-model-route> --text "Describe this image." --image ./photo.jpg
+python3 test_router.py --model <audio-model-route> --text "Summarize this audio." --audio ./sample.wav
+```
+
+For self-signed HTTPS, add `--insecure`. Image and audio examples require a backend model that accepts OpenAI-style multimodal chat JSON.
 
 ## HTTPS with custom PEM files
 

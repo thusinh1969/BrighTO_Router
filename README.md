@@ -117,6 +117,36 @@ Open **Models & Routes → Add model** in the Portal.
 
 The provider API key belongs to the model route. Client applications do not receive provider keys. They call BrighTO-Router with a client API key issued from the **API Keys** screen.
 
+## Test a route from the command line
+
+Use `test_router.py` as the simplest client example. It reads `.env` by default, so a fresh local install can use the seeded demo client key. Pass `--api-key` when testing with a key created in the Portal.
+
+Text chat:
+
+```bash
+python3 test_router.py --model <public-model-name> --text "Reply OK in one short sentence."
+```
+
+Embeddings through an OpenAI-compatible embedding route:
+
+```bash
+python3 test_router.py --mode embeddings --model <public-embedding-route> --text "BrighTO embedding smoke test"
+```
+
+Image input through an OpenAI-style multimodal chat route:
+
+```bash
+python3 test_router.py --model <vision-model-route> --text "Describe this image." --image ./photo.jpg
+```
+
+Audio input through an OpenAI-style multimodal chat route:
+
+```bash
+python3 test_router.py --model <audio-model-route> --text "Summarize this audio." --audio ./sample.wav
+```
+
+For HTTPS with a self-signed certificate, add `--insecure`. The image and audio examples are JSON pass-through examples; the selected backend model must support that payload shape.
+
 ## What install creates
 
 `./start.sh install` creates `.env` from `.env.example`, starts PostgreSQL in Docker, runs migrations, seeds default records, pulls `thusinh1969/brighto_airouter:v1`, and starts the router.

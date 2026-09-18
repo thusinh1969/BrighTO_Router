@@ -9,6 +9,7 @@ COMPOSE_FILE_PATH="${COMPOSE_FILE_PATH:-$ROOT/docker-compose.yml}"
 ENV_FILE="$ROOT/.env"
 DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router"
 DEFAULT_ADMIN_KEY="brightoIsGreat@2026"
+DEFAULT_DEMO_CLIENT_KEY="lc-0123456789abcdef0123456789abcdef"
 DEFAULT_LISTEN_ADDR="0.0.0.0:18080"
 DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1'
 # Legacy defaults are kept only to upgrade old local .env files in place.
@@ -89,6 +90,12 @@ ensure_env_defaults() {
   fi
   if ! grep -q "^PROVIDER_CATALOG=" "$ENV_FILE"; then
     set_env_var PROVIDER_CATALOG "\"$DEFAULT_PROVIDER_CATALOG\""
+  fi
+  if ! grep -q "^BRIGHTO_ROUTER_API_KEY=" "$ENV_FILE"; then
+    set_env_var BRIGHTO_ROUTER_API_KEY "$DEFAULT_DEMO_CLIENT_KEY"
+  fi
+  if ! grep -q "^BRIGHTO_MODEL=" "$ENV_FILE"; then
+    set_env_var BRIGHTO_MODEL ""
   fi
   local env_key
   for env_key in OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY KIMI_API_KEY QWEN_API_KEY ZAI_API_KEY OPENROUTER_API_KEY META_MUSE_API_KEY CUSTOM_LLM_API_KEY; do

@@ -21,6 +21,27 @@ BEGIN
   SELECT 'Default Team', '{"period":"month","max_tokens":1000000,"per_model":{}}', TRUE
   WHERE NOT EXISTS (SELECT 1 FROM teams WHERE name = 'Default Team');
 
+  -- Local demo client key for first-run smoke tests and ./test_router.py.
+  -- Plaintext: lc-0123456789abcdef0123456789abcdef
+  -- Safe to rerun; disable or delete before shared/production use.
+  INSERT INTO api_keys (key_hash, key_prefix, team_id, owner, allowed_models, budget, rpm_limit, concurrency_limit, expires_at, enabled, key_secret)
+  SELECT
+    '4aa892925e0be64d70cad871e803913056f1a9be0c9f06cb558870a8f2e347a4',
+    'lc-01234',
+    t.id,
+    'Local demo key',
+    '[]',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    TRUE,
+    'lc-0123456789abcdef0123456789abcdef'
+  FROM (SELECT id FROM teams WHERE name = 'Default Team' ORDER BY id LIMIT 1) t
+  WHERE NOT EXISTS (
+    SELECT 1 FROM api_keys WHERE key_hash = '4aa892925e0be64d70cad871e803913056f1a9be0c9f06cb558870a8f2e347a4'
+  );
+
   FOR item IN SELECT * FROM jsonb_array_elements(providers) LOOP
     IF NOT EXISTS (SELECT 1 FROM backends WHERE name = item->>'name') THEN
       INSERT INTO backends (name, base_url, api_key_ref, weight, max_inflight, format, enabled)
