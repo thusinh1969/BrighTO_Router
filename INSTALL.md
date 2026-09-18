@@ -5,8 +5,8 @@ This file is the operational install guide. The short version is in [README.md](
 ## Local first run
 
 ```bash
-git clone https://github.com/thusinh1969/Brighto_AIRouter.git
-cd Brighto_AIRouter
+git clone https://github.com/thusinh1969/BrighTO_Router.git
+cd BrighTO_Router
 ./start.sh install
 ./start.sh status
 ```
