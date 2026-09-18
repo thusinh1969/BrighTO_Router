@@ -95,6 +95,29 @@ async function inspectModal(page) {
       return { label, top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width), visible: node.offsetParent !== null };
     });
     const visibleInputLabels = inputs.filter((i) => i.visible).map((i) => i.label);
+    const modelPickerRows = [...modal.querySelectorAll('.model-picker-row')].map((node) => {
+      const r = node.getBoundingClientRect();
+      const st = getComputedStyle(node);
+      const input = node.querySelector('input');
+      const button = node.querySelector('button');
+      const ir = input ? input.getBoundingClientRect() : null;
+      const br = button ? button.getBoundingClientRect() : null;
+      return {
+        display: st.display,
+        gridTemplateColumns: st.gridTemplateColumns,
+        width: Math.round(r.width),
+        inputWidth: ir ? Math.round(ir.width) : 0,
+        inputBottom: ir ? Math.round(ir.bottom) : 0,
+        buttonWidth: br ? Math.round(br.width) : 0,
+        buttonTop: br ? Math.round(br.top) : 0,
+        buttonText: button ? (button.innerText || button.textContent || '').trim() : '',
+      };
+    });
+    const footerButtons = footer ? [...footer.querySelectorAll('button')].map((node) => {
+      const r = node.getBoundingClientRect();
+      const st = getComputedStyle(node);
+      return { text: (node.innerText || node.textContent || '').trim(), width: Math.round(r.width), height: Math.round(r.height), whiteSpace: st.whiteSpace, scrollWidth: node.scrollWidth, clientWidth: node.clientWidth, scrollHeight: node.scrollHeight, clientHeight: node.clientHeight };
+    }) : [];
     const wizardSteps = [...modal.querySelectorAll('.wizard-step')].map((node) => {
       const r = node.getBoundingClientRect();
       return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), text: (node.innerText || '').trim().replace(/\s+/g, ' ') };
@@ -144,6 +167,8 @@ async function inspectModal(page) {
       footer: footerRect ? { top: Math.round(footerRect.top), bottom: Math.round(footerRect.bottom), height: Math.round(footerRect.height) } : null,
       footerCoveredInputs,
       visibleInputLabels,
+      modelPickerRows,
+      footerButtons,
       wizardSteps,
       gateCopyRects,
       switches,
@@ -276,6 +301,10 @@ async function capture(page, name) {
       }
       const visibleGateCopy = (metrics.gateCopyRects || []).some((r) => r.top >= 0 && r.bottom <= (metrics.footer ? metrics.footer.top - 4 : metrics.clientH));
       if (!visibleGateCopy) fail(`${name}: Add model Save enabled gate copy must be visible above sticky actions on mobile`, metrics);
+      const crampedPickerRows = (metrics.modelPickerRows || []).filter((r) => r.display !== 'grid' || r.inputWidth < 260 || r.buttonWidth < r.inputWidth - 4 || r.buttonTop <= r.inputBottom);
+      if (crampedPickerRows.length || !(metrics.modelPickerRows || []).length) fail(`${name}: Add model Provider model picker should stack cleanly on mobile`, { crampedPickerRows, metrics });
+      const crampedFooterButtons = (metrics.footerButtons || []).filter((b) => b.scrollWidth > b.clientWidth + 4 || b.scrollHeight > b.clientHeight + 4);
+      if (crampedFooterButtons.length) fail(`${name}: Add model footer actions should use short readable mobile labels without clipping`, { crampedFooterButtons, metrics });
       await verifyRouteAdvancedDrawerAutoscroll(page, name);
     }
   }
