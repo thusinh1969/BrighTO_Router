@@ -343,6 +343,10 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .modal{background:var(--panel);border:1px solid var(--border);border-radius:20px;width:100%;max-width:580px;
   padding:26px;box-shadow:0 30px 80px rgba(0,0,0,.6);max-height:calc(100vh - 84px);overflow:auto}
 .modal h3{margin:0 0 16px;font-size:18px;font-weight:800}
+.modal-titlebar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:12px;margin-bottom:16px}
+.modal-titlebar h3{margin:0;min-width:0;overflow-wrap:anywhere}
+.modal-close{width:32px;height:32px;border-radius:10px;border:1px solid var(--border2);background:#0b1220;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.modal-close:hover{border-color:var(--sky);color:#fff}
 .modal .hint{color:var(--muted);font-size:12.5px;margin:6px 0 12px;line-height:1.45}
 .modal .field{margin-bottom:13px}
 .route-modal{max-width:860px!important}
@@ -487,6 +491,9 @@ body.nav-open{overflow:hidden}
   .wizard-step{padding:8px 7px;font-size:10.5px;line-height:1.25}
   .wizard-step b{font-size:11px}
   .route-modal{padding-bottom:20px;max-height:calc(100dvh - 48px)!important}
+  .route-modal .modal-titlebar{margin-bottom:5px}
+  .route-modal .modal-titlebar h3{line-height:28px}
+  .route-modal .modal-close{width:28px;height:28px;border-radius:9px;font-size:18px}
   .route-modal h3{margin-bottom:10px}
   .route-modal .section-title{margin:12px 0 6px}
   .route-modal .field{margin-bottom:9px}
@@ -509,7 +516,7 @@ body.nav-open{overflow:hidden}
   .route-modal .actions .btn{width:100%;min-width:0;padding:6px 5px;font-size:11px;line-height:1.15;white-space:nowrap}
   .route-modal .actions .btn[data-mobile-label]{font-size:0}
   .route-modal .actions .btn[data-mobile-label]::after{content:attr(data-mobile-label);font-size:11px;line-height:1.15}
-  .route-modal .advanced-toggle{padding:5px 9px;margin:2px 0 6px;border-radius:10px}
+  .route-modal .advanced-toggle{padding:3px 9px;margin:0 0 4px;border-radius:10px}
   .route-modal .advanced-toggle b{font-size:12px}
   .route-modal .advanced-toggle span{display:none}
   .route-modal .model-map{display:block;height:auto;overflow:visible;padding:3px 7px;margin-bottom:5px;border-radius:10px;min-height:0}
@@ -694,6 +701,13 @@ async function api(path, method, body){
 }
 function clearToasts(){ var b=$("toast"); if(b) b.innerHTML=""; }
 function toast(msg, type){ var b=$("toast"); var t=el("div","toast "+(type||""),msg); b.appendChild(t); setTimeout(function(){t.remove();},3200); }
+function modalHeader(title, onClose){
+  var head=el("div","modal-titlebar");
+  head.appendChild(el("h3",null,title));
+  var close=el("button","modal-close","×"); close.type="button"; close.setAttribute("aria-label","Close dialog"); close.onclick=onClose||closeModal;
+  head.appendChild(close);
+  return head;
+}
 
 /* ===== Auth ===== */
 function clearLoginError(){ var err=$("login-error"); if(err){ err.textContent=""; err.classList.add("hidden"); } }
@@ -1228,7 +1242,7 @@ function openProviderModal(b){
   b=b||{};
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
-  m.appendChild(el("h3",null, b.id?"Edit connection · "+b.name:"Prepare provider connection"));
+  m.appendChild(modalHeader(b.id?"Edit connection · "+b.name:"Prepare provider connection"));
   m.appendChild(el("p","hint",b.id
     ?"This edits the provider connection only. API keys live on model routes."
     :"Most teams should use Models & Routes → Add model. Prepare a connection only when you need to set up or disable a provider endpoint before adding routes."));
@@ -1299,7 +1313,7 @@ async function fetchModels(b){
     if(!data.models.length){ toast("Provider returned no models"); return; }
     var ov=$("modal-overlay"); ov.innerHTML="";
     var m=el("div","modal");
-    m.appendChild(el("h3",null,"Models · "+b.name+" ("+data.models.length+")"));
+    m.appendChild(modalHeader("Models · "+b.name+" ("+data.models.length+")"));
     var chips=el("div","chips");
     data.models.slice(0,200).forEach(function(md){
       var ch=el("button","chip",md);
@@ -1402,7 +1416,7 @@ function openRouteModal(route){
   route=route||{};
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal route-modal");
-  m.appendChild(el("h3",null, route.model_name?"Edit model":"Add model"));
+  m.appendChild(modalHeader(route.model_name?"Edit model":"Add model"));
   var steps=el("div","wizard-steps");
   [["1","Connect","Provider, URL, and API key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]].forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
   m.appendChild(steps);
@@ -1629,7 +1643,7 @@ function pickModelModal(models, onPick){
   var ov=el("div"); ov.className="picker-overlay"; ov.style.position="fixed"; ov.style.inset="0"; ov.style.background="rgba(2,6,18,.82)"; ov.style.zIndex="300"; ov.style.display="flex"; ov.style.alignItems="flex-start"; ov.style.justifyContent="center"; ov.style.padding="42px 20px"; ov.style.overflowY="auto";
   var m=el("div","modal picker-modal");
   var head=el("div","picker-head");
-  head.appendChild(el("h3",null,"Select a model ("+models.length+")"));
+  head.appendChild(modalHeader("Select a model ("+models.length+")", function(){ ov.remove(); }));
   head.appendChild(el("p","hint","Choose exactly one provider model. The public model name can stay the same or be renamed after selection."));
   m.appendChild(head);
   var searchBox=el("div","picker-search");
@@ -1734,7 +1748,7 @@ function openTeamModal(tm){
   tm=tm||{};
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
-  m.appendChild(el("h3",null,tm.id?"Edit team":"Create team"));
+  m.appendChild(modalHeader(tm.id?"Edit team":"Create team"));
   m.appendChild(el("div","section-title","Team identity"));
   var f=el("div","field"); f.appendChild(el("label",null,"Team name")); var ni=el("input"); ni.value=tm.name||""; f.appendChild(ni); m.appendChild(f);
   var hasTeamBudget=!!(tm.budget&&(tm.budget.max_tokens>0||tm.budget.max_usd_cents>0||(tm.budget.per_model&&Object.keys(tm.budget.per_model).length)));
@@ -1856,7 +1870,7 @@ function openKeyModal(k){
   var isEdit=!!k.id;
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal wide-modal");
-  m.appendChild(el("h3",null,isEdit?"Edit API key · "+k.prefix:"Create API key"));
+  m.appendChild(modalHeader(isEdit?"Edit API key · "+k.prefix:"Create API key"));
   m.appendChild(el("div","section-title","Owner"));
   var ident=el("div","form-grid");
   var f=el("div","field"); f.appendChild(el("label",null,"Team")); var ts=el("select");
@@ -1965,7 +1979,7 @@ function openKeyModal(k){
         closeModal();
         try{ keys=await api("/admin/keys","GET"); rerender(); }catch(refreshErr){ toast("Key created, but list refresh failed: "+refreshErr.message,"err"); }
         ov=$("modal-overlay"); ov.innerHTML=""; var m2=el("div","modal");
-        m2.appendChild(el("h3",null,"Key created"));
+        m2.appendChild(modalHeader("Key created"));
         m2.appendChild(el("div","key-reveal"));
         var span=el("span",null,data.key); m2.querySelector(".key-reveal").appendChild(span);
         m2.querySelector(".key-reveal").appendChild(copyIconBtn(data.key));
@@ -1982,7 +1996,7 @@ async function revealKey(k){
   try{
     var data=await api("/admin/keys/"+k.id+"/reveal","GET");
     var ov=$("modal-overlay"); ov.innerHTML=""; var m=el("div","modal");
-    m.appendChild(el("h3",null,"Key · "+data.prefix+" · "+data.owner));
+    m.appendChild(modalHeader("Key · "+data.prefix+" · "+data.owner));
     m.appendChild(el("div","key-reveal"));
     var span=el("span",null,data.key); m.querySelector(".key-reveal").appendChild(span);
     m.querySelector(".key-reveal").appendChild(copyIconBtn(data.key));
