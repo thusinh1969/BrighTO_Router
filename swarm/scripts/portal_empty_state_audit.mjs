@@ -66,6 +66,7 @@ async function main() {
       emptyPanels: document.querySelectorAll('#content .empty').length,
       summaryCards: document.querySelectorAll('#content > .grid .card').length,
       summaryLabels: [...document.querySelectorAll('#content > .grid .card .label')].map((n) => (n.textContent || '').trim()),
+      clippedHeroValues: [...document.querySelectorAll('#content .ops-status .v')].filter((n) => n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1).map((n) => ({ text: (n.textContent || '').trim(), clientWidth: n.clientWidth, scrollWidth: n.scrollWidth, clientHeight: n.clientHeight, scrollHeight: n.scrollHeight })),
       sectionTitles: [...document.querySelectorAll('#content h3, #content .diagnostic-details summary b')].map((n) => (n.textContent || '').trim()),
     }));
     result.evidence.dashboard = dash;
@@ -78,8 +79,10 @@ async function main() {
     if (!dash.buttons.includes('Open model wizard')) fail('dashboard empty launch checklist must include Open model wizard CTA', dash);
     if (!dash.buttons.includes('View API keys')) fail('dashboard empty state must include View API keys CTA', dash);
     if (dash.buttons.includes('Inspect usage')) fail('dashboard empty hero must not promote usage before the first route/request', dash);
+    if (/\b0 req\b/i.test(dash.text) || /no requests yet/i.test(dash.text)) fail('dashboard first-run hero should show setup actions instead of zero traffic metrics', dash);
     if (dash.emptyPanels !== 0) fail('dashboard first-run should not render repeated empty chart/log panels below the launch checklist', dash);
     if (dash.summaryCards !== 0) fail('dashboard first-run should not render generic zero KPI cards before setup', dash);
+    if (dash.clippedHeroValues.length) fail('dashboard first-run hero setup cards must not clip their primary labels', dash);
     if (dash.summaryLabels.some((t) => ['Gateway', 'Enabled routes', 'Active providers', 'Active teams', 'Estimated cost', 'Requests (30d)', 'Total tokens', 'Error rate'].includes(t))) {
       fail('dashboard first-run must avoid zero-value KPI labels before setup', dash);
     }
