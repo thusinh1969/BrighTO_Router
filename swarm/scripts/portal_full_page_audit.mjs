@@ -331,6 +331,11 @@ async function inspectPage(page, label) {
         const firstRow = table.querySelector('tbody tr');
         const firstAction = table.querySelector('td.actions .action-row');
         const wrap = table.closest('.team-list-wrap');
+        const metricCells = firstRow ? [...firstRow.querySelectorAll('td:nth-child(2),td:nth-child(3),td:nth-child(4)')].map((cell) => {
+          const st = getComputedStyle(cell);
+          const r = cell.getBoundingClientRect();
+          return { text: (cell.innerText || cell.textContent || '').trim(), width: Math.round(r.width), height: Math.round(r.height), borderStyle: st.borderStyle, borderRadius: st.borderRadius, backgroundColor: st.backgroundColor };
+        }) : [];
         return {
           tableDisplay: getComputedStyle(table).display,
           bodyDisplay: tbody ? getComputedStyle(tbody).display : '',
@@ -338,6 +343,7 @@ async function inspectPage(page, label) {
           rowDisplay: firstRow ? getComputedStyle(firstRow).display : '',
           rowColumns: firstRow ? getComputedStyle(firstRow).gridTemplateColumns : '',
           actionDisplay: firstAction ? getComputedStyle(firstAction).display : '',
+          metricCells,
           wrapBorder: wrap ? getComputedStyle(wrap).borderStyle : '',
           rows: table.querySelectorAll('tbody tr').length,
         };
@@ -544,6 +550,8 @@ async function runViewport(browser, name, width, height) {
     if (view === 'teams' && !mobile) {
       const badTeamList = (metrics.teamListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
       if (badTeamList.length || !(metrics.teamListStats || []).length) fail(`${name}/${view}: desktop Teams should render as compact team cards, not a wide sparse table`, { badTeamList, metrics });
+      const flatTeamMetricCells = (metrics.teamListStats || []).filter((r) => r.rows > 0 && (r.metricCells || []).some((c) => c.borderStyle === 'none' || parseFloat(c.borderRadius || '0') < 8 || c.height < 44));
+      if (flatTeamMetricCells.length) fail(`${name}/${view}: desktop team budget/key/status values should read as compact cards, not flat table cells`, { flatTeamMetricCells, metrics });
     }
     if (view === 'keys' && !mobile) {
       const badKeyList = (metrics.keyListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
