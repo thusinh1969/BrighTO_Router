@@ -136,7 +136,7 @@ textarea{resize:vertical;min-height:72px}
 .ops-status-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .ops-status{background:#0b1220;border:1px solid rgba(51,65,85,.8);border-radius:14px;padding:12px;min-width:0}
 .ops-status .k{display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:5px}
-.ops-status .v{display:block;color:var(--text);font-size:16px;font-weight:850;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ops-status .v{display:block;color:var(--text);font-size:16px;font-weight:850;overflow:visible;text-overflow:clip;white-space:normal;line-height:1.18}
 .ops-status .cell-sub{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.25;min-height:28px}
 .ops-status.ok{border-color:rgba(34,197,94,.35)} .ops-status.warn{border-color:rgba(245,158,11,.4)} .ops-status.bad{border-color:rgba(248,113,113,.4)}
 .ops-side h3{margin:0 0 12px;font-size:15px}
@@ -964,12 +964,16 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
       ? "Routes are enabled, providers are available, and recent traffic has no recorded errors."
       : "Check route readiness, provider state, pricing, and recent request errors before sending production traffic.")));
   var stats=el("div","ops-status-row");
-  [
-    ["Traffic",fmt(req)+" req",req>0?"last 30 days":"no requests yet",tone(req>0,true)],
-    ["Speed",speed.value,speed.note,speed.tone],
-    ["Cost",costValue,costNote,costTone],
-    ["Errors",errRate+"%",errorNote,tone(errRate===0 && badProviders===0,errRate<5)]
-  ].forEach(function(x){
+  var statusItems=onboarding
+    ? [["Model route","Add first model","choose, load, test, save","warn"],
+       ["Provider","Created with model","no separate provider step","warn"],
+       ["Route pricing","Set per route","add route pricing before cost tracking","warn"],
+       ["Client key","Demo key ready","create team keys later","ok"]]
+    : [["Traffic",fmt(req)+" req",req>0?"last 30 days":"no requests yet",tone(req>0,true)],
+       ["Speed",speed.value,speed.note,speed.tone],
+       ["Cost",costValue,costNote,costTone],
+       ["Errors",errRate+"%",errorNote,tone(errRate===0 && badProviders===0,errRate<5)]];
+  statusItems.forEach(function(x){
     var b=el("div","ops-status "+x[3]);
     b.appendChild(el("span","k",x[0]));
     b.appendChild(el("span","v",x[1]));
