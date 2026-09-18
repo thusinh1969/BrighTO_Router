@@ -1450,17 +1450,13 @@ async fn test_connection(
         .get(url)
         .timeout(Duration::from_secs(15));
     match dialect {
-        "openai" => {
-            if !key.is_empty() {
-                req = req.bearer_auth(&key);
-            }
+        "openai" if !key.is_empty() => {
+            req = req.bearer_auth(&key);
         }
-        "anthropic" => {
-            if !key.is_empty() {
-                req = req
-                    .header("x-api-key", &key)
-                    .header("anthropic-version", "2023-06-01");
-            }
+        "anthropic" if !key.is_empty() => {
+            req = req
+                .header("x-api-key", &key)
+                .header("anthropic-version", "2023-06-01");
         }
         _ => {}
     }

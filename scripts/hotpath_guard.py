@@ -18,6 +18,16 @@ def read_non_test(rel: str) -> str:
     return text.split("#[cfg(test)]", 1)[0]
 
 
+def strip_non_hot_handlers(text: str) -> str:
+    """src/handlers.rs also serves health and Portal HTML.
+
+    The hot-path guard is for inference request handling. Portal serving may read
+    PORTAL_STATIC_FILE from disk in local UI design mode and is not part of the
+    model request path.
+    """
+    return re.sub(r"async fn portal\([^\n]*\) -> impl IntoResponse \{.*?\n\}", "", text, flags=re.S)
+
+
 def fail(msg: str) -> None:
     print(f"HOTPATH_GUARD_FAIL {msg}")
     sys.exit(1)
@@ -25,6 +35,8 @@ def fail(msg: str) -> None:
 
 def assert_absent(rel: str, pattern: str, reason: str) -> None:
     text = read_non_test(rel)
+    if rel == "src/handlers.rs":
+        text = strip_non_hot_handlers(text)
     if re.search(pattern, text):
         fail(f"{rel}: found /{pattern}/ — {reason}")
 
