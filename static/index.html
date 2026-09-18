@@ -504,16 +504,18 @@ body.nav-open{overflow:hidden}
   .modal .actions{position:static;bottom:auto;margin:18px -20px -20px;padding:14px 20px;flex-wrap:wrap;border-radius:0 0 18px 18px}
   .route-modal .actions{position:sticky;bottom:0;margin:18px -20px -20px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));gap:6px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-radius:0 0 18px 18px;background:linear-gradient(180deg,rgba(15,23,42,.98),var(--panel));box-shadow:0 -16px 28px rgba(2,6,18,.35)}
   .modal .actions .btn{flex:1 1 120px}
-  .route-modal .actions .btn{width:100%;min-width:0;padding:7px 5px;font-size:11px;line-height:1.15;white-space:normal}
+  .route-modal .actions .btn{width:100%;min-width:0;padding:7px 5px;font-size:11px;line-height:1.15;white-space:nowrap}
+  .route-modal .actions .btn[data-mobile-label]{font-size:0}
+  .route-modal .actions .btn[data-mobile-label]::after{content:attr(data-mobile-label);font-size:11px;line-height:1.15}
   .route-modal .advanced-toggle{padding:5px 9px;margin:2px 0 6px;border-radius:10px}
   .route-modal .advanced-toggle b{font-size:12px}
   .route-modal .advanced-toggle span{display:none}
   .route-modal .model-map{display:block;height:auto;overflow:visible;padding:3px 7px;margin-bottom:5px;border-radius:10px;min-height:0}
   .route-modal .model-map .box,.route-modal .model-map .arrow{display:none}
   .route-modal .mobile-map-text{display:block;color:var(--muted);font-size:10px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .route-modal .model-picker-row{display:grid!important;grid-template-columns:minmax(0,1fr) 104px!important;align-items:stretch}
-  .route-modal .model-picker-row input{flex:initial!important;min-width:0}
-  .route-modal .model-picker-row .btn{width:auto;min-width:0;padding-left:8px;padding-right:8px}
+  .route-modal .model-picker-row{display:grid!important;grid-template-columns:1fr!important;align-items:stretch;gap:7px!important}
+  .route-modal .model-picker-row input{flex:initial!important;min-width:0;width:100%}
+  .route-modal .model-picker-row .btn{width:100%;min-width:0;padding-left:8px;padding-right:8px}
   .hamburger{display:inline-flex}
   .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s;box-shadow:24px 0 70px rgba(0,0,0,.45)}
   .sidebar.open{transform:none}
@@ -1497,9 +1499,9 @@ function openRouteModal(route){
 
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
-  var testBtn=el("button","btn","Test connection");
-  var saveDisabled=el("button","btn","Save draft"); saveDisabled.title="Saves a disabled draft; it cannot receive client traffic until tested and enabled";
-  var save=el("button","btn primary","Save enabled"); save.disabled=true; save.title="Run Test connection before saving an enabled route";
+  var testBtn=el("button","btn","Test connection"); testBtn.setAttribute("aria-label","Test connection"); testBtn.setAttribute("data-mobile-label","Test");
+  var saveDisabled=el("button","btn","Save draft"); saveDisabled.setAttribute("aria-label","Save draft"); saveDisabled.setAttribute("data-mobile-label","Draft"); saveDisabled.title="Saves a disabled draft; it cannot receive client traffic until tested and enabled";
+  var save=el("button","btn primary","Save enabled"); save.setAttribute("aria-label","Save enabled"); save.setAttribute("data-mobile-label","Enable"); save.disabled=true; save.title="Run Test connection before saving an enabled route";
   act.appendChild(cancel); act.appendChild(testBtn); act.appendChild(saveDisabled); act.appendChild(save); m.appendChild(act);
 
   function dialAuth(){
