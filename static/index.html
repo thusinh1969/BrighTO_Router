@@ -785,7 +785,7 @@ function logout(){ authKey=""; setLoginBusy(false); clearLoginError(); clearSess
 
 /* ===== Nav ===== */
 var titles={dashboard:"Dashboard",providers:"Providers",models:"Models & Routes",teams:"Teams",keys:"API Keys",usage:"Usage",settings:"Settings"};
-var descs={dashboard:"Gateway overview",providers:"Connect LLM provider endpoints",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client API keys",usage:"Usage and requests",settings:"Runtime configuration"};
+var descs={dashboard:"Gateway overview",providers:"Connect AI provider endpoints",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client API keys",usage:"Usage and requests",settings:"Runtime configuration"};
 var userDescs={dashboard:"Your API access and usage",usage:"Your requests and token usage",settings:"Portal preferences and session"};
 function pageDesc(view){ return mode==="user" && userDescs[view] ? userDescs[view] : descs[view]; }
 function go(view){
@@ -1141,7 +1141,7 @@ async function renderDashboard(c,seq){
 function renderProviders(c){
   c.innerHTML="";
   c.appendChild(summaryStrip([
-    ["Provider connections",fmt(backends.length),"total upstream endpoints","info"],
+    ["Provider connections",fmt(backends.length),"total provider endpoints","info"],
     ["Active",fmt(backends.filter(function(b){return b.enabled;}).length),"available to routes","ok"],
     ["Locked",fmt(backends.filter(function(b){return !b.can_delete;}).length),"has routes or usage","warn"],
     ["Disabled",fmt(backends.filter(function(b){return !b.enabled;}).length),"cannot receive traffic",backends.some(function(b){return !b.enabled;})?"bad":"info"]
@@ -1150,8 +1150,9 @@ function renderProviders(c){
   var h=el("div","panel-head");
   h.appendChild(el("h3",null,"Provider connections"));
   var hActions=el("div","panel-head-actions providers-actions");
-  var add=el("button","btn primary sm","Prepare connection"); add.onclick=openProviderModal;
-  hActions.appendChild(add);
+  var addModel=el("button","btn primary sm","Add model"); addModel.title="Recommended flow: choose a provider, enter the API key, load models, test, then save."; addModel.onclick=function(){ go("models"); setTimeout(function(){ openRouteModal(); },50); };
+  var advanced=el("button","btn ghost sm","Advanced connection"); advanced.title="Optional: prepare or disable a provider endpoint before adding model routes."; advanced.onclick=openProviderModal;
+  hActions.appendChild(addModel); hActions.appendChild(advanced);
   var filt=el("select"); filt.style.maxWidth="160px";
   [["all","All"],["enabled","Enabled only"],["disabled","Disabled only"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; filt.appendChild(o); });
   filt.value=(window.provFilter||"all");
@@ -1159,7 +1160,7 @@ function renderProviders(c){
   hActions.appendChild(filt);
   h.appendChild(hActions);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Provider connections are upstream endpoints, created automatically when you add a model. Manage enable/disable and safety here. The API key lives on the model route, never on the provider connection."));
+  p.appendChild(el("p","hint","Provider connections are provider endpoints, created automatically when you add a model. Manage enable/disable and safety here. The API key lives on the model route, never on the provider connection."));
   var fv=(window.provFilter||"all");
   var shown=backends.filter(function(b){ return fv==="all" || (fv==="enabled"?b.enabled:!b.enabled); });
   if(!backends.length){ p.appendChild(emptyBox("No provider connections yet — add a model and one is created automatically.")); }
@@ -1230,7 +1231,7 @@ function openProviderModal(b){
   m.appendChild(el("h3",null, b.id?"Edit connection · "+b.name:"Prepare provider connection"));
   m.appendChild(el("p","hint",b.id
     ?"This edits the provider connection only. API keys live on model routes."
-    :"Most teams should use Models & Routes → Add model. Prepare a connection only when you need to set up or disable an upstream endpoint before adding routes."));
+    :"Most teams should use Models & Routes → Add model. Prepare a connection only when you need to set up or disable a provider endpoint before adding routes."));
   m.appendChild(el("div","section-title","Provider preset"));
   // Chọn provider từ catalog hard-coded trong .env (chỉ 2 dialect: openai/anthropic).
   var fp=el("div","field"); fp.appendChild(el("label",null,"Provider"));
