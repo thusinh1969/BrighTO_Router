@@ -310,7 +310,7 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
   .team-list-table tbody,.key-list-table tbody{display:grid;gap:12px}
   .team-list-table tr,.key-list-table tr{display:grid;gap:12px;align-items:start;background:linear-gradient(145deg,rgba(15,23,42,.98),rgba(11,18,32,.98));border:1px solid rgba(51,65,85,.9);border-radius:16px;padding:14px;box-shadow:0 14px 34px rgba(0,0,0,.14)}
   .team-list-table tr{grid-template-columns:minmax(220px,1fr) minmax(240px,1fr) minmax(140px,.58fr) minmax(110px,.42fr) minmax(72px,.28fr)}
-  .key-list-table tr{grid-template-columns:minmax(300px,1.25fr) minmax(190px,.78fr) minmax(170px,.68fr) minmax(170px,.68fr) minmax(86px,.32fr)}
+  .key-list-table tr{grid-template-columns:minmax(300px,1.15fr) minmax(190px,.72fr) minmax(170px,.62fr) minmax(220px,.85fr) minmax(86px,.32fr)}
   .team-list-table tr:hover,.key-list-table tr:hover{background:linear-gradient(145deg,rgba(17,28,49,.98),rgba(11,18,32,.98));border-color:rgba(56,189,248,.26)}
   .team-list-table td,.key-list-table td{display:block;border-bottom:none;padding:0;overflow:visible;min-width:0}
   .team-list-table td::before,.key-list-table td::before{content:attr(data-label);display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.055em;font-weight:850;margin-bottom:6px;line-height:1.2}
@@ -800,7 +800,7 @@ function logout(){ authKey=""; setLoginBusy(false); clearLoginError(); clearSess
 
 /* ===== Nav ===== */
 var titles={dashboard:"Dashboard",providers:"Providers",models:"Models & Routes",teams:"Teams",keys:"API Keys",usage:"Usage",settings:"Settings"};
-var descs={dashboard:"Gateway overview",providers:"Connect AI provider endpoints",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client API keys",usage:"Tokens, cost, errors, and speed",settings:"Runtime configuration"};
+var descs={dashboard:"Gateway overview",providers:"Connect AI provider endpoints",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client access, expiry, budgets, and model scope",usage:"Tokens, cost, errors, and speed",settings:"Runtime configuration"};
 var userDescs={dashboard:"Your API access and usage",usage:"Your tokens, speed, and request history",settings:"Portal preferences and session"};
 function pageDesc(view){ return mode==="user" && userDescs[view] ? userDescs[view] : descs[view]; }
 function go(view){
@@ -1819,7 +1819,7 @@ function renderKeys(c){
   else{
     var w=el("div","table-wrap pro-table key-list-wrap"); var t=el("table","models-table keys-table key-list-table");
     var colg=document.createElement("colgroup");
-    ["43%","18%","17%","13%","9%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
+    ["38%","18%","16%","18%","10%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
     t.appendChild(thead(["Client key","Owner / team","Scope","Limits",""]));
     var tb=el("tbody");
@@ -1849,10 +1849,10 @@ function renderKeys(c){
       var scope=el("td"); var ss=el("div","stack-cell");
       var allowed=(k.allowed_models||[]);
       ss.appendChild(nameNode("div","cell-main compact-line",allowed.length?allowed.join(", "):"All models",36));
-      ss.appendChild(el("div","cell-sub",k.expires_at?("Expires "+fmtDate(k.expires_at)):"No expiry"));
+      ss.appendChild(el("div","cell-sub",allowed.length?allowed.length+" model"+(allowed.length===1?"":"s"):"all enabled routes"));
       scope.appendChild(ss); tr.appendChild(scope);
       var limits=el("td"); var lg=el("div","mini-meta-grid");
-      [["Requests/min",k.rpm_limit?fmt(k.rpm_limit):"∞"],["Simultaneous",k.concurrency_limit?fmt(k.concurrency_limit):"∞"],["Budget",k.budget?budgetText(k.budget):"team"]].forEach(function(x){ var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,x[1])); lg.appendChild(item); });
+      [["Expiry",k.expires_at?fmtDate(k.expires_at):"none"],["Requests/min",k.rpm_limit?fmt(k.rpm_limit):"∞"],["Simultaneous",k.concurrency_limit?fmt(k.concurrency_limit):"∞"],["Budget",k.budget?budgetText(k.budget):"team"]].forEach(function(x){ var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,x[1])); lg.appendChild(item); });
       limits.appendChild(lg);
       var en=el("div","cell-sub"); en.appendChild(pill(k.enabled?"Enabled":"Disabled",k.enabled?"on":"off")); limits.appendChild(en);
       tr.appendChild(limits);

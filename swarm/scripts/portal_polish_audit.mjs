@@ -281,6 +281,14 @@ async function main() {
     await page.waitForTimeout(800);
 
     await nav(page, 'API Keys');
+    result.evidence.keyScopeLimitText = await page.evaluate(() => [...document.querySelectorAll('.key-list-table tbody tr')].map((tr) => ({
+      scope: (tr.children[2]?.innerText || tr.children[2]?.textContent || '').trim(),
+      limits: (tr.children[3]?.innerText || tr.children[3]?.textContent || '').trim(),
+    })));
+    const expiryInScope = result.evidence.keyScopeLimitText.filter((r) => /expiry|expires|no expiry/i.test(r.scope || ''));
+    if (expiryInScope.length) bug(`API key expiry belongs in Limits, not Scope: ${JSON.stringify(expiryInScope.slice(0, 3))}`);
+    const missingExpiryLimit = result.evidence.keyScopeLimitText.filter((r) => !/Expiry:/i.test(r.limits || ''));
+    if (missingExpiryLimit.length) bug(`API key Limits must include expiry policy: ${JSON.stringify(missingExpiryLimit.slice(0, 3))}`);
     result.evidence.keyCompactLines = await page.evaluate(() => [...document.querySelectorAll('.key-list-table .compact-line')].map((n) => {
       const r = n.getBoundingClientRect();
       const cs = getComputedStyle(n);
