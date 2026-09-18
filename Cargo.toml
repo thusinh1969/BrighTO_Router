@@ -2,6 +2,7 @@
 name = "brighto-router"
 version = "1.0.0"
 edition = "2024"
+authors = ["Nguyễn Anh Nguyên <nguyen@hatto.com>"]
 rust-version = "1.94"          # Minimum supported Rust version required by sqlx 0.9
 license = "Apache-2.0"
 publish = false
