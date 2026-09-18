@@ -122,6 +122,10 @@ async function inspectModal(page) {
         buttonText: button ? (button.innerText || button.textContent || '').trim() : '',
       };
     });
+    const closeButtons = [...modal.querySelectorAll('.modal-close')].map((node) => {
+      const r = node.getBoundingClientRect();
+      return { text: (node.innerText || node.textContent || '').trim(), aria: node.getAttribute('aria-label') || '', width: Math.round(r.width), height: Math.round(r.height), x: Math.round(r.x), y: Math.round(r.y) };
+    });
     const footerButtons = footer ? [...footer.querySelectorAll('button')].map((node) => {
       const r = node.getBoundingClientRect();
       const st = getComputedStyle(node);
@@ -178,6 +182,7 @@ async function inspectModal(page) {
       visibleInputLabels,
       apiKeyVisibility,
       modelPickerRows,
+      closeButtons,
       footerButtons,
       wizardSteps,
       gateCopyRects,
@@ -188,6 +193,18 @@ async function inspectModal(page) {
       clipped: clipped.slice(0, 25),
     };
   });
+}
+
+async function verifyModalCloseButton(page, name) {
+  await page.locator('.modal-close').first().click({ force: true });
+  await page.waitForTimeout(120);
+  const closed = await page.evaluate(() => ({
+    modalCount: document.querySelectorAll('#modal-overlay .modal').length,
+    overlayHidden: document.querySelector('#modal-overlay')?.classList.contains('hidden') || false,
+    pickerCount: document.querySelectorAll('.picker-overlay .modal').length,
+  }));
+  result.metrics[`${name}-close-button`] = closed;
+  if (closed.modalCount || !closed.overlayHidden) fail(`${name}: close button should dismiss the modal`, closed);
 }
 
 async function verifyProviderApiKeyToggle(page, name) {
@@ -321,6 +338,8 @@ async function capture(page, name) {
   if (metrics.missing) fail(`${name}: modal missing`, metrics);
   if (metrics.clipped?.length) fail(`${name}: modal has clipped/overflowing content`, metrics);
   if (metrics.footerCoveredInputs?.length) fail(`${name}: sticky footer covers input fields`, metrics);
+  const badCloseButtons = (metrics.closeButtons || []).filter((b) => !/Close dialog/i.test(b.aria || '') || b.width < 28 || b.height < 28);
+  if ((metrics.closeButtons || []).length !== 1 || badCloseButtons.length) fail(`${name}: modal should have one clear top-right close button`, { badCloseButtons, metrics });
   if (name.endsWith('add-model') && metrics.footerCoveredImportant?.length) fail(`${name}: action footer covers important Add model controls`, metrics);
   const activeLookingDisabledPrimary = (metrics.disabledPrimaryButtons || []).filter((b) => /Save enabled|Use this model|Sign in/i.test(b.text || '') && (/rgb\(29, 78, 216\)|rgb\(30, 64, 175\)/.test(b.backgroundColor || '') || /rgb\(29, 78, 216\)|rgb\(30, 64, 175\)/.test(b.borderColor || '')));
   if (activeLookingDisabledPrimary.length) fail(`${name}: disabled primary buttons still look active`, { activeLookingDisabledPrimary, metrics });
@@ -417,6 +436,7 @@ async function capture(page, name) {
     if (!(metrics.switches || []).length) fail(`${name}: state switch missing`, metrics);
     if (badSwitches.length) fail(`${name}: state switch layout regressed`, { badSwitches, metrics });
   }
+  await verifyModalCloseButton(page, name);
 }
 
 async function runViewport(browser, name, width, height) {
