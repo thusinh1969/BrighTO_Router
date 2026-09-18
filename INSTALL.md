@@ -37,14 +37,13 @@ Default local admin key:
 brightoIsGreat@2026
 ```
 
-If the page opens but an Admin API call returns `403: ip not allowed`, allow your client network in `.env` and restart:
+Fresh install allows Admin Portal access from any IP so first-time remote testing works immediately.
+
+For shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW_CIDR` in `.env` to your VPN, office subnet, or reverse proxy, then restart:
 
 ```bash
-ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0
 ./start.sh restart
 ```
-
-For shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW_CIDR` to your VPN, office subnet, or reverse proxy.
 
 ## Daily commands
 
