@@ -162,6 +162,7 @@ async function runViewport(browser, seed, name, width, height) {
     if (/too short for stable speed/i.test(dash.content) && !/TOKENS\/SEC\s+Too short/i.test(dash.content)) fail(`${name}: user dashboard must show Too short instead of an inflated or blank Tokens/sec value for sub-1s samples`, dash);
     if (!dash.content.includes(seed.model)) fail(`${name}: user dashboard missing allowed/used model`, dash);
     if (!dash.allowedModels || dash.allowedModels.length < 1) fail(`${name}: user dashboard should render allowed models as a readable card`, dash);
+    if (dash.cardCount > 0 || dash.content.includes("Requests (30d)") || dash.content.includes("Total tokens\n") || dash.content.includes("Error rate\n0%\n30d")) fail(`${name}: user dashboard should not duplicate Last 30 days metrics below the call panel`, dash);
     if (/Allowed models:\s/i.test(dash.content)) fail(`${name}: user dashboard still renders allowed models as flat text`, dash);
     const clippedAllowedModels = (dash.allowedModels || []).flatMap((box) => (box.pills || []).filter((p) => p.scrollWidth > p.clientWidth + 4 || p.scrollHeight > p.clientHeight + 4));
     if (clippedAllowedModels.length) fail(`${name}: user dashboard allowed model pills are clipped`, { clippedAllowedModels, dash });

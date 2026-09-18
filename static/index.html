@@ -1074,15 +1074,17 @@ async function renderDashboard(c,seq){
     ["Total tokens", fmt(inT+outT), "in "+fmt(inT)+" / out "+fmt(outT)],
     ["Error rate", errRate+"%", "30d"]
   ]);
-  var grid=el("div","grid");
-  cards.forEach(function(cd){
-    var x=el("div","card");
-    x.appendChild(el("div","label",cd[0]));
-    x.appendChild(el("div","big",cd[1]));
-    x.appendChild(el("div","foot",cd[2]));
-    grid.appendChild(x);
-  });
-  c.appendChild(grid);
+  if(mode==="admin"){
+    var grid=el("div","grid");
+    cards.forEach(function(cd){
+      var x=el("div","card");
+      x.appendChild(el("div","label",cd[0]));
+      x.appendChild(el("div","big",cd[1]));
+      x.appendChild(el("div","foot",cd[2]));
+      grid.appendChild(x);
+    });
+    c.appendChild(grid);
+  }
 
   if(mode==="admin" && routes.length===0){
     c.appendChild(firstRunPanel());
