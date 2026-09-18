@@ -145,7 +145,7 @@ openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
   -out ssl/fullchain.pem \
   -subj "/CN=${SERVER_IP}" \
   -addext "subjectAltName=IP:${SERVER_IP},IP:127.0.0.1,DNS:localhost,DNS:brighto-router"
-chmod 600 ssl/privkey.pem
+chmod 644 ssl/privkey.pem
 chmod 644 ssl/fullchain.pem
 ```
 

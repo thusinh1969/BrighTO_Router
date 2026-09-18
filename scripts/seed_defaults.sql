@@ -11,10 +11,10 @@ DECLARE
     {"name":"deepseek", "base_url":"https://api.deepseek.com", "api_key_ref":"env:DEEPSEEK_API_KEY", "format":"openai"},
     {"name":"kimi", "base_url":"https://api.moonshot.ai/v1", "api_key_ref":"env:KIMI_API_KEY", "format":"openai"},
     {"name":"qwen", "base_url":"https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "api_key_ref":"env:QWEN_API_KEY", "format":"openai"},
-    {"name":"zai", "base_url":"https://api.z.ai/api/coding/paas/v4", "api_key_ref":"env:ZAI_API_KEY", "format":"openai"},
+    {"name":"zai", "base_url":"https://api.z.ai/api/paas/v4", "api_key_ref":"env:ZAI_API_KEY", "format":"openai"},
     {"name":"openrouter", "base_url":"https://openrouter.ai/api/v1", "api_key_ref":"env:OPENROUTER_API_KEY", "format":"openai"},
     {"name":"meta-muse", "base_url":"https://api.meta.ai/v1", "api_key_ref":"env:META_MUSE_API_KEY", "format":"openai"},
-    {"name":"custom-openai", "base_url":"http://127.0.0.1:8000/v1", "api_key_ref":"env:CUSTOM_LLM_API_KEY", "format":"openai"}
+    {"name":"custom-llm", "base_url":"http://127.0.0.1:8088/v1", "api_key_ref":"env:CUSTOM_LLM_API_KEY", "format":"openai"}
   ]'::jsonb;
 BEGIN
   INSERT INTO teams (name, budget, enabled)

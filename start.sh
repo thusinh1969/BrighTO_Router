@@ -10,6 +10,7 @@ ENV_FILE="$ROOT/.env"
 DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router"
 DEFAULT_ADMIN_KEY="brightoIsGreat@2026"
 DEFAULT_LISTEN_ADDR="0.0.0.0:18080"
+DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1'
 # Legacy defaults are kept only to upgrade old local .env files in place.
 OLD_DEFAULT_LISTEN_ADDR="0.0.0.0:8080"
 OLD_DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router"
@@ -86,9 +87,13 @@ ensure_env_defaults() {
   if grep -q "^LISTEN_ADDR=${OLD_DEFAULT_LISTEN_ADDR}$" "$ENV_FILE"; then
     set_env_var LISTEN_ADDR "$DEFAULT_LISTEN_ADDR"
   fi
-  for key in OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY KIMI_API_KEY QWEN_API_KEY ZAI_API_KEY OPENROUTER_API_KEY META_MUSE_API_KEY CUSTOM_LLM_API_KEY; do
-    if ! grep -q "^${key}=" "$ENV_FILE"; then
-      set_env_var "$key" ""
+  if ! grep -q "^PROVIDER_CATALOG=" "$ENV_FILE"; then
+    set_env_var PROVIDER_CATALOG "\"$DEFAULT_PROVIDER_CATALOG\""
+  fi
+  local env_key
+  for env_key in OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY KIMI_API_KEY QWEN_API_KEY ZAI_API_KEY OPENROUTER_API_KEY META_MUSE_API_KEY CUSTOM_LLM_API_KEY; do
+    if ! grep -q "^${env_key}=" "$ENV_FILE"; then
+      set_env_var "$env_key" ""
     fi
   done
 }
@@ -126,6 +131,16 @@ compose() {
   [[ -f "$COMPOSE_FILE_PATH" ]] || fail "docker-compose.yml not found at $COMPOSE_FILE_PATH"
   # shellcheck disable=SC2086
   $COMPOSE -f "$COMPOSE_FILE_PATH" "$@"
+}
+
+ensure_runtime_dirs() {
+  if [[ -e ssl && ! -d ssl ]]; then
+    fail "ssl exists but is not a directory"
+  fi
+  mkdir -p ssl
+  if [[ ! -w ssl ]]; then
+    fail "ssl/ is not writable. Fix once with: sudo chown -R $(id -u):$(id -g) ssl"
+  fi
 }
 
 uses_local_db() {
@@ -190,15 +205,70 @@ start_stack() {
   fi
   run_migrations
   seed_defaults
+  ensure_runtime_dirs
   say "Starting BrighTO-Router"
   compose up -d router
+  wait_router
   say "Status"
   compose ps
+  print_access_status
 }
 
 health() {
   local path="$1"
-  curl -fsS --max-time 2 "$BASE_URL$path" 2>/dev/null || true
+  curl -kfsS --max-time 2 "$BASE_URL$path" 2>/dev/null || true
+}
+
+copy_if_different() {
+  local src="$1"
+  local dest="$2"
+  local src_abs=""
+  local dest_abs=""
+  src_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$src")"
+  dest_abs="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$dest")"
+  if [[ "$src_abs" != "$dest_abs" ]]; then
+    cp "$src" "$dest"
+  fi
+}
+
+is_https_enabled() {
+  local cert_path key_path
+  cert_path="$(get_env_var TLS_CERT_PATH "")"
+  key_path="$(get_env_var TLS_KEY_PATH "")"
+  [[ -n "$cert_path" && -n "$key_path" ]]
+}
+
+wait_router() {
+  say "Waiting for BrighTO-Router"
+  for _ in $(seq 1 60); do
+    if [[ "$(health /readyz)" == "ready" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  fail "BrighTO-Router did not become ready at $BASE_URL"
+}
+
+print_access_status() {
+  local scheme="HTTP"
+  local port="${LISTEN_ADDR_EFFECTIVE##*:}"
+  local server_hint=""
+  server_hint="$(hostname -I | awk '{print $1}')"
+  [[ -n "$server_hint" ]] || server_hint="<SERVER_IP>"
+  if is_https_enabled; then
+    scheme="HTTPS"
+  fi
+  printf '\nPortal: %s/\n' "$BASE_URL"
+  printf '%s healthz: %s\n' "$scheme" "$(health /healthz)"
+  printf '%s readyz:  %s\n' "$scheme" "$(health /readyz)"
+  if is_https_enabled; then
+    printf 'Local HTTPS test:  curl -k %s/readyz\n' "$BASE_URL"
+    printf 'Remote HTTPS test: curl -k https://%s:%s/readyz\n' "$server_hint" "$port"
+  else
+    printf 'Local HTTP test:   curl %s/readyz\n' "$BASE_URL"
+    printf 'Remote HTTP test:  curl http://%s:%s/readyz\n' "$server_hint" "$port"
+    printf 'Enable HTTPS next: ./start.sh make-self-signed-cert HOST && ./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host HOST --port 18443\n'
+  fi
 }
 
 provider_env_name() {
@@ -212,8 +282,8 @@ provider_env_name() {
     zai|z.ai) echo ZAI_API_KEY ;;
     openrouter) echo OPENROUTER_API_KEY ;;
     meta|meta-muse|muse) echo META_MUSE_API_KEY ;;
-    custom|custom-openai) echo CUSTOM_LLM_API_KEY ;;
-    *) fail "unknown provider '$1'. Known: openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-openai" ;;
+    custom|custom-llm) echo CUSTOM_LLM_API_KEY ;;
+    *) fail "unknown provider '$1'. Known: openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-llm" ;;
   esac
 }
 
@@ -372,13 +442,24 @@ cmd_make_self_signed_cert() {
     [[ -n "$host" ]] || fail "cannot detect host IP; pass an explicit host/IP argument"
   fi
   command -v openssl >/dev/null 2>&1 || fail "openssl is required"
-  mkdir -p ssl
+  ensure_runtime_dirs
   say "Generating self-signed cert for $host into ssl/"
+  local san=""
+  if [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    san="IP:${host},IP:127.0.0.1,DNS:localhost,DNS:brighto-router"
+  else
+    san="DNS:${host},DNS:localhost,DNS:brighto-router,IP:127.0.0.1"
+    local lan_ip=""
+    lan_ip="$(hostname -I | awk '{print $1}')"
+    if [[ -n "$lan_ip" && "$lan_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      san="$san,IP:$lan_ip"
+    fi
+  fi
   openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
     -keyout ssl/privkey.pem -out ssl/fullchain.pem \
     -subj "/CN=${host}" \
-    -addext "subjectAltName=IP:${host},IP:127.0.0.1,DNS:localhost,DNS:brighto-router"
-  chmod 600 ssl/privkey.pem
+    -addext "subjectAltName=${san}"
+  chmod 644 ssl/privkey.pem
   chmod 644 ssl/fullchain.pem
   say "Done. Enable with: ./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host $host --port 18443"
 }
@@ -395,7 +476,7 @@ cmd_tls() {
       *) fail "unknown tls option: $1" ;;
     esac
   done
-  [[ -n "$cert" && -n "$key" ]] || fail "usage: ./start.sh tls --cert <cert> --key <key> --host <ip> [--port 18443]"
+  [[ -n "$cert" && -n "$key" ]] || fail "usage: ./start.sh tls --cert <cert> --key <key> --host <host-or-ip> [--port 18443]"
   [[ -f "$cert" && -f "$key" ]] || fail "cert or key file not found"
   if [[ -z "$host" ]]; then
     host="$(hostname -I | awk '{print $1}')"
@@ -403,10 +484,10 @@ cmd_tls() {
   fi
 
   ensure_env
-  mkdir -p ssl
-  cp "$cert" ssl/fullchain.pem
-  cp "$key" ssl/privkey.pem
-  chmod 600 ssl/privkey.pem
+  ensure_runtime_dirs
+  copy_if_different "$cert" ssl/fullchain.pem
+  copy_if_different "$key" ssl/privkey.pem
+  chmod 644 ssl/privkey.pem
   chmod 644 ssl/fullchain.pem
 
   set_env_var LISTEN_ADDR "0.0.0.0:$port"
@@ -414,9 +495,12 @@ cmd_tls() {
   set_env_var TLS_CERT_PATH "/certs/fullchain.pem"
   set_env_var TLS_KEY_PATH "/certs/privkey.pem"
 
+  load_env
   say "TLS enabled (LISTEN_ADDR=0.0.0.0:$port, BASE_URL=https://$host:$port). Recreating router."
   compose up -d --force-recreate router
+  wait_router
   compose ps
+  print_access_status
 }
 
 cmd="${1:-help}"
@@ -446,8 +530,11 @@ case "$cmd" in
     fi
     run_migrations
     seed_defaults
+    ensure_runtime_dirs
     compose up -d --force-recreate router
+    wait_router
     compose ps
+    print_access_status
     ;;
   status)
     if [[ ! -f "$ENV_FILE" ]]; then
@@ -456,8 +543,7 @@ case "$cmd" in
     fi
     load_env
     compose ps
-    printf '\nhealthz: %s\n' "$(health /healthz)"
-    printf 'readyz:  %s\n' "$(health /readyz)"
+    print_access_status
     ;;
   logs)
     load_env
@@ -542,7 +628,7 @@ Default local admin key:
   brightoIsGreat@2026
 
 Provider names for set-key:
-  openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-openai
+  openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-llm
 USAGE
     ;;
   *)

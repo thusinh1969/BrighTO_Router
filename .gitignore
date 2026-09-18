@@ -5,7 +5,8 @@ target/
 
 # local secrets
 .model
-ssl/
+ssl/*
+!ssl/.gitkeep
 .deepseek_key
 *.key
 *.pem
