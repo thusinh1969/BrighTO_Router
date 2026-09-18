@@ -120,8 +120,8 @@ async function main() {
     const route = routes.find((r) => r.model_name === modelName);
     let backends = await adminFetch('/admin/backends');
     const backend = backends.find((b) => b.base_url === 'http://127.0.0.1:9000/v1');
-    if (route && route.enabled === true && route.effective_enabled === true && backend) pass('models', 'model saved enabled with auto-created connection', { route, backend });
-    else fail('models', 'model/connection wrong', { route, backend });
+    if (route && route.enabled === true && route.effective_enabled === true && backend) pass('models', 'model saved enabled with auto-created endpoint', { route, backend });
+    else fail('models', 'model/endpoint wrong', { route, backend });
     if (route && route.auth_mode === 'none' && route.protocol === 'local_openai_chat') {
       pass('models', 'Custom LLM blank key saves as no-auth local route', { auth_mode: route.auth_mode, protocol: route.protocol });
     } else {
@@ -140,8 +140,8 @@ async function main() {
     await page.locator('.modal').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
     backends = await adminFetch('/admin/backends');
     const sameUrl = backends.filter((b) => b.base_url === 'http://127.0.0.1:9000/v1');
-    if (sameUrl.length === 1) pass('models', 'dedup: one connection for repeated URL', { count: sameUrl.length });
-    else fail('models', 'duplicate connection created', { count: sameUrl.length });
+    if (sameUrl.length === 1) pass('models', 'dedup: one endpoint for repeated URL', { count: sameUrl.length });
+    else fail('models', 'duplicate endpoint created', { count: sameUrl.length });
 
     const reveal = await adminFetch('/admin/keys/1/reveal').catch(() => null);
     const clientKey = reveal ? reveal.key : 'lc-0123456789abcdef0123456789abcdef';
@@ -165,13 +165,13 @@ async function main() {
     await page.locator('.nav[data-view="providers"]').click({ force: true });
     await page.waitForTimeout(600);
     const testBackend = (await adminFetch('/admin/backends')).find((b) => b.base_url === 'http://127.0.0.1:9000/v1');
-    if (testBackend && testBackend.can_delete === false) pass('lifecycle', 'in-use connection API can_delete=false', { backend: testBackend });
-    else fail('lifecycle', 'in-use connection API should have can_delete=false', { backend: testBackend });
+    if (testBackend && testBackend.can_delete === false) pass('lifecycle', 'in-use endpoint API can_delete=false', { backend: testBackend });
+    else fail('lifecycle', 'in-use endpoint API should have can_delete=false', { backend: testBackend });
     const connRow = page.locator('tr').filter({ hasText: '127.0.0.1:9000/v1' }).first();
     if (await connRow.count()) {
       const delBtn = connRow.getByRole('button', { name: 'Delete' });
-      if (await delBtn.isDisabled()) pass('lifecycle', 'in-use connection Delete disabled');
-      else fail('lifecycle', 'in-use connection Delete should be disabled', { rowText: await connRow.innerText() });
+      if (await delBtn.isDisabled()) pass('lifecycle', 'in-use endpoint Delete disabled');
+      else fail('lifecycle', 'in-use endpoint Delete should be disabled', { rowText: await connRow.innerText() });
 
       await connRow.getByRole('button', { name: 'Route' }).click({ force: true });
       await page.locator('.modal').waitFor({ state: 'visible', timeout: 8000 });
@@ -181,13 +181,13 @@ async function main() {
         stepCount: await page.locator('.modal .wizard-step').count(),
       };
       if (routeFromProvider.baseUrl === 'http://127.0.0.1:9000/v1' && routeFromProvider.stepCount === 3 && /Test connection/.test(routeFromProvider.text)) {
-        pass('providers', 'Route button opens guided Add model wizard with connection prefilled', routeFromProvider);
+        pass('providers', 'Route button opens guided Add model wizard with endpoint prefilled', routeFromProvider);
       } else {
         fail('providers', 'Route button wizard is wrong', routeFromProvider);
       }
       await page.evaluate(() => closeModal());
     } else {
-      fail('lifecycle', 'test connection row not visible in Connections UI', { base_url: 'http://127.0.0.1:9000/v1' });
+      fail('lifecycle', 'test endpoint row not visible in Providers UI', { base_url: 'http://127.0.0.1:9000/v1' });
     }
 
     const team = await adminFetch('/admin/teams', 'POST', { name: prefix + '-team', budget: { period: 'month', max_tokens: 1000000, per_model: {} }, enabled: true });
