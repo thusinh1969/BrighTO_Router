@@ -1,6 +1,6 @@
 # Provider setup
 
-BrighTO-Router keeps provider setup simple: the Portal shows a provider catalog from `.env`, and the database stores only the real connections and model routes you create.
+BrighTO-Router keeps provider setup simple: the Portal shows a provider catalog from `.env`, and the database stores only the provider endpoints and model routes you create.
 
 A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
 
@@ -38,7 +38,7 @@ In the Portal:
 7. Click **Test connection**.
 8. Save enabled only after the test passes.
 
-The Portal automatically creates or reuses the provider connection for the Base URL. You do not need to create a provider first.
+The Portal automatically creates or reuses the provider endpoint for the Base URL. You do not need to create a provider first.
 
 ## Local OpenAI-compatible endpoint
 
