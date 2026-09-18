@@ -95,6 +95,15 @@ async function inspectModal(page) {
       return { label, top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width), visible: node.offsetParent !== null };
     });
     const visibleInputLabels = inputs.filter((i) => i.visible).map((i) => i.label);
+    const apiKeyField = [...modal.querySelectorAll('.field')].find((f) => /^API key$/i.test((f.querySelector('label')?.textContent || '').trim()));
+    const apiKeyInput = apiKeyField?.querySelector('input');
+    const apiKeyToggle = apiKeyField ? [...apiKeyField.querySelectorAll('button')].find((b) => /^(Show|Hide)$/i.test((b.innerText || b.textContent || '').trim())) : null;
+    const apiKeyVisibility = apiKeyField ? {
+      inputType: apiKeyInput ? apiKeyInput.type : '',
+      hasToggle: !!apiKeyToggle,
+      toggleText: apiKeyToggle ? (apiKeyToggle.innerText || apiKeyToggle.textContent || '').trim() : '',
+      toggleAria: apiKeyToggle ? (apiKeyToggle.getAttribute('aria-label') || '') : '',
+    } : null;
     const modelPickerRows = [...modal.querySelectorAll('.model-picker-row')].map((node) => {
       const r = node.getBoundingClientRect();
       const st = getComputedStyle(node);
@@ -167,6 +176,7 @@ async function inspectModal(page) {
       footer: footerRect ? { top: Math.round(footerRect.top), bottom: Math.round(footerRect.bottom), height: Math.round(footerRect.height) } : null,
       footerCoveredInputs,
       visibleInputLabels,
+      apiKeyVisibility,
       modelPickerRows,
       footerButtons,
       wizardSteps,
@@ -178,6 +188,48 @@ async function inspectModal(page) {
       clipped: clipped.slice(0, 25),
     };
   });
+}
+
+async function verifyProviderApiKeyToggle(page, name) {
+  const before = await page.evaluate(() => {
+    const modal = document.querySelector('#modal-overlay .modal');
+    const field = [...modal.querySelectorAll('.field')].find((f) => /^API key$/i.test((f.querySelector('label')?.textContent || '').trim()));
+    const input = field?.querySelector('input');
+    const button = field ? [...field.querySelectorAll('button')].find((b) => /^(Show|Hide)$/i.test((b.innerText || b.textContent || '').trim())) : null;
+    if (input) { input.value = 'sk-visible-check'; input.dispatchEvent(new Event('input', { bubbles: true })); }
+    return { inputType: input ? input.type : '', hasButton: !!button, buttonText: button ? (button.innerText || button.textContent || '').trim() : '', aria: button ? (button.getAttribute('aria-label') || '') : '' };
+  });
+  result.metrics[`${name}-api-key-toggle-before`] = before;
+  if (before.inputType !== 'password' || !before.hasButton || before.buttonText !== 'Show' || !/Show provider API key/i.test(before.aria || '')) {
+    fail(`${name}: Add model API key field should default hidden with a clear Show action`, before);
+    return;
+  }
+  await page.getByRole('button', { name: 'Show provider API key' }).click({ force: true });
+  await page.waitForTimeout(80);
+  const shown = await page.evaluate(() => {
+    const modal = document.querySelector('#modal-overlay .modal');
+    const field = [...modal.querySelectorAll('.field')].find((f) => /^API key$/i.test((f.querySelector('label')?.textContent || '').trim()));
+    const input = field?.querySelector('input');
+    const button = field ? [...field.querySelectorAll('button')].find((b) => /^(Show|Hide)$/i.test((b.innerText || b.textContent || '').trim())) : null;
+    return { inputType: input ? input.type : '', value: input ? input.value : '', buttonText: button ? (button.innerText || button.textContent || '').trim() : '', aria: button ? (button.getAttribute('aria-label') || '') : '' };
+  });
+  result.metrics[`${name}-api-key-toggle-shown`] = shown;
+  if (shown.inputType !== 'text' || shown.value !== 'sk-visible-check' || shown.buttonText !== 'Hide' || !/Hide provider API key/i.test(shown.aria || '')) {
+    fail(`${name}: Show provider API key should reveal the typed upstream key`, shown);
+  }
+  await page.getByRole('button', { name: 'Hide provider API key' }).click({ force: true });
+  await page.waitForTimeout(80);
+  const hidden = await page.evaluate(() => {
+    const modal = document.querySelector('#modal-overlay .modal');
+    const field = [...modal.querySelectorAll('.field')].find((f) => /^API key$/i.test((f.querySelector('label')?.textContent || '').trim()));
+    const input = field?.querySelector('input');
+    const button = field ? [...field.querySelectorAll('button')].find((b) => /^(Show|Hide)$/i.test((b.innerText || b.textContent || '').trim())) : null;
+    return { inputType: input ? input.type : '', value: input ? input.value : '', buttonText: button ? (button.innerText || button.textContent || '').trim() : '', aria: button ? (button.getAttribute('aria-label') || '') : '' };
+  });
+  result.metrics[`${name}-api-key-toggle-hidden`] = hidden;
+  if (hidden.inputType !== 'password' || hidden.value !== 'sk-visible-check' || hidden.buttonText !== 'Show' || !/Show provider API key/i.test(hidden.aria || '')) {
+    fail(`${name}: Hide provider API key should hide the typed upstream key without clearing it`, hidden);
+  }
 }
 
 
@@ -290,6 +342,10 @@ async function capture(page, name) {
     if (!/Save draft/i.test(metrics.text || '')) fail(`${name}: Add model modal must expose a disabled draft save action`, metrics);
     if (!/Run Test connection before saving an enabled route/i.test(metrics.text || '')) fail(`${name}: Add model modal must explain the Save enabled gate`, metrics);
     if (/Save disabled/i.test(metrics.text || '')) fail(`${name}: Add model modal exposes technical Save disabled wording`, metrics);
+    if (!metrics.apiKeyVisibility || metrics.apiKeyVisibility.inputType !== 'password' || !metrics.apiKeyVisibility.hasToggle || !/Show provider API key/i.test(metrics.apiKeyVisibility.toggleAria || '')) {
+      fail(`${name}: Add model modal should let admins show/hide the upstream API key they type`, metrics);
+    }
+    await verifyProviderApiKeyToggle(page, name);
     if (name.startsWith('mobile-')) {
       const steps = metrics.wizardSteps || [];
       const firstRow = steps.filter((r) => steps[0] && Math.abs(r.y - steps[0].y) <= 4);
