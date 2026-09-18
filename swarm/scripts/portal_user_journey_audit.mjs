@@ -120,9 +120,13 @@ async function inspect(page) {
         return {
           text: (n.innerText || n.textContent || '').trim(),
           width: Math.round(r.width),
+          height: Math.round(r.height),
           scrollWidth: n.scrollWidth,
           clientWidth: n.clientWidth,
+          scrollHeight: n.scrollHeight,
+          clientHeight: n.clientHeight,
           overflowX: st.overflowX,
+          overflowY: st.overflowY,
           whiteSpace: st.whiteSpace,
         };
       }),
@@ -180,6 +184,8 @@ async function runViewport(browser, seed, name, width, height) {
       fail(`${name}: user dashboard should show a ready cURL preview, not only a copy button`, { curlPreview, dash });
     }
     if (curlPreview && (curlPreview.whiteSpace !== 'pre-wrap' || !/auto|scroll|hidden|visible/i.test(curlPreview.overflowX || ''))) fail(`${name}: user cURL preview must keep command formatting readable`, { curlPreview, dash });
+    if (mobile && curlPreview && (curlPreview.height > 235 || !/auto|scroll/i.test(curlPreview.overflowY || '') || curlPreview.scrollHeight <= curlPreview.clientHeight)) fail(`${name}: mobile user cURL preview should be readable but height-limited with internal scroll`, { curlPreview, dash });
+    if (!mobile && curlPreview && curlPreview.height > 300) fail(`${name}: desktop user cURL preview should not dominate the dashboard`, { curlPreview, dash });
     if (dash.bodyScrollWidth > dash.clientWidth + 8) fail(`${name}: user dashboard horizontal overflow`, dash);
 
     await nav(page, 'usage', mobile);
