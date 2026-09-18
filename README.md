@@ -12,6 +12,8 @@ Official repository: `https://github.com/thusinh1969/Brighto_AIRouter`
 
 Official Docker image: `thusinh1969/brighto_airouter:v1`
 
+Release version: `1.0.0`
+
 ## Quick start
 
 Prerequisites: Linux, Docker, Docker Compose plugin, and `curl`.
