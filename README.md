@@ -27,7 +27,7 @@ For V1.0, the product promise is deliberately narrow and strong: Rust on the req
 
 | If you need... | BrighTO-Router gives you... |
 |---|---|
-| One endpoint for team apps | OpenAI-compatible and Anthropic-compatible routes through one router. |
+| One endpoint for team apps | OpenAI-compatible chat/completions/embeddings and Anthropic-compatible messages through one router. |
 | A simple self-hosted install | `./start.sh install` starts PostgreSQL, runs migrations, seeds provider templates, and starts the router. |
 | Fast pass-through behavior | Rust hot path, streaming proxy, in-memory routing snapshot, async PostgreSQL ledger writes. |
 | Cost and usage control | Teams, visible client API keys, budgets, expiry, request-per-minute limits, and concurrency limits. |
@@ -44,7 +44,7 @@ BrighTO-Router is designed to stay fast in both common team traffic and heavy co
 
 | Workload | Example | Why BrighTO-Router fits |
 |---|---|---|
-| Many concurrent users with small or average conversations | A 100-person team using chat, short multi-turn prompts, embeddings, and normal app traffic throughout the day. | The router keeps the hot path small: authenticate, check policy, choose a route, stream the response, and write usage asynchronously. |
+| Many concurrent users with small or average conversations | A 100-person team using chat, short multi-turn prompts, OpenAI-compatible embedding calls, and normal app traffic throughout the day. | The router keeps the hot path small: authenticate, check policy, choose a route, stream the response, and write usage asynchronously. |
 | Many developers or coding agents with large contexts | Vibe-coding sessions, repository analysis, long prompts, retrieval-heavy requests, and multiple developers using large-context models at once. | Large JSON bodies are passed through without transforming media or rewriting prompt content, so router overhead stays low even when the backend receives much larger context. |
 
 The verified V1.0 public benchmark covers `1k`, `50k`, and `200k` token-class payloads at 50 concurrent requests. That gives a practical range from normal chat traffic to large-context coding workflows. The benchmark harness can generate `500k` and `1m` token-class payloads, but those numbers should be promoted only after full production-machine proof is reviewed.
@@ -203,7 +203,7 @@ BrighTO-Router V1.0 routes LLM requests. It does not try to be a full media-gene
 | Capability | V1.0 status | What it means |
 |---|---|---|
 | Text chat/completions | Yes | Supported through OpenAI-style `/v1/chat/completions` and `/v1/completions`. |
-| Embeddings | Yes | Supported through OpenAI-style `/v1/embeddings`. |
+| Embeddings | Proxy yes | Supported through OpenAI-style `/v1/embeddings` when the backend provides embeddings. BrighTO-Router forwards the request and returns the vector response unchanged. |
 | Anthropic Messages | Yes | Supported through `/v1/messages` for Anthropic-compatible backends. |
 | Image input inside LLM chat JSON | Conditional yes | Passed through when the selected backend accepts that JSON shape and the request stays under `MAX_BODY_BYTES`. |
 | Audio input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts audio data in the same JSON endpoint. There is no dedicated audio adapter in V1.0. |
@@ -211,10 +211,17 @@ BrighTO-Router V1.0 routes LLM requests. It does not try to be a full media-gene
 | OpenAI Images API such as `/v1/images/generations` | No | Planned as a future media adapter, not part of V1.0. |
 | Audio generation, Text-to-Speech, Speech-to-Text, F5-TTS, transcription routes | No | Planned as future media adapters, not part of V1.0. |
 | Video generation routes | No | Planned as future media adapters, not part of V1.0. |
+| Reranking APIs such as Qwen reranker or BGE reranker | No | No dedicated rerank route in V1.0. Planned as a future adapter if needed. |
 | Multipart upload normalization | No | V1.0 focuses on JSON LLM routing. |
 | Realtime voice or WebSocket media sessions | No | Future enterprise/media work if customer demand requires it. |
 
-The practical rule is simple: if a provider exposes a model through a supported JSON LLM endpoint, BrighTO-Router can route it. If the provider needs a separate image/audio/video API, multipart upload flow, realtime session, or provider-specific media protocol, that belongs in a future adapter.
+The practical rule is simple: if a provider exposes a model through a supported JSON LLM endpoint, BrighTO-Router can route it. If the provider needs a separate image/audio/video/rerank API, multipart upload flow, realtime session, or provider-specific media protocol, that belongs in a future adapter.
+
+### Embeddings and reranking scope
+
+`/v1/embeddings` is a proxy route, not an embedding engine. The backend creates the vector. BrighTO-Router only applies authentication, model-route policy, budget checks, provider credential handling, response forwarding, and usage logging. It does not store vectors, build a vector index, run semantic search, or convert one provider's embedding format into another.
+
+BGE or Qwen embedding models can be routed when they are exposed by an OpenAI-compatible backend that accepts `/v1/embeddings`. Qwen reranker, BGE reranker, Cohere-style rerank, or any `/rerank` API is not implemented in V1.0. That should be a separate future adapter because reranking has a different request and response shape from embeddings.
 
 ## Why Rust instead of Python
 
