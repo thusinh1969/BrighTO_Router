@@ -13,7 +13,7 @@ BrighTO-Router gives your team one clean endpoint for OpenAI-compatible, Anthrop
 
 Measured on Intel Xeon Gold 6148 using the same-machine benchmark artifact at `benchmarks/artifacts/1.0-preview-summary.json`.
 
-Official repository: `https://github.com/thusinh1969/Brighto_AIRouter`
+Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 
 Official Docker image: `thusinh1969/brighto_airouter:v1`
 
@@ -66,8 +66,8 @@ The benchmark also verified PostgreSQL ledger writing at 200 requests per second
 Prerequisites: Linux, Docker, Docker Compose plugin, and `curl`.
 
 ```bash
-git clone https://github.com/thusinh1969/Brighto_AIRouter.git
-cd Brighto_AIRouter
+git clone https://github.com/thusinh1969/BrighTO_Router.git
+cd BrighTO_Router
 ./start.sh install
 ```
 

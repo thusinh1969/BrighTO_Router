@@ -11,7 +11,7 @@ Default BrighTO-Router can run behind any existing HTTPS load balancer or revers
 On the Ubuntu host:
 
 ```text
-Brighto_AIRouter/
+BrighTO_Router/
   .env
   docker-compose.yml
   ssl/
@@ -34,8 +34,8 @@ Log out and log in again if Docker was just installed.
 ## 2. Pull the repo
 
 ```bash
-git clone https://github.com/thusinh1969/Brighto_AIRouter.git
-cd Brighto_AIRouter
+git clone https://github.com/thusinh1969/BrighTO_Router.git
+cd BrighTO_Router
 ```
 
 ## 3. Create custom PEM files
