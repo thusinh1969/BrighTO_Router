@@ -1057,6 +1057,10 @@ async function renderDashboard(c,seq){
 
   if(mode==="admin"){
     c.appendChild(dashboardHero(sum,inT,outT,req,errRate,cost,logs));
+    if(routes.length===0){
+      c.appendChild(firstRunPanel());
+      return;
+    }
   }else{
     c.appendChild(userHero(me,stats,logs,inT,outT,req,errRate));
     c.appendChild(userCallPanel(me,logs));
@@ -1085,11 +1089,6 @@ async function renderDashboard(c,seq){
       grid.appendChild(x);
     });
     c.appendChild(grid);
-  }
-
-  if(mode==="admin" && routes.length===0){
-    c.appendChild(firstRunPanel());
-    return;
   }
 
   var p=el("div","panel");

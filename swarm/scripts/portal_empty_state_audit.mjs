@@ -64,6 +64,8 @@ async function main() {
       addFirstModelButtons: [...document.querySelectorAll('#content button')].filter((b) => (b.innerText || '').trim() === 'Add first model').length,
       hasLaunch: !!document.querySelector('.launch-list'),
       emptyPanels: document.querySelectorAll('#content .empty').length,
+      summaryCards: document.querySelectorAll('#content > .grid .card').length,
+      summaryLabels: [...document.querySelectorAll('#content > .grid .card .label')].map((n) => (n.textContent || '').trim()),
       sectionTitles: [...document.querySelectorAll('#content h3, #content .diagnostic-details summary b')].map((n) => (n.textContent || '').trim()),
     }));
     result.evidence.dashboard = dash;
@@ -77,6 +79,10 @@ async function main() {
     if (!dash.buttons.includes('View API keys')) fail('dashboard empty state must include View API keys CTA', dash);
     if (dash.buttons.includes('Inspect usage')) fail('dashboard empty hero must not promote usage before the first route/request', dash);
     if (dash.emptyPanels !== 0) fail('dashboard first-run should not render repeated empty chart/log panels below the launch checklist', dash);
+    if (dash.summaryCards !== 0) fail('dashboard first-run should not render generic zero KPI cards before setup', dash);
+    if (dash.summaryLabels.some((t) => ['Gateway', 'Enabled routes', 'Active providers', 'Active teams', 'Estimated cost', 'Requests (30d)', 'Total tokens', 'Error rate'].includes(t))) {
+      fail('dashboard first-run must avoid zero-value KPI labels before setup', dash);
+    }
     if (dash.sectionTitles.some((t) => ['Tokens by model — last 30 days', 'Top consumers', 'Top models', 'Recent requests', 'Technical diagnostics'].includes(t))) {
       fail('dashboard first-run should stop at Launch checklist instead of showing empty analytics sections', dash);
     }
