@@ -689,7 +689,8 @@ async function api(path, method, body){
   if(res.status===204) return null;
   return res.json();
 }
-function toast(msg, type){ var b=$("toast"); var t=el("div","toast "+(type||""),msg); b.appendChild(t); setTimeout(function(){t.remove();},4000); }
+function clearToasts(){ var b=$("toast"); if(b) b.innerHTML=""; }
+function toast(msg, type){ var b=$("toast"); var t=el("div","toast "+(type||""),msg); b.appendChild(t); setTimeout(function(){t.remove();},3200); }
 
 /* ===== Auth ===== */
 function clearLoginError(){ var err=$("login-error"); if(err){ err.textContent=""; err.classList.add("hidden"); } }
@@ -785,6 +786,8 @@ var descs={dashboard:"Gateway overview",providers:"Connect LLM provider endpoint
 var userDescs={dashboard:"Your API access and usage",usage:"Your requests and token usage",settings:"Portal preferences and session"};
 function pageDesc(view){ return mode==="user" && userDescs[view] ? userDescs[view] : descs[view]; }
 function go(view){
+  var active=document.querySelector(".nav.active");
+  if(active && active.dataset.view!==view) clearToasts();
   document.querySelectorAll(".nav").forEach(function(n){ n.classList.toggle("active", n.dataset.view===view); });
   $("page-title").textContent=titles[view]; $("page-desc").textContent=pageDesc(view);
   closeSidebar(); // close mobile sidebar after navigation

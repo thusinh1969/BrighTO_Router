@@ -262,6 +262,7 @@ async function inspectPage(page, label) {
       bodyScrollWidth: document.body.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
       contentText: text.slice(0, 1200),
+      visibleToasts: [...document.querySelectorAll('#toast .toast')].map((n) => (n.innerText || n.textContent || '').trim()),
       tableStats,
       legendContainerStats,
       legendStats,
@@ -513,6 +514,7 @@ async function runViewport(browser, name, width, height) {
     const metrics = await inspectPage(page, `${name}-${view}`);
     result.pages[name][view] = metrics;
     if (metrics.bodyScrollWidth > metrics.clientWidth + 8) fail(`${name}/${view}: whole-page horizontal overflow`, metrics);
+    if (view !== 'dashboard' && (metrics.visibleToasts || []).some((t) => /Fallback probe copied/i.test(t))) fail(`${name}/${view}: stale copy toast survived navigation`, metrics);
     if (!metrics.title) fail(`${name}/${view}: missing page title`, metrics);
     if (!metrics.panelCount && view !== 'dashboard') fail(`${name}/${view}: no content panels`, metrics);
     if (['providers', 'models', 'teams', 'keys'].includes(view) && (metrics.summaryCards || []).length < 4) fail(`${name}/${view}: missing operational summary cards`, metrics);
