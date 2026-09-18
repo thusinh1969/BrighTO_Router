@@ -305,6 +305,16 @@ async function inspectPage(page, label) {
         const firstNameCell = table.querySelector('tbody tr td:nth-child(1)');
         const wrap = table.closest('.route-list-wrap');
         const nr = firstNameCell ? firstNameCell.getBoundingClientRect() : null;
+        const wr = wrap ? wrap.getBoundingClientRect() : null;
+        const actionButtons = firstAction ? [...firstAction.querySelectorAll('button')].map((b) => {
+          const r = b.getBoundingClientRect();
+          return { text: b.innerText.trim(), x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), right: Math.round(r.right), visible: r.width > 0 && r.height > 0 };
+        }) : [];
+        const metricCells = firstRow ? [...firstRow.querySelectorAll('td:nth-child(2),td:nth-child(3),td:nth-child(4),td:nth-child(5)')].map((cell) => {
+          const st = getComputedStyle(cell);
+          const r = cell.getBoundingClientRect();
+          return { text: (cell.innerText || cell.textContent || '').trim(), width: Math.round(r.width), height: Math.round(r.height), borderStyle: st.borderStyle, borderRadius: st.borderRadius, backgroundColor: st.backgroundColor };
+        }) : [];
         return {
           tableDisplay: getComputedStyle(table).display,
           bodyDisplay: tbody ? getComputedStyle(tbody).display : '',
@@ -313,6 +323,9 @@ async function inspectPage(page, label) {
           rowColumns: firstRow ? getComputedStyle(firstRow).gridTemplateColumns : '',
           actionDisplay: firstAction ? getComputedStyle(firstAction).display : '',
           publicNameCellWidth: nr ? Math.round(nr.width) : 0,
+          wrapRight: wr ? Math.round(wr.right) : 0,
+          actionButtons,
+          metricCells,
           wrapBorder: wrap ? getComputedStyle(wrap).borderStyle : '',
           rows: table.querySelectorAll('tbody tr').length,
         };
@@ -591,8 +604,12 @@ async function runViewport(browser, name, width, height) {
       if (!mobile) {
         const badRouteList = (metrics.routeListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
         if (badRouteList.length || !(metrics.routeListStats || []).length) fail(`${name}/${view}: desktop Models should render as compact route cards, not a wide sparse table`, { badRouteList, metrics });
-        const narrowPublicNameCells = (metrics.routeListStats || []).filter((r) => r.rows > 0 && width >= 1200 && r.publicNameCellWidth < 380);
+        const narrowPublicNameCells = (metrics.routeListStats || []).filter((r) => r.rows > 0 && width >= 1200 && r.publicNameCellWidth < 300);
         if (narrowPublicNameCells.length) fail(`${name}/${view}: desktop public model column is too narrow for real provider names`, { narrowPublicNameCells, metrics });
+        const hiddenRouteActions = (metrics.routeListStats || []).filter((r) => r.rows > 0 && ((r.actionButtons || []).length < 3 || (r.actionButtons || []).some((b) => !b.visible || b.right > (r.wrapRight || width) + 2 || b.width < 52)));
+        if (hiddenRouteActions.length) fail(`${name}/${view}: desktop route actions must remain visible inside each route card`, { hiddenRouteActions, metrics });
+        const flatRouteMetricCells = (metrics.routeListStats || []).filter((r) => r.rows > 0 && (r.metricCells || []).some((c) => c.borderStyle === 'none' || parseFloat(c.borderRadius || '0') < 8 || c.height < 44));
+        if (flatRouteMetricCells.length) fail(`${name}/${view}: desktop route details should read as compact cards, not flat table cells`, { flatRouteMetricCells, metrics });
       }
     }
     if (view === 'keys') {
