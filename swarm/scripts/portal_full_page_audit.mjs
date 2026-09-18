@@ -441,6 +441,8 @@ async function inspectPage(page, label) {
           textOverflow: st.textOverflow,
         };
       }),
+      keyScopeCells: [...document.querySelectorAll('.key-list-table tbody tr td:nth-child(3)')].map((n) => (n.innerText || n.textContent || '').trim()),
+      keyLimitCells: [...document.querySelectorAll('.key-list-table tbody tr td:nth-child(4)')].map((n) => (n.innerText || n.textContent || '').trim()),
       cardRects: [...document.querySelectorAll('#content .grid .card')].map((n) => {
         const r = n.getBoundingClientRect();
         return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), text: (n.innerText || '').trim().slice(0, 80) };
@@ -669,6 +671,10 @@ async function runViewport(browser, name, width, height) {
       if (clippedKeys.length) fail(`${name}/${view}: revealed API keys are clipped`, { clippedKeys, metrics });
       const clippedKeyLimits = (metrics.keyLimitItems || []).filter((r) => r.text && (r.scrollWidth > r.clientWidth + 4 || r.scrollHeight > r.clientHeight + 4));
       if (clippedKeyLimits.length) fail(`${name}/${view}: API key limit labels are clipped`, { clippedKeyLimits, metrics });
+      const expiryInScope = (metrics.keyScopeCells || []).filter((text) => /expiry|expires|no expiry/i.test(text || ''));
+      if (expiryInScope.length) fail(`${name}/${view}: API key expiry belongs in Limits, not Scope`, { expiryInScope, metrics });
+      const missingExpiryLimit = (metrics.keyLimitCells || []).filter((text) => !/Expiry:/i.test(text || ''));
+      if ((metrics.keyLimitCells || []).length && missingExpiryLimit.length) fail(`${name}/${view}: API key Limits should include expiry policy`, { missingExpiryLimit, metrics });
       const clippedKeyOwnerScope = (metrics.keyOwnerScopeLabels || []).filter((r) => r.text && (/nowrap/i.test(r.whiteSpace || '') || /ellipsis/i.test(r.textOverflow || '') || r.scrollWidth > r.clientWidth + 4 || r.scrollHeight > r.clientHeight + 4));
       if (clippedKeyOwnerScope.length) fail(`${name}/${view}: API key owner/team/scope labels are clipped`, { clippedKeyOwnerScope, metrics });
       if (!mobile) {
