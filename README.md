@@ -38,6 +38,17 @@ For V1.0, the product promise is deliberately narrow and strong: Rust on the req
 
 BrighTO-Router is not trying to win by listing hundreds of integrations. It is trying to be the router a serious team can understand, run, audit, and tune.
 
+## Built for two real workloads
+
+BrighTO-Router is designed to stay fast in both common team traffic and heavy coding-agent traffic. These workloads stress a router in different ways, so the benchmark suite measures both small and large payload behavior.
+
+| Workload | Example | Why BrighTO-Router fits |
+|---|---|---|
+| Many concurrent users with small or average conversations | A 100-person team using chat, short multi-turn prompts, embeddings, and normal app traffic throughout the day. | The router keeps the hot path small: authenticate, check policy, choose a route, stream the response, and write usage asynchronously. |
+| Many developers or coding agents with large contexts | Vibe-coding sessions, repository analysis, long prompts, retrieval-heavy requests, and multiple developers using large-context models at once. | Large JSON bodies are passed through without transforming media or rewriting prompt content, so router overhead stays low even when the backend receives much larger context. |
+
+The verified V1.0 public benchmark covers `1k`, `50k`, and `200k` token-class payloads at 50 concurrent requests. That gives a practical range from normal chat traffic to large-context coding workflows. The benchmark harness can generate `500k` and `1m` token-class payloads, but those numbers should be promoted only after full production-machine proof is reviewed.
+
 ## Benchmark proof
 
 Method: same client, same machine, same mock backend, direct call versus router call. Release artifact: `bench/results/20260917-025033/summary.json` on Intel Xeon Gold 6148.
