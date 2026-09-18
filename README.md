@@ -240,6 +240,25 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 - Health endpoints: `/healthz`, `/readyz`.
 - Prometheus metrics endpoint: `/metrics`.
 
+## Logging, analytics, and privacy
+
+BrighTO-Router logs one usage record per API call. It does not store chat content, prompts, uploaded media, tool payloads, or model responses. In V1.0-preview, a "session" in the router means request-level traffic metadata, not a stored conversation transcript.
+
+Usage records are written to PostgreSQL in `usage_ledger`. If PostgreSQL is temporarily unavailable, the router writes usage events to the local JSONL file configured by `LEDGER_FALLBACK_FILE` (`/var/lib/brighto-router/ledger-fallback.jsonl` in the default Docker setup) and replays them when the database is available again. PostgreSQL is the source for Portal reporting, budget counters, historical analytics, and Grafana SQL dashboards. The fallback file is only a durability buffer during database outages.
+
+| Customer question | V1.0-preview answer | Why it matters |
+|---|---|---|
+| Do we log request size? | Yes, by `input_tokens`, `output_tokens`, and an `estimated` flag when the provider did not return exact usage. | Enough for budget, cost, and capacity analysis without storing content. |
+| Do we log speed? | Yes: `ttfb_ms` (time to first byte), `total_ms` (whole request), and `router_overhead_ms` (router work before provider forwarding). Token-per-second values are derived from token counts and duration. | Admins can see whether latency comes from the provider, large payloads, or router overhead. |
+| Do we log errors? | Yes: HTTP `status`, `client_aborted`, and a short `error_class` such as timeout, read failure, network error, or client aborted. | Supports error-rate dashboards and operational alerts. |
+| Do we log provider error text/body? | No. The router forwards provider errors to the caller but does not persist the provider response body. | Provider error bodies can contain prompt fragments, account details, or sensitive payload context. |
+| Do we keep chat content? | No. No prompt, message array, image/audio payload, tool call body, or model answer is stored by the router. | Keeps the hot path fast, reduces storage cost, and avoids turning the router into a private data lake. |
+| Can Grafana use the data? | Yes. Grafana can read PostgreSQL `usage_ledger` for history and `/metrics` for Prometheus time-series metrics. | Teams get both business analytics and live infrastructure metrics. |
+
+The Portal already uses the same ledger data for totals by provider, model, team, API key, prompt-size bucket, latency, token throughput, and errors. Prometheus `/metrics` exposes router counters, token counters, first-byte latency, router overhead, and ledger health metrics for Grafana or alerting.
+
+If a customer needs full transcript auditing, that should be an explicit enterprise feature with separate retention policy, encryption, redaction, and access controls. It should not be enabled silently in the router core. The current default is privacy-preserving metadata logging.
+
 ## Multimodal and media support
 
 BrighTO-Router V1.0 routes LLM requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
@@ -303,7 +322,7 @@ Runtime state is split deliberately:
 | Budgets and live counters | Memory | Fast admission checks. |
 | Provider endpoints, routes, teams, keys | PostgreSQL | Durable control plane. |
 | Usage ledger | PostgreSQL | Durable cost and usage record. |
-| Ledger fallback | Local JSONL file | Keeps serving during a temporary PostgreSQL outage. |
+| Ledger fallback | Local JSONL file from `LEDGER_FALLBACK_FILE` | Keeps serving during a temporary PostgreSQL outage. |
 
 **JSONL** means one JSON record per line.
 
