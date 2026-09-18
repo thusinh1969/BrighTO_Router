@@ -72,7 +72,7 @@ async function verifyUserReload(page, name) {
 }
 async function waitUserView(page, view) {
   const expected = {
-    dashboard: ['Your API access', 'Call endpoint', '/v1/chat/completions'],
+    dashboard: ['Your API access', 'Call endpoint', '/v1/chat/completions', 'Tokens by model (input + output)'],
     usage: ['Tokens by model (input + output)', 'Request logs'],
     settings: ['Portal preferences', 'Session', 'Model scope'],
   }[view] || [];
@@ -163,6 +163,7 @@ async function runViewport(browser, seed, name, width, height) {
     }
     if (!/Your API access and usage/i.test(dash.desc)) fail(`${name}: user dashboard topbar description is not role-aware`, dash);
     if (!/Call endpoint|POST|\/v1\/chat\/completions/i.test(dash.content) || !dash.content.includes('Authorization: Bearer ' + seed.key)) fail(`${name}: user dashboard missing runnable call endpoint quick start with the signed-in key`, dash);
+    if (!/Tokens by model \(input \+ output\) — last 30 days/i.test(dash.content)) fail(`${name}: user dashboard chart title should explain input plus output tokens`, dash);
     if (/too short for stable speed/i.test(dash.content) && !/TOKENS\/SEC\s+Too short/i.test(dash.content)) fail(`${name}: user dashboard must show Too short instead of an inflated or blank Tokens/sec value for sub-1s samples`, dash);
     if (!dash.content.includes(seed.model)) fail(`${name}: user dashboard missing allowed/used model`, dash);
     if (!dash.allowedModels || dash.allowedModels.length < 1) fail(`${name}: user dashboard should render allowed models as a readable card`, dash);

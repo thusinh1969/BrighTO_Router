@@ -449,6 +449,17 @@ async function inspectPage(page, label) {
       visibleButtons: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => b.innerText.trim()).filter(Boolean).slice(0, 30),
       visibleButtonDetails: [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null).map((b) => ({ text: b.innerText.trim(), copy: b.dataset.copy || '', title: b.title || '' })).filter((b) => b.text).slice(0, 40),
       providerPageActionRects: [...document.querySelectorAll('#content .providers-actions > button, #content .providers-actions > select')].map((n) => { const r = n.getBoundingClientRect(); return { tag: n.tagName, text: (n.innerText || n.textContent || n.value || '').trim(), x: Math.round(r.x), y: Math.round(r.y), centerY: Math.round(r.y + r.height / 2), width: Math.round(r.width), height: Math.round(r.height) }; }),
+      providerRows: [...document.querySelectorAll('.provider-list-table tbody tr')].map((row) => {
+        const r = row.getBoundingClientRect();
+        const cells = [...row.children].map((td) => {
+          const tr = td.getBoundingClientRect();
+          const st = getComputedStyle(td);
+          return { label: td.getAttribute('data-label') || '', x: Math.round(tr.x), y: Math.round(tr.y), width: Math.round(tr.width), height: Math.round(tr.height), display: st.display, text: (td.innerText || td.textContent || '').trim().slice(0, 120) };
+        });
+        const actions = row.querySelector('td.actions .action-row');
+        const ar = actions ? actions.getBoundingClientRect() : null;
+        return { width: Math.round(r.width), height: Math.round(r.height), cells, actionWidth: ar ? Math.round(ar.width) : 0, actionColumns: actions ? getComputedStyle(actions).gridTemplateColumns : '' };
+      }),
     };
   });
 }
@@ -586,24 +597,34 @@ async function runViewport(browser, name, width, height) {
     if (redDisabledDanger.length) fail(`${name}/${view}: disabled destructive actions still look clickable/red`, { redDisabledDanger, metrics });
     if (view === 'providers') {
       const addModelAction = (metrics.visibleButtonDetails || []).find((b) => b.text === 'Add model');
-      const advancedAction = (metrics.visibleButtonDetails || []).find((b) => b.text === 'Advanced connection');
+      const advancedAction = (metrics.visibleButtonDetails || []).find((b) => b.text === 'Advanced endpoint');
       if (!addModelAction || !/Recommended flow/i.test(addModelAction.title || '')) fail(`${name}/${view}: Providers should lead admins to Add model as the recommended flow`, metrics);
-      if (!advancedAction || !/Optional/i.test(advancedAction.title || '')) fail(`${name}/${view}: Provider connection setup should be clearly marked as optional/advanced`, metrics);
-      if ((metrics.visibleButtons || []).includes('Prepare connection')) fail(`${name}/${view}: Providers page still promotes Prepare connection as a primary setup action`, metrics);
+      if (!advancedAction || !/Optional/i.test(advancedAction.title || '')) fail(`${name}/${view}: Provider endpoint setup should be clearly marked as optional/advanced`, metrics);
+      if ((metrics.visibleButtons || []).includes('Prepare endpoint')) fail(`${name}/${view}: Providers page still promotes Prepare endpoint as a primary setup action`, metrics);
       if (/upstream endpoint/i.test(metrics.contentText || '')) fail(`${name}/${view}: Providers page should use plain provider endpoint wording instead of upstream jargon`, metrics);
       if (!mobile) {
         const rects = metrics.providerPageActionRects || [];
         const firstCenterY = rects[0]?.centerY;
         const splitRows = rects.length >= 3 && rects.some((r) => Math.abs(r.centerY - firstCenterY) > 4);
         if (rects.length < 3 || splitRows) fail(`${name}/${view}: desktop Providers actions should fit on one row`, { rects, metrics });
+        const crampedRows = (metrics.providerRows || []).filter((row) => row.width > (metrics.tableStats || [])[0]?.clientWidth + 12 || row.actionWidth > 210 || !/ /.test(row.actionColumns || ''));
+        if (crampedRows.length) fail(`${name}/${view}: Provider rows should stay inside the panel and keep actions compact in two columns`, { crampedRows, metrics });
+        const shortRows = (metrics.providerRows || []).filter((row) => row.height < 72);
+        if (shortRows.length) fail(`${name}/${view}: Provider rows should read as cards with enough vertical space`, { shortRows, metrics });
       }
     }
     if (view === 'providers' && !mobile) {
       const badProviderList = (metrics.providerListStats || []).filter((r) => r.rows > 0 && (r.tableDisplay !== 'block' || r.bodyDisplay !== 'grid' || r.headDisplay !== 'none' || r.rowDisplay !== 'grid' || r.actionDisplay !== 'grid'));
       if (badProviderList.length || !(metrics.providerListStats || []).length) fail(`${name}/${view}: desktop Providers should render as compact provider cards, not a wide sparse table`, { badProviderList, metrics });
       if (width >= 1200) {
-        const wrappedProviderActions = (metrics.providerListStats || []).filter((r) => (r.actionButtons || []).length >= 4 && (Math.max(...r.actionButtons.map((b) => b.y)) - Math.min(...r.actionButtons.map((b) => b.y)) > 5));
-        if (wrappedProviderActions.length) fail(`${name}/${view}: desktop provider actions should fit on one row`, { wrappedProviderActions, metrics });
+        const badProviderActionGrid = (metrics.providerListStats || []).filter((r) => {
+          const buttons = r.actionButtons || [];
+          if (buttons.length < 4) return true;
+          const xs = [...new Set(buttons.map((b) => b.x))];
+          const ys = [...new Set(buttons.map((b) => b.y))];
+          return xs.length !== 2 || ys.length !== 2 || buttons.some((b) => b.width < 64 || b.width > 92);
+        });
+        if (badProviderActionGrid.length) fail(`${name}/${view}: desktop provider actions should be a compact 2-by-2 button grid`, { badProviderActionGrid, metrics });
         const flatMetricCells = (metrics.providerListStats || []).filter((r) => r.rows > 0 && (r.metricCells || []).some((c) => c.borderStyle === 'none' || parseFloat(c.borderRadius || '0') < 8 || c.height < 44));
         if (flatMetricCells.length) fail(`${name}/${view}: desktop provider metrics should read as compact cards, not flat table cells`, { flatMetricCells, metrics });
       }

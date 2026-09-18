@@ -285,7 +285,7 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
   .provider-list-table{display:block;border-collapse:separate;border-spacing:0;font-size:13px}
   .provider-list-table colgroup,.provider-list-table thead{display:none}
   .provider-list-table tbody{display:grid;gap:12px}
-  .provider-list-table tr{display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,.72fr) minmax(64px,.28fr) minmax(64px,.28fr) minmax(220px,1fr) minmax(170px,.7fr);gap:12px;align-items:start;background:linear-gradient(145deg,rgba(15,23,42,.98),rgba(11,18,32,.98));border:1px solid rgba(51,65,85,.9);border-radius:16px;padding:14px;box-shadow:0 14px 34px rgba(0,0,0,.14)}
+  .provider-list-table tr{display:grid;grid-template-columns:minmax(180px,1fr) minmax(150px,.72fr) minmax(64px,.28fr) minmax(64px,.28fr) minmax(200px,1.05fr) minmax(160px,.62fr);gap:12px;align-items:stretch;background:linear-gradient(145deg,rgba(15,23,42,.98),rgba(11,18,32,.98));border:1px solid rgba(51,65,85,.9);border-radius:16px;padding:14px;box-shadow:0 14px 34px rgba(0,0,0,.14)}
   .provider-list-table tr:hover{background:linear-gradient(145deg,rgba(17,28,49,.98),rgba(11,18,32,.98));border-color:rgba(56,189,248,.26)}
   .provider-list-table td{display:block;border-bottom:none;padding:0;overflow:visible;min-width:0}
   .provider-list-table td::before{content:attr(data-label);display:block;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.055em;font-weight:850;margin-bottom:6px;line-height:1.2}
@@ -296,13 +296,13 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
   .provider-list-table td:nth-child(3),.provider-list-table td:nth-child(4){display:flex;flex-direction:column;justify-content:center}
   .provider-list-table td:nth-child(3)::before,.provider-list-table td:nth-child(4)::before,.provider-list-table td:nth-child(5)::before{margin-bottom:4px}
   .provider-list-table td:nth-child(5) .compact-line{font-size:12px;line-height:1.35}
-  .provider-list-table td.actions{display:flex;align-items:center;justify-content:flex-end;text-align:left;align-self:stretch;white-space:normal}
-  .provider-list-table .action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;width:100%;max-width:176px;margin-left:auto}
+  .provider-list-table td.actions{display:flex;align-items:stretch;justify-content:flex-end;text-align:left;align-self:stretch;white-space:normal}
+  .provider-list-table .action-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;width:100%;max-width:176px;margin-left:auto;align-content:start}
   .provider-list-table .action-row .btn{width:100%;justify-content:center;padding-left:8px;padding-right:8px}
   @media(min-width:1200px){
-    .provider-list-table tr{grid-template-columns:minmax(220px,1fr) minmax(150px,.56fr) minmax(56px,.22fr) minmax(56px,.22fr) minmax(0,.92fr) minmax(300px,1.1fr)}
-    .provider-list-table td.actions{align-items:start}
-    .provider-list-table .action-row{grid-template-columns:repeat(4,minmax(0,1fr));max-width:320px;gap:7px}
+    .provider-list-table tr{grid-template-columns:minmax(190px,1.05fr) minmax(160px,.68fr) minmax(72px,.25fr) minmax(72px,.25fr) minmax(240px,1.05fr) minmax(166px,.58fr)}
+    .provider-list-table td.actions{align-items:stretch}
+    .provider-list-table .action-row{grid-template-columns:repeat(2,minmax(0,1fr));max-width:176px;gap:7px}
   }
   .team-list-wrap,.key-list-wrap{overflow:visible;border:none;background:transparent}
   .team-list-table,.key-list-table{display:block;border-collapse:separate;border-spacing:0;font-size:13px}
@@ -849,7 +849,7 @@ function emptyBox(text){ var d=el("div","empty"); d.innerHTML='<svg viewBox="0 0
 function firstRunPanel(){
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Launch checklist")); p.appendChild(h);
-  p.appendChild(el("p","hint","Create one tested model route first. BrighTO will create the provider connection automatically; then use the client API key to send traffic."));
+  p.appendChild(el("p","hint","Create one tested model route first. BrighTO will create the provider endpoint automatically; then use the client API key to send traffic."));
   var list=el("div","launch-list");
   [["1","Add a model","Choose a provider or Custom LLM, enter its base URL/API key, load model names, test, then save enabled."],
    ["2","Use a client key","The default demo key is available in API Keys, or create one for a team with budget/expiry."],
@@ -978,7 +978,7 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
   left.appendChild(el("div","ops-kicker","Router overview"));
   left.appendChild(el("div","ops-title",onboarding?"Ready to set up":(healthOk?"Gateway ready":"Needs attention")));
   left.appendChild(el("p","ops-copy",onboarding
-    ? "Add one tested model route. BrighTO will create the provider connection and then clients can send traffic."
+    ? "Add one tested model route. BrighTO will create the provider endpoint and then clients can send traffic."
     : (healthOk
       ? "Routes are enabled, providers are available, and recent traffic has no recorded errors."
       : "Check route readiness, provider state, pricing, and recent request errors before sending production traffic.")));
@@ -987,7 +987,7 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
     ? [["Model route","Add first model","choose, load, test, save","warn"],
        ["Provider","Created with model","no separate provider step","warn"],
        ["Route pricing","Set per route","add route pricing before cost tracking","warn"],
-       ["Client key","Demo key ready","create team keys later","ok"]]
+       ["Tokens/sec","After first call","shown in Dashboard and Usage","ok"]]
     : [["Traffic",fmt(req)+" req",req>0?"last 30 days":"no requests yet",tone(req>0,true)],
        ["Speed",speed.value,speed.note,speed.tone],
        ["Cost",costValue,costNote,costTone],
@@ -1016,7 +1016,7 @@ function dashboardHero(sum,inT,outT,req,errRate,cost,logs){
   right.appendChild(el("h3",null,"Readiness"));
   var list=el("div","readiness-list");
   list.appendChild(readinessItem("Routes",onboarding?"add first model":enabledRoutes+"/"+configuredRoutes+" enabled",enabledRoutes>0?"":(onboarding?"warn":"bad")));
-  list.appendChild(readinessItem("Provider connections",onboarding?"created with model":activeProviders+"/"+backends.length+" active",activeProviders>0?"":(onboarding?"warn":"bad")));
+  list.appendChild(readinessItem("Provider endpoints",onboarding?"created with model":activeProviders+"/"+backends.length+" active",activeProviders>0?"":(onboarding?"warn":"bad")));
   list.appendChild(readinessItem("Teams",activeTeams+"/"+teams.length+" active",activeTeams>0?"":"bad"));
   list.appendChild(readinessItem("Pricing",onboarding?"set per route later":(missingPrices?missingPrices+" missing":"complete"),onboarding||missingPrices?"warn":""));
   list.appendChild(readinessItem("Provider health",badProviders?badProviders+" warning(s)":"clean",badProviders?"warn":""));
@@ -1115,7 +1115,7 @@ async function renderDashboard(c,seq){
   }
 
   var p=el("div","panel");
-  p.appendChild(el("h3",null,"Tokens by model — last 30 days"));
+  p.appendChild(el("h3",null,"Tokens by model (input + output) — last 30 days"));
   if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage yet. Create a route, create an API key, and send one request."));
   if(mode==="admin" && sum){
     var split=el("div","dash-split");
@@ -1156,17 +1156,17 @@ async function renderDashboard(c,seq){
 function renderProviders(c){
   c.innerHTML="";
   c.appendChild(summaryStrip([
-    ["Provider connections",fmt(backends.length),"total provider endpoints","info"],
+    ["Provider endpoints",fmt(backends.length),"total provider endpoints","info"],
     ["Active",fmt(backends.filter(function(b){return b.enabled;}).length),"available to routes","ok"],
     ["Locked",fmt(backends.filter(function(b){return !b.can_delete;}).length),"has routes or usage","warn"],
     ["Disabled",fmt(backends.filter(function(b){return !b.enabled;}).length),"cannot receive traffic",backends.some(function(b){return !b.enabled;})?"bad":"info"]
   ]));
   var p=el("div","panel");
   var h=el("div","panel-head");
-  h.appendChild(el("h3",null,"Provider connections"));
+  h.appendChild(el("h3",null,"Provider endpoints"));
   var hActions=el("div","panel-head-actions providers-actions");
   var addModel=el("button","btn primary sm","Add model"); addModel.title="Recommended flow: choose a provider, enter the API key, load models, test, then save."; addModel.onclick=function(){ go("models"); setTimeout(function(){ openRouteModal(); },50); };
-  var advanced=el("button","btn ghost sm","Advanced connection"); advanced.title="Optional: prepare or disable a provider endpoint before adding model routes."; advanced.onclick=openProviderModal;
+  var advanced=el("button","btn ghost sm","Advanced endpoint"); advanced.title="Optional: prepare or disable a provider endpoint before adding model routes."; advanced.onclick=openProviderModal;
   hActions.appendChild(addModel); hActions.appendChild(advanced);
   var filt=el("select"); filt.style.maxWidth="160px";
   [["all","All"],["enabled","Enabled only"],["disabled","Disabled only"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; filt.appendChild(o); });
@@ -1175,17 +1175,17 @@ function renderProviders(c){
   hActions.appendChild(filt);
   h.appendChild(hActions);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Provider connections are provider endpoints, created automatically when you add a model. Manage enable/disable and safety here. The API key lives on the model route, never on the provider connection."));
+  p.appendChild(el("p","hint","Provider endpoints are the base URLs BrighTO sends model traffic to. They are created automatically when you add a model. Manage enable/disable and deletion safety here. API keys live on model routes."));
   var fv=(window.provFilter||"all");
   var shown=backends.filter(function(b){ return fv==="all" || (fv==="enabled"?b.enabled:!b.enabled); });
-  if(!backends.length){ p.appendChild(emptyBox("No provider connections yet — add a model and one is created automatically.")); }
-  else if(!shown.length){ p.appendChild(emptyBox("No provider connections match this filter.")); }
+  if(!backends.length){ p.appendChild(emptyBox("No provider endpoints yet — add a model and one is created automatically.")); }
+  else if(!shown.length){ p.appendChild(emptyBox("No provider endpoints match this filter.")); }
   else{
     var w=el("div","table-wrap pro-table provider-list-wrap"); var t=el("table","conn-table provider-list-table");
     var colg=document.createElement("colgroup");
     ["30%","20%","7%","7%","18%","18%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
-    t.appendChild(thead(["Provider connection","Status","Routes","Usage","Base URL",""]));
+    t.appendChild(thead(["Provider endpoint","Status","Routes","Usage","Base URL",""]));
     var tb=el("tbody");
     shown.forEach(function(b){
       var tr=el("tr"); tr.setAttribute("data-id",b.id);
@@ -1207,7 +1207,7 @@ function renderProviders(c){
       tr.appendChild(el("td","num",String(b.usage_count||0)));
       var bu=el("td","mono"); var bus=el("span","truncate compact-line",b.base_url.replace("https://","").replace("http://","")); bus.title=b.base_url; bu.appendChild(bus); tr.appendChild(bu);
       var td=el("td","actions"); var row=el("div","action-row");
-      var cr=el("button","btn sm primary","Route"); cr.title="Create a model route from this provider connection"; cr.onclick=function(){ openRouteModalFromConnection(b); };
+      var cr=el("button","btn sm primary","Route"); cr.title="Create a model route from this provider endpoint"; cr.onclick=function(){ openRouteModalFromConnection(b); };
       var tg2=el("button","btn sm ghost", b.enabled?"Disable":"Enable"); tg2.onclick=function(){ toggleBackend(b); };
       var e=el("button","btn sm ghost","Edit"); e.onclick=function(){openProviderModal(b);};
       var d=el("button","btn sm danger","Delete");
@@ -1226,7 +1226,7 @@ function openRouteModalFromConnection(b){ window.presetConnection=b; openRouteMo
 async function toggleBackend(b){
   try{
     await api("/admin/backends/"+b.id,"PATCH",{enabled:!b.enabled});
-    toast(b.enabled?"Provider connection disabled":"Provider connection enabled");
+    toast(b.enabled?"Provider endpoint disabled":"Provider endpoint enabled");
     backends=await api("/admin/backends","GET"); routes=await api("/admin/routes","GET"); rerender();
   }catch(e){ toast("Toggle failed: "+e.message,"err"); }
 }
@@ -1243,10 +1243,10 @@ function openProviderModal(b){
   b=b||{};
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal");
-  m.appendChild(modalHeader(b.id?"Edit connection · "+b.name:"Prepare provider connection"));
+  m.appendChild(modalHeader(b.id?"Edit endpoint · "+b.name:"Prepare provider endpoint"));
   m.appendChild(el("p","hint",b.id
-    ?"This edits the provider connection only. API keys live on model routes."
-    :"Most teams should use Models & Routes → Add model. Prepare a connection only when you need to set up or disable a provider endpoint before adding routes."));
+    ?"This edits the provider endpoint only. API keys live on model routes."
+    :"Most teams should use Models & Routes → Add model. Prepare an endpoint only when you need to set up or disable a provider endpoint before adding routes."));
   m.appendChild(el("div","section-title","Provider preset"));
   // Chọn provider từ catalog hard-coded trong .env (chỉ 2 dialect: openai/anthropic).
   var fp=el("div","field"); fp.appendChild(el("label",null,"Provider"));
@@ -1292,7 +1292,7 @@ function openProviderModal(b){
   lab.appendChild(copy); lab.appendChild(cb); en.appendChild(lab); m.appendChild(en);
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
-  var save=el("button","btn primary", b.id?"Save":"Prepare connection");
+  var save=el("button","btn primary", b.id?"Save":"Prepare endpoint");
   save.onclick=async function(){
     var e=catEntry(psel.value);
     var payload={name:(nameIn.value.trim()||e.label),base_url:urlIn.value.trim(),format:e.dialect,weight:Number(wIn.value)||1,max_inflight:Number(mxIn.value)||0,enabled:cb.checked};
@@ -1422,7 +1422,7 @@ function openRouteModal(route){
   [["1","Connect","Provider, URL, and API key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]].forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
   m.appendChild(steps);
 
-  m.appendChild(el("div","section-title","Provider connection"));
+  m.appendChild(el("div","section-title","Provider endpoint"));
   var providerGrid=el("div","form-grid provider-connect-grid");
   var f0=el("div","field"); f0.appendChild(el("label",null,"Provider"));
   var ps=el("select");
@@ -1525,7 +1525,7 @@ function openRouteModal(route){
   var fb=el("select"); var none=el("option",null,"None"); none.value=""; fb.appendChild(none);
   (backends||[]).forEach(function(b){ var o=el("option",null,providerDisplayName(b.name)+" · "+b.base_url.replace("https://","").replace("http://","")); o.title=b.name; o.value=String(b.id); fb.appendChild(o); });
   fb.value=route.fallback_backend_id?String(route.fallback_backend_id):"";
-  f3.appendChild(fb); f3.appendChild(el("p","hint","Optional backup provider connection if the primary route fails.")); limits.appendChild(f3);
+  f3.appendChild(fb); f3.appendChild(el("p","hint","Optional backup provider endpoint if the primary route fails.")); limits.appendChild(f3);
   var f4=el("div","field"); f4.appendChild(el("label",null,"Provider start timeout (seconds)")); var to=el("input"); to.type="number"; to.value=route.first_byte_timeout||180; f4.appendChild(to); f4.appendChild(el("p","hint","How long to wait for the provider to start responding.")); limits.appendChild(f4);
 	  advPanel.appendChild(limits); m.appendChild(advPanel);
 	  advBtn.onclick=function(){

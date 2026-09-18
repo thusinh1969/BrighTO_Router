@@ -183,16 +183,16 @@ async function main() {
     if (result.evidence.formatters.fmtDur0 === '0 ms') bug('Duration formatter must not show 0 ms; use <1 ms for sub-millisecond work.');
     if (result.evidence.formatters.fmtCost0 !== '$0.0000') bug(`Cost formatter should keep four decimals for zero request spend: ${result.evidence.formatters.fmtCost0}`);
 
-    await page.locator('.card .big').first().waitFor({ state: 'visible', timeout: 7000 }).catch(() => null);
+    await page.locator('.ops-status .v, .summary-card .v').first().waitFor({ state: 'visible', timeout: 7000 }).catch(() => null);
     result.evidence.dashboardDensity = await page.evaluate(() => {
       const title = document.querySelector('.topbar h2');
-      const cardBig = document.querySelector('.card .big');
+      const metricValue = document.querySelector('.ops-status .v, .summary-card .v');
       const panel = document.querySelector('.panel');
-      const card = document.querySelector('.card');
+      const card = document.querySelector('.summary-card, .ops-status');
       return {
         bodyFont: getComputedStyle(document.body).fontSize,
         titleFont: title ? getComputedStyle(title).fontSize : null,
-        cardBig: cardBig ? getComputedStyle(cardBig).fontSize : null,
+        metricValue: metricValue ? getComputedStyle(metricValue).fontSize : null,
         panelPadding: panel ? getComputedStyle(panel).padding : null,
         panelMargin: panel ? getComputedStyle(panel).marginBottom : null,
         cardHeight: card ? Math.round(card.getBoundingClientRect().height) : null,
@@ -204,8 +204,8 @@ async function main() {
     const clippedHeroSubtexts = await page.evaluate(() => [...document.querySelectorAll('.ops-status .cell-sub')].filter((n) => n.scrollWidth > n.clientWidth + 4).map((n) => ({ text: n.innerText, scrollWidth: n.scrollWidth, clientWidth: n.clientWidth })));
     result.evidence.clippedHeroSubtexts = clippedHeroSubtexts;
     if (clippedHeroSubtexts.length) bug('Dashboard hero KPI subtext must wrap cleanly instead of truncating.');
-    if (!result.evidence.dashboardDensity.cardBig) fail('Dashboard did not render metric cards after login.');
-    else if (parseFloat(result.evidence.dashboardDensity.cardBig) >= 30) bug(`Dashboard big-number font too large: ${result.evidence.dashboardDensity.cardBig}`);
+    if (!result.evidence.dashboardDensity.metricValue) fail('Dashboard did not render readiness or summary metrics after login.');
+    else if (parseFloat(result.evidence.dashboardDensity.metricValue) >= 30) bug(`Dashboard metric font too large: ${result.evidence.dashboardDensity.metricValue}`);
     if (!result.evidence.dashboardDensity.panelPadding) fail('Dashboard did not render any panel after login.');
     else if (parseFloat(result.evidence.dashboardDensity.panelPadding) >= 20) bug(`Panel padding too airy: ${result.evidence.dashboardDensity.panelPadding}`);
 
@@ -233,7 +233,7 @@ async function main() {
     if (providerSummary < 4) bug(`Providers page must show operational summary cards; got ${providerSummary}.`);
     const providerButtons = await page.locator('#content button').evaluateAll((nodes) => nodes.map((b) => (b.innerText || '').trim()).filter(Boolean));
     result.evidence.providerButtons = providerButtons;
-    if (!providerButtons.includes('Prepare connection')) bug('Providers page must label manual provider creation as Prepare connection.');
+    if (!providerButtons.includes('Advanced endpoint')) bug('Providers page must label manual provider setup as Advanced endpoint.');
     if (providerButtons.includes('Add provider') || providerButtons.includes('Pre-register provider')) bug('Providers page primary CTA must not imply admins need to add providers before models or expose pre-registration jargon.');
     const providerActionPriority = await page.locator('#content tbody tr').first().evaluate((tr) => {
       const out = {};
@@ -245,36 +245,36 @@ async function main() {
     if (providerActionPriority.Edit && /\bprimary\b/.test(providerActionPriority.Edit)) bug('Provider row Edit action must not be visually primary.');
     const providerName = `pw-polish-provider-${stamp}`;
     const providerEdit = `${providerName}-edited`;
-    await page.getByRole('button', { name: /Prepare connection|Pre-register provider|Add provider/ }).first().click({ force: true });
+    await page.getByRole('button', { name: /Advanced endpoint|Pre-register provider|Add provider/ }).first().click({ force: true });
     await fill(page, 'Name', providerName);
     await fill(page, 'Base URL', 'http://127.0.0.1:65531/v1');
     const providerModalText = await page.locator('.modal').innerText();
-    if (!/Prepare provider connection|Prepare a connection/i.test(providerModalText)) bug('Provider modal must explain manual creation as optional connection preparation.');
+    if (!/Prepare provider endpoint|Prepare an endpoint/i.test(providerModalText)) bug('Provider modal must explain manual creation as optional endpoint preparation.');
     if (/Provider Type/i.test(providerModalText)) bug('Provider modal must not expose stale Provider Type jargon.');
     await page.locator('.modal').getByRole('button', { name: /Optional load control/ }).click({ force: true });
     await fill(page, 'Weight', '1');
     await fill(page, 'Simultaneous calls', '0');
-    await (await modalButton(page, 'Prepare connection')).click({ force: true });
+    await (await modalButton(page, 'Prepare endpoint')).click({ force: true });
     await (await row(page, providerName)).waitFor({ state: 'visible', timeout: 8000 });
-    let providerPanels = await panels(page, 'Provider connections');
+    let providerPanels = await panels(page, 'Provider endpoints');
     result.evidence.providerPanelsAfterCreate = providerPanels;
-    if (providerPanels !== 1) bug(`Provider create leaves ${providerPanels} Provider connections panels; expected exactly 1.`);
+    if (providerPanels !== 1) bug(`Provider create leaves ${providerPanels} Provider endpoints panels; expected exactly 1.`);
 
     await nav(page, 'Providers');
     await clickRowButton(page, providerName, 'Edit');
     await fill(page, 'Name', providerEdit);
     await (await modalButton(page, 'Save')).click({ force: true });
     await page.waitForTimeout(800);
-    providerPanels = await panels(page, 'Provider connections');
+    providerPanels = await panels(page, 'Provider endpoints');
     result.evidence.providerPanelsAfterEdit = providerPanels;
-    if (providerPanels !== 1) bug(`Provider edit leaves ${providerPanels} Provider connections panels; expected exactly 1.`);
+    if (providerPanels !== 1) bug(`Provider edit leaves ${providerPanels} Provider endpoints panels; expected exactly 1.`);
 
     await nav(page, 'Providers');
     await clickRowButton(page, providerEdit, 'Delete');
     await page.waitForTimeout(1000);
-    providerPanels = await panels(page, 'Provider connections');
+    providerPanels = await panels(page, 'Provider endpoints');
     result.evidence.providerPanelsAfterDelete = providerPanels;
-    if (providerPanels !== 1) bug(`Provider delete leaves ${providerPanels} Provider connections panels; expected exactly 1.`);
+    if (providerPanels !== 1) bug(`Provider delete leaves ${providerPanels} Provider endpoints panels; expected exactly 1.`);
 
     usageSeed = await seedUsage(page);
     await page.evaluate(() => refresh());
@@ -286,8 +286,8 @@ async function main() {
       const cs = getComputedStyle(n);
       return { text: (n.textContent || '').trim(), title: n.getAttribute('title') || '', height: Math.round(r.height), clientWidth: n.clientWidth, scrollWidth: n.scrollWidth, whiteSpace: cs.whiteSpace, overflow: cs.overflow, textOverflow: cs.textOverflow, wordBreak: cs.wordBreak, overflowWrap: cs.overflowWrap };
     }));
-    const brokenKeyCompact = result.evidence.keyCompactLines.filter((n) => n.height > 24 || n.whiteSpace !== 'nowrap' || n.overflow !== 'hidden' || n.textOverflow !== 'ellipsis' || n.wordBreak !== 'normal' || n.overflowWrap !== 'normal');
-    if (brokenKeyCompact.length) bug(`API Keys page owner/team/scope labels must stay one-line ellipsis/copy/title, not clipped or broken wraps: ${JSON.stringify(brokenKeyCompact.slice(0, 4))}`);
+    const brokenKeyCompact = result.evidence.keyCompactLines.filter((n) => /nowrap/i.test(n.whiteSpace || '') || /ellipsis/i.test(n.textOverflow || '') || n.scrollWidth > n.clientWidth + 4 || n.scrollHeight > n.clientHeight + 4);
+    if (brokenKeyCompact.length) bug(`API Keys page owner/team/scope labels must wrap cleanly without clipping: ${JSON.stringify(brokenKeyCompact.slice(0, 4))}`);
 
     await nav(page, 'Models & Routes');
     result.evidence.modelCompactLines = await page.evaluate(() => [...document.querySelectorAll('.route-list-table .compact-line')].map((n) => {
