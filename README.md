@@ -174,6 +174,7 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 - One internal endpoint for multiple model providers.
 - OpenAI-style routes: `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`.
 - Anthropic Messages route: `/v1/messages`.
+- Multimodal LLM JSON pass-through when the selected backend supports that request shape.
 - Model aliases and provider-backed model routes.
 - Weighted backend routing, fallback backend support, and circuit breaking.
 - Team budgets and API-key budgets.
@@ -184,15 +185,25 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 - Health endpoints: `/healthz`, `/readyz`.
 - Prometheus metrics endpoint: `/metrics`.
 
-Current media support:
+## Multimodal and media support
 
-| Input type | Status |
-|---|---|
-| Text chat/completions | Supported. |
-| Embeddings | Supported. |
-| Anthropic messages | Supported. |
-| Image data inside chat JSON | Passed through when the backend accepts that JSON and the body stays under `MAX_BODY_BYTES`. |
-| Dedicated image/audio/video APIs | Future work. |
+BrighTO-Router V1.0 routes LLM requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
+
+| Capability | V1.0 status | What it means |
+|---|---|---|
+| Text chat/completions | Yes | Supported through OpenAI-style `/v1/chat/completions` and `/v1/completions`. |
+| Embeddings | Yes | Supported through OpenAI-style `/v1/embeddings`. |
+| Anthropic Messages | Yes | Supported through `/v1/messages` for Anthropic-compatible backends. |
+| Image input inside LLM chat JSON | Conditional yes | Passed through when the selected backend accepts that JSON shape and the request stays under `MAX_BODY_BYTES`. |
+| Audio input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts audio data in the same JSON endpoint. There is no dedicated audio adapter in V1.0. |
+| Video input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts video data in the same JSON endpoint and the body-size limit allows it. |
+| OpenAI Images API such as `/v1/images/generations` | No | Planned as a future media adapter, not part of V1.0. |
+| Audio generation, Text-to-Speech, Speech-to-Text, F5-TTS, transcription routes | No | Planned as future media adapters, not part of V1.0. |
+| Video generation routes | No | Planned as future media adapters, not part of V1.0. |
+| Multipart upload normalization | No | V1.0 focuses on JSON LLM routing. |
+| Realtime voice or WebSocket media sessions | No | Future enterprise/media work if customer demand requires it. |
+
+The practical rule is simple: if a provider exposes a model through a supported JSON LLM endpoint, BrighTO-Router can route it. If the provider needs a separate image/audio/video API, multipart upload flow, realtime session, or provider-specific media protocol, that belongs in a future adapter.
 
 ## Why Rust instead of Python
 
@@ -324,8 +335,11 @@ Enterprise work will focus on packaging and operating that architecture professi
 - Central audit log export.
 - Secrets manager integration.
 - Multi-region deployment guidance.
-- Provider cost dashboards and chargeback reports.
 - Support packages and performance certification on customer hardware.
+
+Billing should be an enterprise adapter beside the router, not code inside the fastest request path. The open-source router already records durable usage in PostgreSQL. An enterprise billing adapter can read that ledger and connect it to Stripe, Chargebee, an internal billing system, prepaid credits, monthly invoices, departmental chargeback, and customer-specific pricing. Keeping billing outside the hot path protects latency and keeps the open-source core simple.
+
+Dedicated media APIs should also be future adapters, not hidden V1.0 promises. Possible enterprise or later open-source extensions include image generation routes, audio generation, Text-to-Speech, Speech-to-Text, F5-TTS-compatible endpoints, video generation, multipart upload handling, and realtime voice sessions. Those adapters should plug into the same auth, budget, team, ledger, and Portal model without making the core LLM router harder to operate.
 
 ## Development
 
