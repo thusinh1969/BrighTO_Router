@@ -416,7 +416,7 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .request-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}
 .request-kpi{background:#111827;border:1px solid rgba(51,65,85,.75);border-radius:10px;padding:8px 10px;min-width:0}
 .request-kpi .k{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:850;margin-bottom:2px}
-.request-kpi .v{display:block;color:var(--text);font-size:12.5px;font-weight:760;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.request-kpi .v{display:block;color:var(--text);font-size:12.5px;font-weight:760;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;line-height:1.18}
 .request-kpi.primary .v{color:var(--accent-text);font-size:15px;font-weight:850;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.18}
 .user-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.55fr);gap:14px;margin-bottom:18px}
 .user-card{background:linear-gradient(145deg,#111c31,#0b1220);border:1px solid var(--border);border-radius:22px;padding:22px;min-width:0;box-shadow:0 20px 50px rgba(0,0,0,.22)}
@@ -800,8 +800,8 @@ function logout(){ authKey=""; setLoginBusy(false); clearLoginError(); clearSess
 
 /* ===== Nav ===== */
 var titles={dashboard:"Dashboard",providers:"Providers",models:"Models & Routes",teams:"Teams",keys:"API Keys",usage:"Usage",settings:"Settings"};
-var descs={dashboard:"Gateway overview",providers:"Connect AI provider endpoints",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client API keys",usage:"Usage and requests",settings:"Runtime configuration"};
-var userDescs={dashboard:"Your API access and usage",usage:"Your requests and token usage",settings:"Portal preferences and session"};
+var descs={dashboard:"Gateway overview",providers:"Connect AI provider endpoints",models:"Approve routes to models",teams:"Teams and budgets",keys:"Client API keys",usage:"Tokens, cost, errors, and speed",settings:"Runtime configuration"};
+var userDescs={dashboard:"Your API access and usage",usage:"Your tokens, speed, and request history",settings:"Portal preferences and session"};
 function pageDesc(view){ return mode==="user" && userDescs[view] ? userDescs[view] : descs[view]; }
 function go(view){
   var active=document.querySelector(".nav.active");
@@ -2095,7 +2095,7 @@ async function renderUsage(c,seq){
 	    if(mode==="admin" && defaultUsageFilter && !sum.totals.requests) c.appendChild(firstRunPanel());
 	  }
 
-  var p=el("div","panel"); p.appendChild(el("h3",null,"Tokens by model"));
+  var p=el("div","panel"); p.appendChild(el("h3",null,"Tokens by model (input + output)"));
   if(stats.length) p.appendChild(chartBars(stats)); else p.appendChild(emptyBox("No usage data for this filter."));
   c.appendChild(p);
 
@@ -2109,7 +2109,7 @@ async function renderUsage(c,seq){
     ];
     if(mobileBreakdowns){
       c.appendChild(p2);
-      c.appendChild(detailsBlock("Usage breakdowns","Model, team, and API-key totals for this range.",breakdowns,false,"usage-breakdowns"));
+      c.appendChild(detailsBlock("Usage breakdowns","Compare token volume by model, team, and API key for this range.",breakdowns,false,"usage-breakdowns"));
       return;
     }
     c.appendChild(usageBreakdownPanel([
@@ -2123,7 +2123,7 @@ async function renderUsage(c,seq){
 function usageBreakdownPanel(groups){
   var p=el("div","panel usage-breakdown-panel");
   p.appendChild(el("h3",null,"Usage breakdowns"));
-  p.appendChild(el("p","hint","Model, team, and API-key totals for this range."));
+  p.appendChild(el("p","hint","Compare token volume by model, team, and API key for this range."));
   var grid=el("div","usage-breakdown-grid");
   groups.forEach(function(group){
     var card=el("div","breakdown-card");
@@ -2240,7 +2240,8 @@ function chartBars(stats){
 function fmtNum(v){ return fmt(v); }
 
 /* ===== Logs table ===== */
-function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return x.id===id}):null; return k?k.prefix:String(id); }
+function keyPrefix(id){ var k=(typeof keys!=="undefined"&&keys)?keys.find(function(x){return Number(x.id)===Number(id)}):null; return k?k.prefix:String(id); }
+function teamName(id){ var t=(typeof teams!=="undefined"&&teams)?teams.find(function(x){return Number(x.id)===Number(id)}):null; return t&&t.name?t.name:("team "+id); }
 function fmtCost(v){ if(v==null) return "—"; if(v===0) return "$0.0000"; if(v<1) return "$"+v.toFixed(4); return "$"+v.toFixed(2); }
 function fmtDur(ms){ if(ms==null || ms<0) return "—"; if(ms<1) return "<1 ms"; if(ms<1000) return Math.round(ms)+" ms"; var s=ms/1000; if(s<60) return s.toFixed(1)+" s"; var m=Math.floor(s/60); var rem=Math.round(s%60); return m+"m "+rem+"s"; }
 function reliableTokRate(r){ var rate=Number(r&&r.total_tokens_per_second); return Number.isFinite(rate) && rate>=0; }
@@ -2333,7 +2334,7 @@ function logsTable(rows){
     card.appendChild(head);
     var kpis=el("div","request-kpis");
     function kpi(k,v,primary){ var box=el("div","request-kpi"+(primary?" primary":"")); box.appendChild(el("span","k",k)); box.appendChild(el("span","v",v)); kpis.appendChild(box); }
-    if(admin){ kpi("Team",String(r.team_id)); kpi("Key",keyPrefix(r.key_id)); }
+    if(admin){ kpi("Team",teamName(r.team_id)); kpi("Key",keyPrefix(r.key_id)); }
     kpi("In / Out",fmt(r.input_tokens)+" / "+fmt(r.output_tokens));
     var before=kpis.children.length; kpi("Tokens/sec",tokRateDisplay(r),true); kpis.children[before].title=tokRateTitle(r);
     kpi("Cost",fmtCost(r.estimated_cost_usd));

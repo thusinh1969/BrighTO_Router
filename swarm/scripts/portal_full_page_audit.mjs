@@ -256,6 +256,7 @@ async function inspectPage(page, label) {
     });
     return {
       title: document.querySelector('#page-title')?.textContent || '',
+      desc: document.querySelector('#page-desc')?.textContent || '',
       panelCount,
       cards,
       summaryCards,
@@ -520,6 +521,9 @@ async function runViewport(browser, name, width, height) {
     if (!metrics.panelCount && view !== 'dashboard') fail(`${name}/${view}: no content panels`, metrics);
     if (['providers', 'models', 'teams', 'keys'].includes(view) && (metrics.summaryCards || []).length < 4) fail(`${name}/${view}: missing operational summary cards`, metrics);
     if (view === 'usage') {
+      if (!/Tokens, cost, errors, and speed/i.test(metrics.desc || '') && !mobile) fail(`${name}/${view}: admin Usage topbar should explain production metrics`, metrics);
+      if (!/Tokens by model \(input \+ output\)/i.test(metrics.contentText || '')) fail(`${name}/${view}: Usage chart title should explain that tokens are input plus output`, metrics);
+      if (!/Compare token volume by model, team, and API key/i.test(metrics.contentText || '')) fail(`${name}/${view}: Usage breakdown copy should explain the comparison`, metrics);
       if (!(metrics.visibleButtons || []).includes('Show filters')) fail(`${name}/${view}: Usage should default to collapsed filters with a Show filters action`, metrics);
       for (const label of ['7d', '30d', '90d']) {
         if (!(metrics.visibleButtons || []).includes(label)) fail(`${name}/${view}: Usage collapsed filters should keep ${label} quick range visible`, metrics);
@@ -559,6 +563,12 @@ async function runViewport(browser, name, width, height) {
       const speed = (metrics.opsStatus || []).find((s) => s.label === 'Speed');
       if (speed && /\*$/.test(speed.value)) fail(`${name}/${view}: hero Speed KPI must not promote short-sample Tokens/sec values`, { speed, metrics });
       if (speed && /short sample/i.test(speed.note || '')) fail(`${name}/${view}: hero Speed KPI should ask for a longer sample instead of showing short-sample copy`, { speed, metrics });
+    }
+    if (['dashboard', 'usage'].includes(view)) {
+      const clippedRequestKpis = (metrics.requestKpis || []).filter((p) => p.value && (/ellipsis/i.test(p.textOverflow || '') || p.scrollWidth > p.clientWidth + 4 || p.scrollHeight > p.clientHeight + 4));
+      if (clippedRequestKpis.length) fail(`${name}/${view}: request log KPI values should wrap instead of clipping`, { clippedRequestKpis, metrics });
+      const numericTeamKpis = (metrics.requestKpis || []).filter((p) => p.label === 'Team' && /^\d+$/.test(String(p.value || '').trim()));
+      if (numericTeamKpis.length) fail(`${name}/${view}: admin request logs should show team names, not raw numeric team IDs`, { numericTeamKpis, metrics });
     }
     if (mobile) {
       const tinyChartLabels = (metrics.chartValueLabels || []).filter((l) => l.text && l.height < 8);
