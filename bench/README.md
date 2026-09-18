@@ -14,3 +14,5 @@ cp bench/results/<timestamp>/baseline_candidate.json bench/baseline.json
 ```
 
 Do not commit a baseline from a failed, short, or noisy run.
+
+Public release summary artifacts live under `benchmarks/artifacts/`. Raw benchmark output under `bench/results/` stays local and ignored.

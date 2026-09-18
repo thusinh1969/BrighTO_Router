@@ -11,7 +11,7 @@ BrighTO-Router gives your team one clean endpoint for OpenAI-compatible, Anthrop
 | 1k-token mock pass-through, 50 concurrent requests | `0.418 ms p99 router overhead` |
 | Router memory during the release artifact | `26.12 MB max RSS` |
 
-Measured on Intel Xeon Gold 6148 using the same-machine benchmark artifact at `bench/results/20260917-025033/summary.json`.
+Measured on Intel Xeon Gold 6148 using the same-machine benchmark artifact at `benchmarks/artifacts/1.0-preview-summary.json`.
 
 Official repository: `https://github.com/thusinh1969/Brighto_AIRouter`
 
@@ -51,7 +51,7 @@ The verified V1.0 public benchmark covers `1k`, `50k`, and `200k` token-class pa
 
 ## Benchmark proof
 
-Method: same client, same machine, same mock backend, direct call versus router call. Release artifact: `bench/results/20260917-025033/summary.json` on Intel Xeon Gold 6148.
+Method: same client, same machine, same mock backend, direct call versus router call. Release artifact: `benchmarks/artifacts/1.0-preview-summary.json` on Intel Xeon Gold 6148.
 
 | Payload | Concurrency | p50 router overhead | p99 router overhead | Streaming first-byte delta | Router memory max |
 |---|---:|---:|---:|---:|---:|
@@ -304,7 +304,7 @@ Benchmark matrix:
 
 Current verified public-facing status:
 
-- 1k, 50k, and 200k release-gate payloads measured sub-millisecond p99 local mock overhead in `bench/results/20260917-025033/summary.json`.
+- 1k, 50k, and 200k release-gate payloads measured sub-millisecond p99 local mock overhead in `benchmarks/artifacts/1.0-preview-summary.json`.
 - 500k and 1M payload generation and mock pass-through have been verified in smoke mode.
 - Full 500k and 1M production proof should be run on the target dual-Xeon server before publishing claims for those sizes.
 - “Fastest in the world” should be claimed only after public same-machine comparisons against named routers.
