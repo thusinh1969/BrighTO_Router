@@ -73,7 +73,7 @@ async function verifyUserReload(page, name) {
 async function waitUserView(page, view) {
   const expected = {
     dashboard: ['Your API access', 'Call endpoint', '/v1/chat/completions'],
-    usage: ['Tokens by model', 'Request logs'],
+    usage: ['Tokens by model (input + output)', 'Request logs'],
     settings: ['Portal preferences', 'Session', 'Model scope'],
   }[view] || [];
   await page.waitForFunction((needles) => {
@@ -194,8 +194,8 @@ async function runViewport(browser, seed, name, width, height) {
     result.screenshots.push(usageShot);
     const usage = await inspect(page);
     result.evidence[`${name}-usage`] = usage;
-    if (!/Your requests and token usage/i.test(usage.desc)) fail(`${name}: user usage topbar description is not role-aware`, usage);
-    if (!usage.content.includes(seed.model) || !/Tokens\/sec/i.test(usage.content)) fail(`${name}: user usage missing own model or Tokens/sec signal`, usage);
+    if (!/Your tokens, speed, and request history/i.test(usage.desc)) fail(`${name}: user usage topbar description is not role-aware`, usage);
+    if (!usage.content.includes(seed.model) || !/Tokens\/sec/i.test(usage.content) || !/Tokens by model \(input \+ output\)/i.test(usage.content)) fail(`${name}: user usage missing own model, chart meaning, or Tokens/sec signal`, usage);
     if (/Provider health|By team|By API key/i.test(usage.content)) fail(`${name}: user usage leaked admin-only aggregations`, usage);
     if (usage.bodyScrollWidth > usage.clientWidth + 8) fail(`${name}: user usage horizontal overflow`, usage);
 
