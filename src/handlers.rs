@@ -331,6 +331,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/completions", post(completions))
         .route("/v1/embeddings", post(embeddings))
+        .route("/v1/rerank", post(rerank))
+        .route("/v1/audio/transcriptions", post(audio_transcriptions))
         .route("/v1/messages", post(messages))
         .route("/v1/models", get(models))
         .route("/metrics", get(metrics))
@@ -353,6 +355,15 @@ async fn completions(State(state): State<Arc<AppState>>, req: Request<Body>) -> 
 }
 async fn embeddings(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
     handle_generate(state, req, "/v1/embeddings").await
+}
+async fn rerank(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
+    handle_generate(state, req, "/v1/rerank").await
+}
+async fn audio_transcriptions(
+    State(state): State<Arc<AppState>>,
+    req: Request<Body>,
+) -> Response<Body> {
+    handle_multipart_adapter(state, req, "/v1/audio/transcriptions").await
 }
 async fn messages(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
     handle_generate(state, req, "/v1/messages").await
@@ -636,6 +647,175 @@ async fn handle_generate(
     proxy::proxy_forward(state, req, ctx).await
 }
 
+async fn handle_multipart_adapter(
+    state: Arc<AppState>,
+    req: Request<Body>,
+    incoming_path: &'static str,
+) -> Response<Body> {
+    let started = Instant::now();
+    let request_id = generate_request_id();
+    let (parts, body) = req.into_parts();
+
+    let Some(api_key_plain) = extract_api_key(&parts.headers) else {
+        return build_error(&request_id, StatusCode::UNAUTHORIZED, "missing API key");
+    };
+    let key_hash = auth::hash_key(&api_key_plain);
+    let snapshot = state.cfg.load_full();
+    let key: ApiKey = match auth::authorize_key(&snapshot, &key_hash) {
+        Ok(k) => k,
+        Err(_) => return build_error(&request_id, StatusCode::UNAUTHORIZED, "invalid API key"),
+    };
+
+    let content_length = parse_content_length(&parts.headers);
+    if let Some(len) = content_length
+        && len > state.max_body_bytes as u64
+    {
+        return build_error(
+            &request_id,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "request body too large",
+        );
+    }
+    let body =
+        match collect_remaining_body(Bytes::new(), body.into_data_stream(), state.max_body_bytes)
+            .await
+        {
+            Ok(b) => b,
+            Err(BodyReadError::TooLarge) => {
+                return build_error(
+                    &request_id,
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                );
+            }
+            Err(BodyReadError::ReadFailed) | Err(BodyReadError::InvalidJson) => {
+                return build_error(
+                    &request_id,
+                    StatusCode::BAD_REQUEST,
+                    "request body read failed",
+                );
+            }
+        };
+
+    let Some(model_name) = extract_multipart_text_field(&body, "model") else {
+        return build_error(&request_id, StatusCode::BAD_REQUEST, "model is required");
+    };
+    let model = model_name.trim();
+    if model.is_empty() {
+        return build_error(&request_id, StatusCode::BAD_REQUEST, "model is required");
+    }
+    if !auth::model_allowed(&key, model) {
+        return build_error(
+            &request_id,
+            StatusCode::FORBIDDEN,
+            "model not allowed for this key",
+        );
+    }
+
+    let Some(route) = snapshot.routes.get(model).cloned() else {
+        return build_error(&request_id, StatusCode::NOT_FOUND, "model not configured");
+    };
+    if !route.enabled {
+        return build_error(&request_id, StatusCode::FORBIDDEN, "model is disabled");
+    }
+    let any_backend_enabled = route.backend_ids.iter().any(|id| {
+        snapshot
+            .backends
+            .get(id)
+            .map(|b| b.enabled)
+            .unwrap_or(false)
+    }) || route
+        .fallback_backend_id
+        .map(|id| {
+            snapshot
+                .backends
+                .get(&id)
+                .map(|b| b.enabled)
+                .unwrap_or(false)
+        })
+        .unwrap_or(false);
+    if !any_backend_enabled {
+        return build_error(
+            &request_id,
+            StatusCode::FORBIDDEN,
+            "model is disabled: no enabled provider backend",
+        );
+    }
+
+    let protocol = ProviderProtocol::parse(&route.protocol);
+    if protocol.incoming_path() != incoming_path {
+        return build_error(
+            &request_id,
+            StatusCode::BAD_REQUEST,
+            &format!(
+                "model '{model}' is a {} route (call {})",
+                protocol.label(),
+                protocol.incoming_path()
+            ),
+        );
+    }
+    if route.provider_model_name != model {
+        return build_error(
+            &request_id,
+            StatusCode::BAD_REQUEST,
+            "multipart adapter requires public model name == provider model name",
+        );
+    }
+
+    let est_tokens = estimate_tokens_len(body.len(), &route);
+    let reservation = match state.budget.reserve(&key, model, est_tokens) {
+        Ok(r) => Some(r),
+        Err(BudgetError::BudgetExceeded { .. }) => {
+            return build_error(
+                &request_id,
+                StatusCode::TOO_MANY_REQUESTS,
+                "budget exceeded",
+            );
+        }
+        Err(BudgetError::RateLimited { retry_after }) => {
+            let mut resp = build_error(&request_id, StatusCode::TOO_MANY_REQUESTS, "rate limited");
+            if let Ok(v) = header::HeaderValue::from_str(&retry_after.as_secs().to_string()) {
+                resp.headers_mut().insert(header::RETRY_AFTER, v);
+            }
+            return resp;
+        }
+    };
+    let concurrency = match state.budget.acquire_concurrency(&key) {
+        Some(g) => Some(g),
+        None => {
+            return build_error(
+                &request_id,
+                StatusCode::TOO_MANY_REQUESTS,
+                "concurrency limit reached",
+            );
+        }
+    };
+
+    let ctx = ProxyContext {
+        api_key: key,
+        model_name: model.to_string(),
+        route,
+        request_id,
+        stream: false,
+        stream_options_present: true,
+        reservation,
+        concurrency,
+        start: started,
+        estimated_input_tokens: est_tokens,
+    };
+    let req = Request::from_parts(parts, ProxyRequestBody::Buffered(body));
+    proxy::proxy_forward(state, req, ctx).await
+}
+
+fn extract_multipart_text_field(body: &[u8], field: &str) -> Option<String> {
+    let needle = format!("name=\"{field}\"");
+    let start = memchr::memmem::find(body, needle.as_bytes())?;
+    let after_headers = memchr::memmem::find(&body[start..], b"\r\n\r\n")? + start + 4;
+    let end_rel = memchr::memmem::find(&body[after_headers..], b"\r\n--")?;
+    let raw = &body[after_headers..after_headers + end_rel];
+    std::str::from_utf8(raw).ok().map(|s| s.trim().to_string())
+}
+
 fn extract_api_key(headers: &HeaderMap) -> Option<String> {
     if let Some(auth) = headers.get(header::AUTHORIZATION)
         && let Ok(auth_str) = auth.to_str()
@@ -736,6 +916,16 @@ mod tests {
     fn prefix_scan_does_not_find_missing_stream() {
         let body = br#"{"model":"top","messages":[{"role":"user","content":"x"}]}"#;
         assert_eq!(scan_head_prefix(body), PrefixScan::NeedMore);
+    }
+
+    #[test]
+    fn multipart_text_field_extracts_model() {
+        let body = b"--brighto\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-1\r\n--brighto\r\nContent-Disposition: form-data; name=\"file\"; filename=\"sample.wav\"\r\nContent-Type: audio/wav\r\n\r\nabc\r\n--brighto--\r\n";
+        assert_eq!(
+            extract_multipart_text_field(body, "model").as_deref(),
+            Some("whisper-1")
+        );
+        assert_eq!(extract_multipart_text_field(body, "missing"), None);
     }
 
     #[test]

@@ -34,6 +34,11 @@ pub enum ProviderProtocol {
     OpenAiChat,
     OpenAiCompletions,
     OpenAiEmbeddings,
+    OpenAiRerank,
+    CohereRerank,
+    VoyageRerank,
+    JinaRerank,
+    OpenAiAudioTranscriptions,
     AnthropicMessages,
     LocalOpenAiChat,
     CustomOpenAiChat,
@@ -45,6 +50,13 @@ impl ProviderProtocol {
         match s.trim().to_ascii_lowercase().as_str() {
             "openai_completions" | "completions" => ProviderProtocol::OpenAiCompletions,
             "openai_embeddings" | "embeddings" => ProviderProtocol::OpenAiEmbeddings,
+            "openai_rerank" | "rerank" | "custom_rerank" => ProviderProtocol::OpenAiRerank,
+            "cohere_rerank" => ProviderProtocol::CohereRerank,
+            "voyage_rerank" => ProviderProtocol::VoyageRerank,
+            "jina_rerank" => ProviderProtocol::JinaRerank,
+            "openai_audio_transcriptions" | "openai_asr" | "asr" | "transcriptions" => {
+                ProviderProtocol::OpenAiAudioTranscriptions
+            }
             "anthropic_messages" | "messages" => ProviderProtocol::AnthropicMessages,
             "local_openai_chat" => ProviderProtocol::LocalOpenAiChat,
             "custom_openai_chat" => ProviderProtocol::CustomOpenAiChat,
@@ -57,6 +69,11 @@ impl ProviderProtocol {
             ProviderProtocol::OpenAiChat => "openai_chat",
             ProviderProtocol::OpenAiCompletions => "openai_completions",
             ProviderProtocol::OpenAiEmbeddings => "openai_embeddings",
+            ProviderProtocol::OpenAiRerank => "openai_rerank",
+            ProviderProtocol::CohereRerank => "cohere_rerank",
+            ProviderProtocol::VoyageRerank => "voyage_rerank",
+            ProviderProtocol::JinaRerank => "jina_rerank",
+            ProviderProtocol::OpenAiAudioTranscriptions => "openai_audio_transcriptions",
             ProviderProtocol::AnthropicMessages => "anthropic_messages",
             ProviderProtocol::LocalOpenAiChat => "local_openai_chat",
             ProviderProtocol::CustomOpenAiChat => "custom_openai_chat",
@@ -71,6 +88,11 @@ impl ProviderProtocol {
             | ProviderProtocol::CustomOpenAiChat => "/v1/chat/completions",
             ProviderProtocol::OpenAiCompletions => "/v1/completions",
             ProviderProtocol::OpenAiEmbeddings => "/v1/embeddings",
+            ProviderProtocol::OpenAiRerank
+            | ProviderProtocol::CohereRerank
+            | ProviderProtocol::VoyageRerank
+            | ProviderProtocol::JinaRerank => "/v1/rerank",
+            ProviderProtocol::OpenAiAudioTranscriptions => "/v1/audio/transcriptions",
             ProviderProtocol::AnthropicMessages => "/v1/messages",
         }
     }
@@ -81,6 +103,11 @@ impl ProviderProtocol {
             ProviderProtocol::OpenAiChat => "OpenAI Chat Completions",
             ProviderProtocol::OpenAiCompletions => "OpenAI Completions",
             ProviderProtocol::OpenAiEmbeddings => "OpenAI Embeddings",
+            ProviderProtocol::OpenAiRerank => "OpenAI-compatible Rerank",
+            ProviderProtocol::CohereRerank => "Cohere Rerank",
+            ProviderProtocol::VoyageRerank => "Voyage Rerank",
+            ProviderProtocol::JinaRerank => "Jina Rerank",
+            ProviderProtocol::OpenAiAudioTranscriptions => "OpenAI-compatible Audio Transcriptions",
             ProviderProtocol::AnthropicMessages => "Anthropic Messages",
             ProviderProtocol::LocalOpenAiChat => "Local OpenAI-compatible Chat",
             ProviderProtocol::CustomOpenAiChat => "Custom OpenAI-compatible",
@@ -275,6 +302,14 @@ mod tests {
             ProviderProtocol::OpenAiEmbeddings
         );
         assert_eq!(
+            ProviderProtocol::parse("cohere_rerank"),
+            ProviderProtocol::CohereRerank
+        );
+        assert_eq!(
+            ProviderProtocol::parse("asr"),
+            ProviderProtocol::OpenAiAudioTranscriptions
+        );
+        assert_eq!(
             ProviderProtocol::parse("anthropic_messages"),
             ProviderProtocol::AnthropicMessages
         );
@@ -307,6 +342,12 @@ mod tests {
         assert_eq!(
             ProviderProtocol::OpenAiEmbeddings.incoming_path(),
             "/v1/embeddings"
+        );
+        assert_eq!(ProviderProtocol::OpenAiRerank.incoming_path(), "/v1/rerank");
+        assert_eq!(ProviderProtocol::CohereRerank.incoming_path(), "/v1/rerank");
+        assert_eq!(
+            ProviderProtocol::OpenAiAudioTranscriptions.incoming_path(),
+            "/v1/audio/transcriptions"
         );
         assert_eq!(
             ProviderProtocol::AnthropicMessages.incoming_path(),

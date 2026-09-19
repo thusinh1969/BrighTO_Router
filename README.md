@@ -19,6 +19,8 @@ Official Docker image: `thusinh1969/brighto_airouter:v1`
 
 Release version: `1.0-preview`
 
+Preview-2 adapter branch: embeddings remain first-class, and experimental adapter endpoints for rerank and ASR are implemented behind route protocols. See [ADAPTERS.md](ADAPTERS.md).
+
 ## Why BrighTO-Router
 
 Broad AI gateways are useful when you need a huge provider catalog, hosted accounts, prompt tooling, agent tooling, and enterprise workflow in one platform. BrighTO-Router is for teams with a sharper requirement: run a very fast gateway they control, with a clean Portal, transparent usage, and a production stack small enough to understand.
@@ -133,6 +135,18 @@ Embeddings through an OpenAI-compatible embedding route:
 python3 test_router.py --mode embeddings --model <public-embedding-route> --text "BrighTO embedding smoke test"
 ```
 
+Rerank through a configured rerank route on the preview-2 adapter branch:
+
+```bash
+python3 test_router.py --mode rerank --model <public-rerank-route> --text "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
+```
+
+ASR / transcription through an OpenAI-compatible multipart route on the preview-2 adapter branch:
+
+```bash
+python3 test_router.py --mode asr --model <public-asr-route> --file ./sample.wav
+```
+
 Image input through an OpenAI-style multimodal chat route:
 
 ```bash
@@ -229,6 +243,7 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 - One internal endpoint for multiple model providers.
 - OpenAI-style routes: `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`.
 - Anthropic Messages route: `/v1/messages`.
+- Preview-2 adapter branch: `/v1/rerank` and `/v1/audio/transcriptions` are implemented and mock/integration tested; real-provider smoke tests are still required before release claims.
 - Multimodal LLM JSON pass-through when the selected backend supports that request shape.
 - Model aliases and provider-backed model routes.
 - Weighted backend routing, fallback backend support, and circuit breaking.
