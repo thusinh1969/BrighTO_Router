@@ -1,6 +1,7 @@
 -- Route-level provider protocol (CODEX provider-protocol taxonomy).
--- protocol = openai_chat | openai_completions | openai_embeddings | anthropic_messages
---          | local_openai_chat | custom_openai_chat
+-- protocol = openai_chat | openai_completions | openai_embeddings | openai_rerank
+--          | cohere_rerank | voyage_rerank | jina_rerank | openai_audio_transcriptions
+--          | anthropic_messages | local_openai_chat | custom_openai_chat
 -- Xác định endpoint client gọi + shape upstream. Tách khỏi auth_mode.
 -- Backward-compat: route cũ mặc định 'openai_chat' (OpenAI Chat Completions).
 ALTER TABLE model_routes

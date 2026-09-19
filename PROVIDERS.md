@@ -68,3 +68,16 @@ Provider API keys are different from client API keys.
 - Client API key: used by your app/team to call BrighTO.
 
 Create client keys in **API Keys**. Admin can view and copy them again later.
+
+## Preview-2 adapter providers
+
+Rerank and ASR adapters are implemented on the preview-2 branch, but the Portal task-type wizard is still intentionally conservative. Do not add Jina, Voyage, or Cohere to `PROVIDER_CATALOG` just to make them appear in the normal model picker unless the provider supports the same model-list/test flow. Adapter providers need task-specific setup and endpoint tests.
+
+Useful provider key placeholders are present in `.env.example`:
+
+- `JINA_API_KEY`
+- `VOYAGE_API_KEY`
+- `COHERE_API_KEY`
+- `DASHSCOPE_API_KEY`
+
+See [ADAPTERS.md](ADAPTERS.md) for current adapter endpoints and smoke commands.
