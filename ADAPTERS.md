@@ -6,9 +6,9 @@ Implemented and tested in this branch:
 
 | Task | Public BrighTO endpoint | Route protocol | Request shape | Status |
 |---|---|---|---|---|
-| Embeddings | `/v1/embeddings` | `openai_embeddings` | OpenAI-compatible JSON | Existing route, now covered by adapter integration tests |
-| Rerank | `/v1/rerank` | `openai_rerank`, `cohere_rerank`, `voyage_rerank`, `jina_rerank` | JSON with `model`, `query`, `documents`, optional `top_n` | Mock/integration tested; real provider smoke still required |
-| ASR / speech-to-text | `/v1/audio/transcriptions` | `openai_audio_transcriptions` | OpenAI-compatible multipart form upload | Mock/integration tested; real provider smoke still required |
+| Embeddings | `/v1/embeddings` | `openai_embeddings` | OpenAI-compatible JSON | Mock/integration tested; live OpenAI, Qwen, Jina, and Voyage smoke passed |
+| Rerank | `/v1/rerank` | `openai_rerank`, `qwen_rerank`, `cohere_rerank`, `voyage_rerank`, `jina_rerank` | JSON with `model`, `query`, `documents`, optional `top_n` | Mock/integration tested; live Qwen, Jina, Voyage, and Cohere smoke passed |
+| ASR / speech-to-text | `/v1/audio/transcriptions` | `openai_audio_transcriptions` | OpenAI-compatible multipart form upload | Mock/integration tested; live OpenAI smoke passed with repo WAV fixtures |
 
 The router still does not run models. It forwards to a configured provider or local service, applies client-key auth, route policy, budget/concurrency limits, and usage logging. It does not store vectors, rerank documents, audio files, transcripts, prompts, or provider response bodies.
 
@@ -99,21 +99,24 @@ curl -sS http://127.0.0.1:18080/v1/audio/transcriptions \
 
 ## Route creation status
 
-The Rust API and integration tests support adapter protocols. The Portal still needs a dedicated task-type wizard before adapter route creation should be considered user-friendly.
+The Portal model wizard supports task-specific route creation for Chat, Embedding, Rerank, and ASR. Test Connection uses the selected task's exact endpoint shape before enabling the route:
 
-For now:
+- Chat: one tiny chat/messages request.
+- Embedding: one short `/v1/embeddings` request and vector-dimension validation.
+- Rerank: one `/v1/rerank` request with three tiny documents and score validation.
+- ASR: one `/v1/audio/transcriptions` multipart request using `tests/fixtures/asr_smoke.wav`.
 
-- Chat, completions, embeddings, and Anthropic routes remain the main Portal flow.
-- Rerank and ASR routes should be created through admin/API tooling or migration scripts until the Portal wizard has task-specific Test Connection.
-- Do not save an enabled adapter route unless the exact endpoint has been tested through BrighTO-Router.
+Save enabled only after Test Connection passes. Save draft remains available for disabled routes.
 
 ## Provider notes
 
 - OpenAI-compatible embeddings use `/v1/embeddings`.
-- Cohere rerank uses provider path `/v2/rerank`. Configure its backend Base URL with the `/v2` prefix so BrighTO's incoming `/v1/rerank` maps correctly.
-- Voyage and Jina rerank use `/v1/rerank`.
+- Cohere rerank uses provider path `/v2/rerank`; the default Cohere Base URL includes `/v2`, so BrighTO's incoming `/v1/rerank` maps to `/v2/rerank`.
+- Voyage and Jina rerank use `/v1/rerank`. BrighTO maps public `top_n` to Voyage `top_k` when needed.
+- Qwen/DashScope rerank is not OpenAI-compatible. BrighTO accepts public `/v1/rerank`, then maps `qwen3-rerank` to `/compatible-api/v1/reranks`; `qwen3.7-text-rerank`, `qwen3-vl-rerank`, and `gte-rerank-v2` map to `/api/v1/services/rerank/text-rerank/text-rerank`. Configure the Base URL as `https://dashscope-intl.aliyuncs.com` for the international shared endpoint, or as your workspace root such as `https://<workspace>.<region>.maas.aliyuncs.com`.
+- Qwen `tongyi-embedding-vision-flash` is a real multimodal embedding model, but it uses DashScope multimodal embedding APIs, not the OpenAI-compatible `/v1/embeddings` text route. It should be a dedicated future adapter rather than a misleading model suggestion in the current text embedding flow.
 - ASR currently expects OpenAI-compatible `/v1/audio/transcriptions` multipart behavior.
-- Native Qwen/Alibaba rerank or ASR should wait for exact provider API proof before coding a dedicated adapter.
+- Additional Qwen/Alibaba ASR or media adapters should wait for exact provider API proof before coding.
 
 ## Validation already in this branch
 

@@ -290,27 +290,42 @@ fn g_bool(row: &PgRow, idx: usize) -> anyhow::Result<bool> {
 /// Resolve một api_key_ref thành key plaintext. Hỗ trợ env:NAME, file:/path, tên env raw
 /// (fallback: path heuristic nếu chứa '/' hoặc đuôi .key). Gọi ở load config (bootstrap + poll),
 /// KHÔNG gọi trong hot path — key đã được resolve sẵn vào Backend.api_key.
+fn resolve_env_key_with_alias(env_name: &str) -> Option<String> {
+    std::env::var(env_name)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| match env_name {
+            "QWEN_API_KEY" => std::env::var("DASHSCOPE_API_KEY")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            "DASHSCOPE_API_KEY" => std::env::var("QWEN_API_KEY")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            _ => None,
+        })
+}
+
 pub fn resolve_backend_key(api_key_ref: &str) -> Option<String> {
     if let Some(env_name) = api_key_ref.strip_prefix("env:") {
-        return std::env::var(env_name).ok().map(|s| s.trim().to_string());
+        return resolve_env_key_with_alias(env_name);
     }
     if let Some(file_path) = api_key_ref.strip_prefix("file:") {
         return std::fs::read_to_string(file_path)
             .ok()
             .map(|s| s.trim().to_string());
     }
-    std::env::var(api_key_ref)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .or_else(|| {
-            if api_key_ref.contains('/') || api_key_ref.ends_with(".key") {
-                std::fs::read_to_string(api_key_ref)
-                    .ok()
-                    .map(|s| s.trim().to_string())
-            } else {
-                None
-            }
-        })
+    resolve_env_key_with_alias(api_key_ref).or_else(|| {
+        if api_key_ref.contains('/') || api_key_ref.ends_with(".key") {
+            std::fs::read_to_string(api_key_ref)
+                .ok()
+                .map(|s| s.trim().to_string())
+        } else {
+            None
+        }
+    })
 }
 
 /// Chuyển chuỗi hex (64 ký tự) thành [u8; 32].

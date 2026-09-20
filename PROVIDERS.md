@@ -17,9 +17,12 @@ The catalog is configured by `PROVIDER_CATALOG` in `.env`. The default catalog i
 | Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | OpenAI-compatible | `GEMINI_API_KEY` |
 | DeepSeek | `https://api.deepseek.com` | OpenAI-compatible | `DEEPSEEK_API_KEY` |
 | Kimi | `https://api.moonshot.ai/v1` | OpenAI-compatible | `KIMI_API_KEY` |
-| Qwen | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | OpenAI-compatible | `QWEN_API_KEY` |
+| Qwen | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | OpenAI-compatible chat/embedding; DashScope rerank adapter uses workspace root URL | `QWEN_API_KEY` or `DASHSCOPE_API_KEY` |
 | Z.AI | `https://api.z.ai/api/paas/v4` | OpenAI-compatible | `ZAI_API_KEY` |
 | OpenRouter | `https://openrouter.ai/api/v1` | OpenAI-compatible | `OPENROUTER_API_KEY` |
+| Jina AI | `https://api.jina.ai` | Embedding/rerank adapter | `JINA_API_KEY` |
+| Voyage AI | `https://api.voyageai.com` | Embedding/rerank adapter | `VOYAGE_API_KEY` |
+| Cohere | `https://api.cohere.com/v2` | Rerank adapter | `COHERE_API_KEY` |
 | Meta Muse | `https://api.meta.ai/v1` | OpenAI-compatible | `META_MUSE_API_KEY` |
 | Custom LLM | `http://127.0.0.1:8088/v1` | OpenAI-compatible | `CUSTOM_LLM_API_KEY` |
 
@@ -71,7 +74,9 @@ Create client keys in **API Keys**. Admin can view and copy them again later.
 
 ## Preview-2 adapter providers
 
-Rerank and ASR adapters are implemented on the preview-2 branch, but the Portal task-type wizard is still intentionally conservative. Do not add Jina, Voyage, or Cohere to `PROVIDER_CATALOG` just to make them appear in the normal model picker unless the provider supports the same model-list/test flow. Adapter providers need task-specific setup and endpoint tests.
+Rerank and ASR adapters are implemented on the preview-2 branch. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models`. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add Model wizard.
+
+Qwen rerank needs special handling: embeddings can use the OpenAI-compatible `/compatible-mode/v1` Base URL, while rerank uses DashScope workspace endpoints. In the Portal, choose **Qwen + Rerank**, then enter `https://dashscope-intl.aliyuncs.com` or your workspace root Base URL such as `https://<workspace>.<region>.maas.aliyuncs.com`. For live smoke tests, set `QWEN_RERANK_BASE_URL` to that same root URL.
 
 Useful provider key placeholders are present in `.env.example`:
 

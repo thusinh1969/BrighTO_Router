@@ -250,7 +250,7 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 - One internal endpoint for multiple model providers.
 - OpenAI-style routes: `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`.
 - Anthropic Messages route: `/v1/messages`.
-- Preview-2 adapter branch: `/v1/rerank` and `/v1/audio/transcriptions` are implemented and mock/integration tested; real-provider smoke tests are still required before release claims.
+- Preview-2 adapter branch: `/v1/rerank` and `/v1/audio/transcriptions` are implemented, Portal task-aware, mock/integration tested, and live-smoked with OpenAI, Qwen/DashScope, Jina, Voyage, and Cohere.
 - Multimodal LLM JSON pass-through when the selected backend supports that request shape.
 - Model aliases and provider-backed model routes.
 - Weighted backend routing, fallback backend support, and circuit breaking.
@@ -296,8 +296,8 @@ BrighTO-Router V1.0 routes LLM requests. It does not try to be a full media-gene
 | OpenAI Images API such as `/v1/images/generations` | No | Planned as a future media adapter, not part of V1.0. |
 | Audio generation, Text-to-Speech, Speech-to-Text, F5-TTS, transcription routes | No | Planned as future media adapters, not part of V1.0. |
 | Video generation routes | No | Planned as future media adapters, not part of V1.0. |
-| Reranking APIs such as Qwen reranker or BGE reranker | No | No dedicated rerank route in V1.0. Planned as a future adapter if needed. |
-| Multipart upload normalization | No | V1.0 focuses on JSON LLM routing. |
+| Reranking APIs | Preview-2 branch | `/v1/rerank` supports Jina, Voyage, Cohere, Qwen/DashScope, and OpenAI-compatible/custom rerank adapters. |
+| Multipart ASR upload | Preview-2 branch | `/v1/audio/transcriptions` supports OpenAI-compatible transcription providers. |
 | Realtime voice or WebSocket media sessions | No | Future enterprise/media work if customer demand requires it. |
 
 The practical rule is simple: if a provider exposes a model through a supported JSON LLM endpoint, BrighTO-Router can route it. If the provider needs a separate image/audio/video/rerank API, multipart upload flow, realtime session, or provider-specific media protocol, that belongs in a future adapter.
@@ -306,7 +306,7 @@ The practical rule is simple: if a provider exposes a model through a supported 
 
 `/v1/embeddings` is a proxy route, not an embedding engine. The backend creates the vector. BrighTO-Router only applies authentication, model-route policy, budget checks, provider credential handling, response forwarding, and usage logging. It does not store vectors, build a vector index, run semantic search, or convert one provider's embedding format into another.
 
-BGE or Qwen embedding models can be routed when they are exposed by an OpenAI-compatible backend that accepts `/v1/embeddings`. Qwen reranker, BGE reranker, Cohere-style rerank, or any `/rerank` API is not implemented in V1.0. That should be a separate future adapter because reranking has a different request and response shape from embeddings.
+BGE or Qwen text embedding models can be routed when they are exposed by an OpenAI-compatible backend that accepts `/v1/embeddings`; preview-2 live-smokes Qwen `qwen3.7-text-embedding` this way. Qwen `tongyi-embedding-vision-flash` is a multimodal embedding model, but it uses DashScope multimodal embedding APIs and should be handled by a future dedicated adapter. On the preview-2 branch, reranking is implemented as a separate adapter endpoint because reranking has a different request and response shape from embeddings.
 
 ## Why Rust instead of Python
 

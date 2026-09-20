@@ -461,7 +461,7 @@ struct UpsertRoute {
     provider_key_ref: Option<String>,
     /// bearer | anthropic | none
     auth_mode: Option<String>,
-    /// openai_chat | openai_completions | openai_embeddings | anthropic_messages | local_openai_chat | custom_openai_chat
+    /// Route-level protocol, for example openai_chat, openai_embeddings, cohere_rerank, openai_audio_transcriptions.
     protocol: Option<String>,
 }
 
@@ -1299,12 +1299,27 @@ struct ProviderCatalogEntry {
 /// Danh sách provider cố định, hard-coded trong .env qua PROVIDER_CATALOG.
 /// Định dạng mỗi entry: key|label|base_url|dialect|key_env|enabled(1/0), phân tách bằng ';'.
 /// Chỉ 2 dialect (openai/anthropic); phần còn lại chỉ là base URL khác nhau của cùng 1 dialect.
+fn provider_env_key_set(key_env: &str) -> bool {
+    std::env::var(key_env)
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+        || matches!(key_env, "QWEN_API_KEY")
+            && std::env::var("DASHSCOPE_API_KEY")
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false)
+        || matches!(key_env, "DASHSCOPE_API_KEY")
+            && std::env::var("QWEN_API_KEY")
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false)
+}
+
 fn provider_catalog_from_env() -> Vec<ProviderCatalogEntry> {
     let raw = std::env::var("PROVIDER_CATALOG").unwrap_or_else(|_| {
-        "openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;         anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;         gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;         deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;         kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;         qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;         zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;         openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;         meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;         custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1"
+        "openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;         anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;         gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;         deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;         kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;         qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;         zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;         openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;         jina|Jina AI|https://api.jina.ai|openai|JINA_API_KEY|1;         voyage|Voyage AI|https://api.voyageai.com|openai|VOYAGE_API_KEY|1;         cohere|Cohere|https://api.cohere.com/v2|openai|COHERE_API_KEY|1;         meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;         custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1"
             .to_string()
     });
-    raw.split(';')
+    let mut entries: Vec<ProviderCatalogEntry> = raw
+        .split(';')
         .filter_map(|part| {
             let mut it = part.split('|');
             let key = it.next()?.trim().to_string();
@@ -1337,7 +1352,38 @@ fn provider_catalog_from_env() -> Vec<ProviderCatalogEntry> {
                 enabled,
             })
         })
-        .collect()
+        .collect();
+    let adapter_defaults = [
+        ("jina", "Jina AI", "https://api.jina.ai", "JINA_API_KEY"),
+        (
+            "voyage",
+            "Voyage AI",
+            "https://api.voyageai.com",
+            "VOYAGE_API_KEY",
+        ),
+        (
+            "cohere",
+            "Cohere",
+            "https://api.cohere.com/v2",
+            "COHERE_API_KEY",
+        ),
+    ];
+    for (key, label, base_url, key_env) in adapter_defaults {
+        if entries.iter().any(|e| e.key == key) {
+            continue;
+        }
+        let key_set = provider_env_key_set(key_env);
+        entries.push(ProviderCatalogEntry {
+            key: key.to_string(),
+            label: label.to_string(),
+            base_url: base_url.to_string(),
+            dialect: "openai".to_string(),
+            key_env: key_env.to_string(),
+            key_set,
+            enabled: true,
+        });
+    }
+    entries
 }
 
 async fn list_provider_catalog(
@@ -1377,6 +1423,8 @@ struct TestConnectionRequest {
     provider_key: Option<String>,
     provider_key_ref: Option<String>,
     provider_model_name: Option<String>,
+    /// Route protocol to test. Defaults to old chat behavior for backward compatibility.
+    protocol: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1386,6 +1434,48 @@ struct TestConnectionResponse {
     status: u16,
     model_ok: Option<bool>,
     error: Option<String>,
+    detail: Option<String>,
+}
+
+fn add_provider_auth(
+    req: reqwest::RequestBuilder,
+    dialect: &str,
+    key: &str,
+) -> reqwest::RequestBuilder {
+    if key.is_empty() {
+        return req;
+    }
+    if dialect == "anthropic" {
+        req.header("x-api-key", key)
+            .header("anthropic-version", "2023-06-01")
+    } else {
+        req.bearer_auth(key)
+    }
+}
+
+async fn post_json_probe(
+    state: &Arc<AdminState>,
+    base_url: &str,
+    route: &str,
+    dialect: &str,
+    key: &str,
+    body: serde_json::Value,
+    timeout_secs: u64,
+) -> Result<(u16, Option<serde_json::Value>), String> {
+    let url = join_provider_url(base_url, route);
+    let req = state
+        .runtime
+        .client
+        .post(url)
+        .timeout(Duration::from_secs(timeout_secs))
+        .json(&body);
+    let resp = add_provider_auth(req, dialect, key)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    let json = resp.json::<serde_json::Value>().await.ok();
+    Ok((status, json))
 }
 
 /// 1-token completion để chứng minh key + model thật sự hoạt động. Trả status (None = lỗi network).
@@ -1395,38 +1485,196 @@ async fn test_completion(
     dialect: &str,
     key: &str,
     model: &str,
-) -> Option<u16> {
+) -> Result<(u16, Option<serde_json::Value>), String> {
     let anthropic = dialect == "anthropic";
-    let url = if anthropic {
-        join_provider_url(base_url, "/v1/messages")
+    let route = if anthropic {
+        "/v1/messages"
     } else {
-        join_provider_url(base_url, "/v1/chat/completions")
+        "/v1/chat/completions"
     };
     let body = if anthropic {
         serde_json::json!({"model": model, "max_tokens": 1, "messages": [{"role":"user","content":"ping"}]})
     } else {
         serde_json::json!({"model": model, "max_tokens": 1, "stream": false, "messages": [{"role":"user","content":"ping"}]})
     };
-    let mut req = state
+    post_json_probe(state, base_url, route, dialect, key, body, 20).await
+}
+
+async fn test_embedding(
+    state: &Arc<AdminState>,
+    base_url: &str,
+    dialect: &str,
+    key: &str,
+    model: &str,
+) -> Result<(u16, bool, String), String> {
+    let mut body = serde_json::json!({
+        "model": model,
+        "input": "BrighTO-Router adapter smoke test"
+    });
+    let lower = base_url.to_ascii_lowercase();
+    if lower.contains("voyageai") {
+        body["input_type"] = serde_json::Value::String("document".to_string());
+    }
+    if lower.contains("jina.ai") {
+        body["normalized"] = serde_json::Value::Bool(true);
+        body["embedding_type"] = serde_json::Value::String("float".to_string());
+    }
+    let (status, data) =
+        post_json_probe(state, base_url, "/v1/embeddings", dialect, key, body, 30).await?;
+    let dim = data
+        .as_ref()
+        .and_then(|v| v.get("data"))
+        .and_then(|v| v.as_array())
+        .and_then(|rows| rows.first())
+        .and_then(|row| row.get("embedding"))
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    Ok((
+        status,
+        status < 400 && dim > 0,
+        format!("embedding dim {dim}"),
+    ))
+}
+
+fn qwen_rerank_probe(model: &str) -> (&'static str, serde_json::Value) {
+    if model.trim().eq_ignore_ascii_case("qwen3-rerank") {
+        return (
+            "/compatible-api/v1/reranks",
+            serde_json::json!({
+                "model": model,
+                "query": "fast Rust AI router",
+                "documents": [
+                    "BrighTO-Router is an ultra-fast Rust gateway for model routing.",
+                    "Bananas are yellow fruit and unrelated to API gateways.",
+                    "Rerankers improve retrieval quality by scoring candidate documents."
+                ],
+                "top_n": 2
+            }),
+        );
+    }
+    (
+        "/api/v1/services/rerank/text-rerank/text-rerank",
+        serde_json::json!({
+            "model": model,
+            "input": {
+                "query": "fast Rust AI router",
+                "documents": [
+                    "BrighTO-Router is an ultra-fast Rust gateway for model routing.",
+                    "Bananas are yellow fruit and unrelated to API gateways.",
+                    "Rerankers improve retrieval quality by scoring candidate documents."
+                ]
+            },
+            "parameters": {"top_n": 2}
+        }),
+    )
+}
+
+async fn test_rerank(
+    state: &Arc<AdminState>,
+    base_url: &str,
+    dialect: &str,
+    key: &str,
+    model: &str,
+    protocol: ProviderProtocol,
+) -> Result<(u16, bool, String), String> {
+    let (route, body) = if protocol == ProviderProtocol::QwenRerank {
+        qwen_rerank_probe(model)
+    } else {
+        let mut body = serde_json::json!({
+            "model": model,
+            "query": "fast Rust AI router",
+            "documents": [
+                "BrighTO-Router is an ultra-fast Rust gateway for model routing.",
+                "Bananas are yellow fruit and unrelated to API gateways.",
+                "Rerankers improve retrieval quality by scoring candidate documents."
+            ]
+        });
+        if protocol == ProviderProtocol::VoyageRerank {
+            body["top_k"] = serde_json::Value::Number(2.into());
+        } else {
+            body["top_n"] = serde_json::Value::Number(2.into());
+        }
+        ("/v1/rerank", body)
+    };
+    let (status, data) = post_json_probe(state, base_url, route, dialect, key, body, 30).await?;
+    let results = data
+        .as_ref()
+        .and_then(|v| {
+            v.get("results")
+                .or_else(|| v.get("data"))
+                .or_else(|| v.get("output").and_then(|o| o.get("results")))
+        })
+        .and_then(|v| v.as_array());
+    let count = results.map(|r| r.len()).unwrap_or(0);
+    let first_ok = results
+        .and_then(|r| r.first())
+        .and_then(|v| v.as_object())
+        .map(|o| {
+            o.get("index").is_some()
+                && (o.get("relevance_score").is_some() || o.get("score").is_some())
+        })
+        .unwrap_or(false);
+    Ok((
+        status,
+        status < 400 && first_ok,
+        format!("rerank results {count}"),
+    ))
+}
+
+async fn test_asr(
+    state: &Arc<AdminState>,
+    base_url: &str,
+    dialect: &str,
+    key: &str,
+    model: &str,
+) -> Result<(u16, bool, String), String> {
+    const ASR_FIXTURE: &[u8] = include_bytes!("../../tests/fixtures/asr_smoke.wav");
+    let boundary = "----brighto-router-asr-test-boundary";
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n{model}\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(
+        format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"asr_smoke.wav\"\r\nContent-Type: audio/wav\r\n\r\n").as_bytes(),
+    );
+    body.extend_from_slice(ASR_FIXTURE);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let url = join_provider_url(base_url, "/v1/audio/transcriptions");
+    let req = state
         .runtime
         .client
         .post(url)
-        .timeout(Duration::from_secs(20))
-        .json(&body);
-    if !key.is_empty() {
-        if anthropic {
-            req = req
-                .header("x-api-key", key)
-                .header("anthropic-version", "2023-06-01");
-        } else {
-            req = req.bearer_auth(key);
-        }
-    }
-    req.send().await.ok().map(|r| r.status().as_u16())
+        .timeout(Duration::from_secs(45))
+        .header(
+            header::CONTENT_TYPE,
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(body);
+    let resp = add_provider_auth(req, dialect, key)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    let data = resp.json::<serde_json::Value>().await.ok();
+    let text_len = data
+        .as_ref()
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().chars().count())
+        .unwrap_or(0);
+    Ok((
+        status,
+        status < 400 && text_len > 0,
+        format!("transcript chars {text_len}"),
+    ))
 }
 
-/// Test connection: GET /v1/models (reachability + auth) + 1-token completion nếu có model.
-/// "passed thì cho save lại" — UI chỉ bật Save khi endpoint này trả ok=true.
+/// Test connection with the exact endpoint shape used by the selected route protocol.
+/// UI only enables "Save enabled" when this returns ok=true.
 async fn test_connection(
     Extension(state): Extension<Arc<AdminState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -1441,69 +1689,75 @@ async fn test_connection(
         payload.provider_key.as_deref(),
         payload.provider_key_ref.as_deref(),
     )?;
-    let started = std::time::Instant::now();
-
-    let url = join_provider_url(&base_url, "/v1/models");
-    let mut req = state
-        .runtime
-        .client
-        .get(url)
-        .timeout(Duration::from_secs(15));
-    match dialect {
-        "openai" if !key.is_empty() => {
-            req = req.bearer_auth(&key);
-        }
-        "anthropic" if !key.is_empty() => {
-            req = req
-                .header("x-api-key", &key)
-                .header("anthropic-version", "2023-06-01");
-        }
-        _ => {}
-    }
-    let resp = req.send().await;
-    let latency_ms = started.elapsed().as_millis() as u64;
-    match resp {
-        Ok(r) if r.status().is_success() => {
-            let model_ok = match payload
-                .provider_model_name
-                .as_deref()
-                .map(str::trim)
-                .filter(|m| !m.is_empty())
-            {
-                Some(model) => test_completion(&state, &base_url, dialect, &key, model)
-                    .await
-                    .map(|s| s < 400),
-                None => None,
-            };
-            Ok(Json(TestConnectionResponse {
-                ok: true,
-                latency_ms,
-                status: r.status().as_u16(),
-                model_ok,
-                error: None,
-            }))
-        }
-        Ok(r) => Ok(Json(TestConnectionResponse {
+    if auth_mode != "none" && key.is_empty() {
+        return Ok(Json(TestConnectionResponse {
             ok: false,
-            latency_ms,
-            status: r.status().as_u16(),
+            latency_ms: 0,
+            status: 0,
             model_ok: None,
-            error: Some(format!(
-                "endpoint returned HTTP {} ({})",
-                r.status().as_u16(),
-                if auth_mode == "none" && r.status().as_u16() == 401 {
-                    "provider likely requires an API key"
-                } else {
-                    "check base URL and key"
-                }
-            )),
+            error: Some("provider key is required for this auth mode".to_string()),
+            detail: None,
+        }));
+    }
+    let model = payload
+        .provider_model_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "provider_model_name is required"))?;
+    let protocol = payload
+        .protocol
+        .as_deref()
+        .map(ProviderProtocol::parse)
+        .unwrap_or_else(|| {
+            if dialect == "anthropic" {
+                ProviderProtocol::AnthropicMessages
+            } else {
+                ProviderProtocol::OpenAiChat
+            }
+        });
+    let started = std::time::Instant::now();
+    let tested = match protocol {
+        ProviderProtocol::OpenAiEmbeddings => {
+            test_embedding(&state, &base_url, dialect, &key, model).await
+        }
+        ProviderProtocol::OpenAiRerank
+        | ProviderProtocol::QwenRerank
+        | ProviderProtocol::CohereRerank
+        | ProviderProtocol::VoyageRerank
+        | ProviderProtocol::JinaRerank => {
+            test_rerank(&state, &base_url, dialect, &key, model, protocol).await
+        }
+        ProviderProtocol::OpenAiAudioTranscriptions => {
+            test_asr(&state, &base_url, dialect, &key, model).await
+        }
+        _ => test_completion(&state, &base_url, dialect, &key, model)
+            .await
+            .map(|(status, _)| (status, status < 400, "model completion OK".to_string())),
+    };
+    let latency_ms = started.elapsed().as_millis() as u64;
+    match tested {
+        Ok((status, ok, detail)) => Ok(Json(TestConnectionResponse {
+            ok,
+            latency_ms,
+            status,
+            model_ok: Some(ok),
+            error: if ok {
+                None
+            } else {
+                Some(format!(
+                    "endpoint returned HTTP {status}; check base URL, key, model, and task type"
+                ))
+            },
+            detail: Some(detail),
         })),
         Err(e) => Ok(Json(TestConnectionResponse {
             ok: false,
             latency_ms,
             status: 0,
             model_ok: None,
-            error: Some(e.to_string()),
+            error: Some(e),
+            detail: None,
         })),
     }
 }
@@ -3058,6 +3312,10 @@ mod tests {
                 "/v1/models"
             ),
             "https://dashscope.example.com/compatible-mode/v1/models"
+        );
+        assert_eq!(
+            join_provider_url("https://api.cohere.com/v2", "/v1/rerank"),
+            "https://api.cohere.com/v2/rerank"
         );
     }
 

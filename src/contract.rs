@@ -35,6 +35,7 @@ pub enum ProviderProtocol {
     OpenAiCompletions,
     OpenAiEmbeddings,
     OpenAiRerank,
+    QwenRerank,
     CohereRerank,
     VoyageRerank,
     JinaRerank,
@@ -51,6 +52,7 @@ impl ProviderProtocol {
             "openai_completions" | "completions" => ProviderProtocol::OpenAiCompletions,
             "openai_embeddings" | "embeddings" => ProviderProtocol::OpenAiEmbeddings,
             "openai_rerank" | "rerank" | "custom_rerank" => ProviderProtocol::OpenAiRerank,
+            "qwen_rerank" | "dashscope_rerank" => ProviderProtocol::QwenRerank,
             "cohere_rerank" => ProviderProtocol::CohereRerank,
             "voyage_rerank" => ProviderProtocol::VoyageRerank,
             "jina_rerank" => ProviderProtocol::JinaRerank,
@@ -70,6 +72,7 @@ impl ProviderProtocol {
             ProviderProtocol::OpenAiCompletions => "openai_completions",
             ProviderProtocol::OpenAiEmbeddings => "openai_embeddings",
             ProviderProtocol::OpenAiRerank => "openai_rerank",
+            ProviderProtocol::QwenRerank => "qwen_rerank",
             ProviderProtocol::CohereRerank => "cohere_rerank",
             ProviderProtocol::VoyageRerank => "voyage_rerank",
             ProviderProtocol::JinaRerank => "jina_rerank",
@@ -89,6 +92,7 @@ impl ProviderProtocol {
             ProviderProtocol::OpenAiCompletions => "/v1/completions",
             ProviderProtocol::OpenAiEmbeddings => "/v1/embeddings",
             ProviderProtocol::OpenAiRerank
+            | ProviderProtocol::QwenRerank
             | ProviderProtocol::CohereRerank
             | ProviderProtocol::VoyageRerank
             | ProviderProtocol::JinaRerank => "/v1/rerank",
@@ -104,6 +108,7 @@ impl ProviderProtocol {
             ProviderProtocol::OpenAiCompletions => "OpenAI Completions",
             ProviderProtocol::OpenAiEmbeddings => "OpenAI Embeddings",
             ProviderProtocol::OpenAiRerank => "OpenAI-compatible Rerank",
+            ProviderProtocol::QwenRerank => "Qwen/DashScope Rerank",
             ProviderProtocol::CohereRerank => "Cohere Rerank",
             ProviderProtocol::VoyageRerank => "Voyage Rerank",
             ProviderProtocol::JinaRerank => "Jina Rerank",
@@ -302,6 +307,10 @@ mod tests {
             ProviderProtocol::OpenAiEmbeddings
         );
         assert_eq!(
+            ProviderProtocol::parse("qwen_rerank"),
+            ProviderProtocol::QwenRerank
+        );
+        assert_eq!(
             ProviderProtocol::parse("cohere_rerank"),
             ProviderProtocol::CohereRerank
         );
@@ -344,6 +353,7 @@ mod tests {
             "/v1/embeddings"
         );
         assert_eq!(ProviderProtocol::OpenAiRerank.incoming_path(), "/v1/rerank");
+        assert_eq!(ProviderProtocol::QwenRerank.incoming_path(), "/v1/rerank");
         assert_eq!(ProviderProtocol::CohereRerank.incoming_path(), "/v1/rerank");
         assert_eq!(
             ProviderProtocol::OpenAiAudioTranscriptions.incoming_path(),
