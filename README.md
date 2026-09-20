@@ -141,7 +141,7 @@ python3 test_router.py --mode embeddings --model <public-embedding-route> --text
 Rerank through a configured preview-2 rerank route:
 
 ```bash
-python3 test_router.py --mode rerank --model <public-rerank-route> --text "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
+python3 test_router.py --mode rerank --model <public-rerank-route> --query "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
 ```
 
 ASR / transcription through a configured preview-2 multipart route:
@@ -164,15 +164,15 @@ Provider shortcut tests through BrighTO-Router, using standard public route name
 ```bash
 python3 test_router.py --list-presets
 python3 test_router.py --provider qwen --mode embeddings --text "hello"
-python3 test_router.py --provider qwen --mode rerank --text "router speed"
+python3 test_router.py --provider qwen --mode rerank --query "router speed"
 python3 test_router.py --provider jina --mode embeddings --text "hello"
-python3 test_router.py --provider jina --mode rerank --text "router speed"
+python3 test_router.py --provider jina --mode rerank --query "router speed"
 python3 test_router.py --provider voyage --mode embeddings --text "hello"
-python3 test_router.py --provider voyage --mode rerank --text "router speed"
-python3 test_router.py --provider cohere --mode rerank --text "router speed"
+python3 test_router.py --provider voyage --mode rerank --query "router speed"
+python3 test_router.py --provider cohere --mode rerank --query "router speed"
 ```
 
-Use `--model <your-public-route>` instead of `--provider` when your Portal route has a custom public name.
+Use `--model <your-public-route>` instead of `--provider` when your Portal route has a custom public name. In rerank mode, `--query` and `--text` both work; `--query` is clearer and takes priority.
 
 Full preview-2 router smoke through Admin API and public client endpoints, using whichever provider keys exist in `.env`:
 

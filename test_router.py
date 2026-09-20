@@ -8,7 +8,7 @@ Examples:
   python3 test_router.py --mode rerank --model my-reranker --text "search query" --document "doc one" --document "doc two"
   python3 test_router.py --mode asr --model my-asr --file ./sample.wav
   python3 test_router.py --provider qwen --mode embeddings --text "hello"
-  python3 test_router.py --provider jina --mode rerank --text "search query"
+  python3 test_router.py --provider jina --mode rerank --query "search query"
   python3 test_router.py --model my-vision-model --text "What is this?" --image ./photo.jpg
   python3 test_router.py --model my-audio-model --text "Transcribe briefly" --audio ./sample.wav
 
@@ -185,9 +185,12 @@ def build_body(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
             "Bananas are yellow fruit.",
             "Rerankers score documents against a query.",
         ]
+        query = (args.query or args.text or "").strip()
+        if not query:
+            raise CliError("rerank mode requires --query or --text")
         return "/v1/rerank", {
             "model": args.model,
-            "query": args.text,
+            "query": query,
             "documents": docs,
             "top_n": min(args.top_n or len(docs), len(docs)),
         }
@@ -340,12 +343,12 @@ Provider keys such as OPENAI_API_KEY are intentionally ignored. This script test
 
 Provider shortcuts use standard public route names created in the docs/smoke flow:
   python3 test_router.py --provider qwen --mode embeddings --text "hello"
-  python3 test_router.py --provider qwen --mode rerank --text "router speed"
+  python3 test_router.py --provider qwen --mode rerank --query "router speed"
   python3 test_router.py --provider jina --mode embeddings --text "hello"
-  python3 test_router.py --provider jina --mode rerank --text "router speed"
+  python3 test_router.py --provider jina --mode rerank --query "router speed"
   python3 test_router.py --provider voyage --mode embeddings --text "hello"
-  python3 test_router.py --provider voyage --mode rerank --text "router speed"
-  python3 test_router.py --provider cohere --mode rerank --text "router speed"
+  python3 test_router.py --provider voyage --mode rerank --query "router speed"
+  python3 test_router.py --provider cohere --mode rerank --query "router speed"
   python3 test_router.py --provider openai --mode asr --file tests/fixtures/asr_smoke.wav
 """,
     )
@@ -354,7 +357,8 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     parser.add_argument("--model", help="Public model route name in BrighTO-Router")
     parser.add_argument("--provider", choices=sorted(PROVIDER_ROUTE_PRESETS), help="Use a preview-2 provider route preset, for example qwen + embeddings -> qwen-embedding")
     parser.add_argument("--list-presets", action="store_true", help="Print preview-2 provider route presets and exit")
-    parser.add_argument("--text", default="Reply OK in one short sentence.", help="Text input to send")
+    parser.add_argument("--text", default="Reply OK in one short sentence.", help="Text input to send; in rerank mode this is the query unless --query is set")
+    parser.add_argument("--query", help="Search query for --mode rerank. Friendly alias; overrides --text for rerank only")
     parser.add_argument("--mode", choices=["chat", "embeddings", "rerank", "asr", "messages"], default="chat", help="Request type")
     parser.add_argument("--image", action="append", default=[], help="Image file path, http URL, https URL, or data URL for OpenAI-style chat JSON")
     parser.add_argument("--audio", action="append", default=[], help="Audio file path for OpenAI-style chat JSON")

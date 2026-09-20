@@ -57,12 +57,12 @@ Provider shortcuts when you use the documented public route names:
 ```bash
 python3 test_router.py --list-presets
 python3 test_router.py --provider qwen --mode embeddings --text "hello"
-python3 test_router.py --provider qwen --mode rerank --text "router speed"
+python3 test_router.py --provider qwen --mode rerank --query "router speed"
 python3 test_router.py --provider jina --mode embeddings --text "hello"
-python3 test_router.py --provider jina --mode rerank --text "router speed"
+python3 test_router.py --provider jina --mode rerank --query "router speed"
 python3 test_router.py --provider voyage --mode embeddings --text "hello"
-python3 test_router.py --provider voyage --mode rerank --text "router speed"
-python3 test_router.py --provider cohere --mode rerank --text "router speed"
+python3 test_router.py --provider voyage --mode rerank --query "router speed"
+python3 test_router.py --provider cohere --mode rerank --query "router speed"
 ```
 
 Rerank:
