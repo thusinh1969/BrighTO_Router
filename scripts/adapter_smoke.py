@@ -199,7 +199,9 @@ def smoke_rerank(provider: str, cfg: dict[str, Any], key: str, model: str | None
         body["top_k"] = 2
     status, _headers, raw, elapsed_ms = request_json(url, key, body, timeout)
     data = parse_json(raw)
-    results = data.get("results") if isinstance(data, dict) else None
+    results = None
+    if isinstance(data, dict):
+        results = data.get("results") or data.get("data")
     ok = 200 <= status < 300 and isinstance(results, list) and bool(results)
     first = results[0] if ok and isinstance(results[0], dict) else {}
     score = first.get("relevance_score", first.get("score"))
