@@ -55,7 +55,7 @@ For clean numbers, keep the router, load generator, mock backend, and PostgreSQL
 
 The default release gate measures 1k, 50k, and 200k token-class prompts. These are stable enough to run repeatedly and catch the main router overhead risks.
 
-Stress proof also measures 500k and 1M token-class prompts. These runs prove that the router still behaves like pass-through infrastructure when prompts become very large. The first goal for 500k and 1M is not a made-up latency target. The first goal is evidence:
+Stress proof also measures 500k and 1M token-class prompts. Preview-2 has full HTTP and HTTPS artifacts for these sizes at concurrency 1, 50, and 200. These runs prove that the router still behaves like pass-through infrastructure when coding-agent contexts become very large. The first goal for 500k and 1M is not a made-up latency target. The first goal is evidence:
 
 - No request body corruption.
 - No response corruption.
@@ -141,37 +141,36 @@ The router must not wait on PostgreSQL in the request path. Existing in-memory c
 
 ## Stress proof for 500k and 1M
 
-Use this command to measure large prompt pass-through without turning unknown targets into false failures:
+Preview-2 has a full large-context proof using coding-agent payloads. The payload generator creates repository-style context: file paths, source snippets, diffs, logs, failing tests, and change requests. That shape matches vibe-coding traffic better than repeated prose, while still keeping the router benchmark deterministic.
+
+HTTP command:
 
 ```bash
-BENCH_PAYLOADS=500k,1m \
-BENCH_STREAM_PAYLOADS=500k-stream,1m-stream \
-CONCS=1,50 \
-RUNS=1 \
-DUR=60s \
-WARM=10s \
-BENCH_B6=0 \
-BENCH_B10=0 \
+TLS_CERT_PATH= TLS_KEY_PATH= \
+BENCH_PAYLOADS=1k,50k,200k,500k,1m \
+BENCH_STREAM_PAYLOADS=1k-stream,50k-stream,200k-stream,500k-stream,1m-stream \
+CONCS=1,50,200 RUNS=1 DUR=8s WARM=2s \
 REQUIRE_PASS=0 \
-python3 scripts/bench_real.py
+python3 -u scripts/bench_real.py
 ```
 
-For a heavier run on the dual-Xeon machine, raise concurrency after the first artifact is reviewed:
+HTTPS command using the local files `ssl/fullchain.pem` and `ssl/privkey.pem` by default:
 
 ```bash
-BENCH_PAYLOADS=500k,1m \
-BENCH_STREAM_PAYLOADS=500k-stream,1m-stream \
-CONCS=1,50,200 \
-RUNS=3 \
-DUR=60s \
-WARM=15s \
-BENCH_B6=0 \
-BENCH_B10=0 \
+BENCH_TLS=1 \
+BENCH_PAYLOADS=1k,50k,200k,500k,1m \
+BENCH_STREAM_PAYLOADS=1k-stream,50k-stream,200k-stream,500k-stream,1m-stream \
+CONCS=1,50,200 RUNS=1 DUR=8s WARM=2s \
 REQUIRE_PASS=0 \
-python3 scripts/bench_real.py
+python3 -u scripts/bench_real.py
 ```
 
-Review these fields in `bench/results/<timestamp>/summary.json`:
+Reviewed preview-2 summary artifacts:
+
+- `benchmarks/artifacts/preview-2-http-1m-coding-context-summary.json`
+- `benchmarks/artifacts/preview-2-https-1m-coding-context-summary.json`
+
+Review these fields in `bench/results/<timestamp>/summary.json` or the committed summary artifacts:
 
 - `overhead_ms`: router overhead by payload and concurrency.
 - `streaming_ttfb_delta_ms`: time-to-first-byte delta for streaming payloads.
@@ -179,7 +178,7 @@ Review these fields in `bench/results/<timestamp>/summary.json`:
 - `router_rss_mb.samples`: labeled memory samples throughout the run.
 - `ledger_dropped_total`: must remain zero.
 
-A 500k/1M stress run becomes a hard release gate only after we have a reviewed green baseline on the same hardware class and a written reason for the threshold.
+A 500k/1M stress run becomes a hard release gate only after repeated public baselines on comparable hardware justify the threshold.
 
 ## Baseline policy
 

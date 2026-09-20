@@ -249,7 +249,7 @@ fn generate_key() -> Result<String, ApiError> {
     f.take(16)
         .read_exact(&mut bytes)
         .map_err(|e| ApiError::internal(e.to_string()))?;
-    Ok(format!("lc-{}", hex_encode(&bytes)))
+    Ok(format!("sk-brighto-{}", hex_encode(&bytes)))
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
@@ -3370,14 +3370,14 @@ mod tests {
     #[test]
     fn generated_key_format() {
         let key = generate_key().expect("generate key");
-        assert!(key.starts_with("lc-"));
-        assert_eq!(key.len(), 3 + 32);
-        assert!(key[3..].chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(key.starts_with("sk-brighto-"));
+        assert_eq!(key.len(), "sk-brighto-".len() + 32);
+        assert!(key["sk-brighto-".len()..].chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
     fn hash_prefix_length() {
-        let key = "lc-0123456789abcdef0123456789abcdef".to_string();
+        let key = "sk-brighto-0123456789abcdef0123456789abcdef".to_string();
         let hash_bytes = Sha256::digest(key.as_bytes());
         let mut hash = [0u8; 32];
         hash.copy_from_slice(&hash_bytes);

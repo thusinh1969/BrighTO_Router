@@ -117,7 +117,7 @@ def main():
         body = r.json()
         key = body.get("key", "")
         key_id = body.get("id")
-        check("POST /admin/keys returns lc- key", r.status_code == 200 and key.startswith("lc-"))
+        check("POST /admin/keys returns sk-brighto- key", r.status_code == 200 and key.startswith("sk-brighto-"))
 
         # New SOTA endpoints: reveal key, settings, add provider.
         r = requests.get(base + "/admin/keys/%d/reveal" % key_id, headers=admin)

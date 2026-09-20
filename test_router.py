@@ -3,7 +3,7 @@
 
 Examples:
   python3 test_router.py --model my-model --text "Reply OK"
-  python3 test_router.py --router http://SERVER:18080 --api-key lc-... --model my-model --text "Reply OK"
+  python3 test_router.py --router http://SERVER:18080 --api-key sk-brighto-... --model my-model --text "Reply OK"
   python3 test_router.py --mode embeddings --model my-embedding --text "hello"
   python3 test_router.py --mode rerank --model my-reranker --text "search query" --document "doc one" --document "doc two"
   python3 test_router.py --mode asr --model my-asr --file ./sample.wav
@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_ROUTER = "http://127.0.0.1:18080"
-DEFAULT_DEMO_KEY = "lc-0123456789abcdef0123456789abcdef"
+DEFAULT_DEMO_KEY = "sk-brighto-0123456789abcdef0123456789abcdef"
 
 # Public route-name shortcuts used by the preview-2 smoke flow and docs.
 # They are client-side conveniences only. If your Portal route uses a custom public
@@ -353,7 +353,7 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
 """,
     )
     parser.add_argument("--router", help="Router base URL, for example http://127.0.0.1:18080")
-    parser.add_argument("--api-key", help="BrighTO client API key, usually starts with lc-")
+    parser.add_argument("--api-key", help="BrighTO client API key, usually starts with sk-brighto-")
     parser.add_argument("--model", help="Public model route name in BrighTO-Router")
     parser.add_argument("--provider", choices=sorted(PROVIDER_ROUTE_PRESETS), help="Use a preview-2 provider route preset, for example qwen + embeddings -> qwen-embedding")
     parser.add_argument("--list-presets", action="store_true", help="Print preview-2 provider route presets and exit")
@@ -383,11 +383,11 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     model = args.model or (preset_model_name(args.provider, args.mode) if args.provider else "") or first_env(["BRIGHTO_MODEL"], env_file_values)
     if not api_key:
         raise CliError(
-            "missing BrighTO client API key. Pass --api-key lc-... or set BRIGHTO_ROUTER_API_KEY in .env. "
+            "missing BrighTO client API key. Pass --api-key sk-brighto-... or set BRIGHTO_ROUTER_API_KEY in .env. "
             f"For a fresh local install, the demo key is {DEFAULT_DEMO_KEY}."
         )
-    if api_key.startswith("sk-"):
-        raise CliError("this looks like a provider key. Use a BrighTO client key from the Portal API Keys screen, usually lc-...")
+    if api_key.startswith("sk-") and not api_key.startswith("sk-brighto-"):
+        raise CliError("this looks like a provider key. Use a BrighTO client key from the Portal API Keys screen, usually sk-brighto-...")
     if not model:
         raise CliError("missing model. Pass --model <public-model-route>, use --provider with a supported --mode, or set BRIGHTO_MODEL in .env")
     args.model = model

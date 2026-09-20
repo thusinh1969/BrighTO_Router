@@ -337,7 +337,7 @@ async fn build_state_for_route(
     let key_hash = hex::encode(brighto_router::auth::hash_key("test-key"));
     sqlx::query(
         "INSERT INTO api_keys (id, key_hash, key_prefix, team_id, owner, allowed_models, budget, rpm_limit, concurrency_limit, expires_at, enabled) \
-         VALUES (1, $1, 'lc-test00', 1, 'tester', '[]', NULL, NULL, NULL, NULL, TRUE)",
+         VALUES (1, $1, 'sk-brigh', 1, 'tester', '[]', NULL, NULL, NULL, NULL, TRUE)",
     )
     .bind(&key_hash)
     .execute(&pool)

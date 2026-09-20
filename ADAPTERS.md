@@ -47,7 +47,7 @@ Embeddings:
 python3 test_router.py \
   --mode embeddings \
   --router http://127.0.0.1:18080 \
-  --api-key lc-... \
+  --api-key sk-brighto-... \
   --model <public-embedding-route> \
   --text "BrighTO embedding smoke test"
 ```
@@ -71,7 +71,7 @@ Rerank:
 python3 test_router.py \
   --mode rerank \
   --router http://127.0.0.1:18080 \
-  --api-key lc-... \
+  --api-key sk-brighto-... \
   --model <public-rerank-route> \
   --query "router speed" \
   --document "BrighTO-Router is a fast Rust gateway" \
@@ -85,7 +85,7 @@ ASR / transcription:
 python3 test_router.py \
   --mode asr \
   --router http://127.0.0.1:18080 \
-  --api-key lc-... \
+  --api-key sk-brighto-... \
   --model <public-asr-route> \
   --file tests/fixtures/asr_smoke.wav
 ```
@@ -94,21 +94,21 @@ Raw curl equivalents:
 
 ```bash
 curl -sS http://127.0.0.1:18080/v1/embeddings \
-  -H "Authorization: Bearer lc-..." \
+  -H "Authorization: Bearer sk-brighto-..." \
   -H "Content-Type: application/json" \
   -d '{"model":"<public-embedding-route>","input":"hello"}'
 ```
 
 ```bash
 curl -sS http://127.0.0.1:18080/v1/rerank \
-  -H "Authorization: Bearer lc-..." \
+  -H "Authorization: Bearer sk-brighto-..." \
   -H "Content-Type: application/json" \
   -d '{"model":"<public-rerank-route>","query":"router speed","documents":["fast rust router","slow proxy"],"top_n":1}'
 ```
 
 ```bash
 curl -sS http://127.0.0.1:18080/v1/audio/transcriptions \
-  -H "Authorization: Bearer lc-..." \
+  -H "Authorization: Bearer sk-brighto-..." \
   -F "model=<public-asr-route>" \
   -F "file=@tests/fixtures/asr_smoke.wav"
 ```

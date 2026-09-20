@@ -632,7 +632,7 @@ table.key-list-table td:nth-child(2) .compact-line,table.key-list-table td:nth-c
         <div class="field"><label>Username</label><input id="login-user" value="admin" autocomplete="username"></div>
         <div class="field"><label>Admin key</label><input id="login-pass" type="password" placeholder="ADMIN_MASTER_KEY" autocomplete="current-password"></div>
       </div>
-      <div class="field hidden" id="user-field"><label>Client API key</label><input id="login-apikey" type="password" placeholder="lc-..." autocomplete="off"></div>
+      <div class="field hidden" id="user-field"><label>Client API key</label><input id="login-apikey" type="password" placeholder="sk-brighto-..." autocomplete="off"></div>
       <button id="login-submit" class="btn primary btn-block" onclick="login()">Sign in</button>
       <div class="warn-note hidden" id="login-error"></div>
     </div>
@@ -726,7 +726,7 @@ function setMode(m){
   $("admin-fields").classList.toggle("hidden",m!=="admin");
   $("user-field").classList.toggle("hidden",m==="admin");
   $("login-sub").textContent = m==="admin" ? "Admin signs in with the master key from .env." : "User signs in with a client API key.";
-  $("login-help").innerHTML = m==="admin" ? "Use username <code>admin</code> and the <code>ADMIN_MASTER_KEY</code> value." : "Paste the visible <code>lc-...</code> key issued from the API Keys screen.";
+  $("login-help").innerHTML = m==="admin" ? "Use username <code>admin</code> and the <code>ADMIN_MASTER_KEY</code> value." : "Paste the visible <code>sk-brighto-...</code> key issued from the API Keys screen.";
 }
 async function login(){
   if(loginBusy) return;

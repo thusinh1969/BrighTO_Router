@@ -1,17 +1,24 @@
 # BrighTO-Router
 
-**The ultra-fast, self-hosted AI router for chat, embeddings, rerank, and ASR (speech-to-text).**
+**Million-token AI traffic, simple Rust fast path, one Docker install.**
 
 BrighTO-Router preview-2 gives your team one clean endpoint for OpenAI-compatible chat/completions/embeddings, Anthropic Messages, provider-specific rerank adapters for search ranking, OpenAI-compatible ASR/transcription, cloud models, and local models. It is built in Rust for low-overhead pass-through, uses PostgreSQL as the single durable store, and scales by running stateless router replicas behind a load balancer.
 
-| Preview benchmark proof point | Result |
+| Preview-2 benchmark proof point | Result |
 |---|---:|
-| 200k-token mock pass-through, 50 concurrent requests | `0.958 ms p99 router overhead` |
-| 50k-token mock pass-through, 50 concurrent requests | `0.707 ms p99 router overhead` |
-| 1k-token mock pass-through, 50 concurrent requests | `0.418 ms p99 router overhead` |
-| Router memory during the release artifact | `26.12 MB max RSS` |
+| 1M-token coding-context HTTP pass-through, 200 concurrent requests | `+2.167 ms p50`, `+1.664 ms p99` router overhead |
+| 1M-token coding-context HTTPS pass-through, 200 concurrent requests | `+6.539 ms p50`, `+35.845 ms p99` router overhead |
+| Streaming first-byte delta at 1M over HTTP | `-0.038 ms` |
+| High-rate small-prompt saturation | `8,496 RPS`, `0` non-200 responses |
+| PostgreSQL ledger at 2,000 RPS | `15,964 / 15,999` rows observed, `0` drops |
+| Router memory during full 1M matrix | `60.04 MB` HTTP, `83.24 MB` HTTPS max RSS |
 
-Measured on Intel Xeon Gold 6148 using the same-machine benchmark artifact at `benchmarks/artifacts/1.0-preview-summary.json`.
+Measured on Intel Xeon Gold 6148 using same-machine mock-backend artifacts:
+
+- HTTP: `benchmarks/artifacts/preview-2-http-1m-coding-context-summary.json`
+- HTTPS: `benchmarks/artifacts/preview-2-https-1m-coding-context-summary.json`
+
+These are pass-through benchmarks against a deterministic local Rust mock backend. They measure router overhead, not model inference speed, and they do not call paid cloud providers.
 
 Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 
@@ -49,19 +56,37 @@ BrighTO-Router is designed to stay fast in both common team traffic and heavy co
 | Many concurrent users with small or average conversations | A 100-person team using chat, short multi-turn prompts, OpenAI-compatible embedding calls, and normal app traffic throughout the day. | The router keeps the hot path small: authenticate, check policy, choose a route, stream the response, and write usage asynchronously. |
 | Many developers or coding agents with large contexts | Vibe-coding sessions, repository analysis, long prompts, retrieval-heavy requests, and multiple developers using large-context models at once. | Large JSON bodies are passed through without transforming media or rewriting prompt content, so router overhead stays low even when the backend receives much larger context. |
 
-The verified preview benchmark artifact covers `1k`, `50k`, and `200k` token-class payloads at 50 concurrent requests. That gives a practical range from normal chat traffic to large-context coding workflows. The benchmark harness can generate `500k` and `1m` token-class payloads, but those numbers should be promoted only after full production-machine proof is reviewed.
+The verified preview-2 benchmark now covers `1k`, `50k`, `200k`, `500k`, and `1m` token-class coding-context payloads at concurrency 1, 50, and 200, over both HTTP and HTTPS. That range covers normal chat traffic, retrieval-heavy prompts, and large vibe-coding contexts near 1M tokens.
 
 ## Benchmark proof
 
-Method: same client, same machine, same mock backend, direct call versus router call. Release artifact: `benchmarks/artifacts/1.0-preview-summary.json` on Intel Xeon Gold 6148.
+Method: same client, same machine, same mock backend, direct call versus router call. Payloads are generated as coding-agent context: file paths, source snippets, diffs, logs, failing tests, and change instructions. This is closer to real vibe-coding traffic than repeated plain prose.
+
+HTTP artifact: `benchmarks/artifacts/preview-2-http-1m-coding-context-summary.json` on Intel Xeon Gold 6148.
 
 | Payload | Concurrency | p50 router overhead | p99 router overhead | Streaming first-byte delta | Router memory max |
 |---|---:|---:|---:|---:|---:|
-| `1k` | 50 | `0.287 ms` | `0.418 ms` | `-0.017 ms` | `26.12 MB` |
-| `50k` | 50 | `0.544 ms` | `0.707 ms` | `-0.015 ms` | `26.12 MB` |
-| `200k` | 50 | `0.901 ms` | `0.958 ms` | `-0.010 ms` | `26.12 MB` |
+| `1k` | 50 | `+0.317 ms` | `+0.548 ms` | `-0.028 ms` | `60.04 MB` |
+| `50k` | 50 | `+0.458 ms` | `+0.646 ms` | `-0.010 ms` | `60.04 MB` |
+| `200k` | 50 | `+0.985 ms` | `+1.448 ms` | `-0.008 ms` | `60.04 MB` |
+| `500k` | 50 | `+1.091 ms` | `+0.935 ms` | `-0.005 ms` | `60.04 MB` |
+| `1m` | 50 | `+2.047 ms` | `+3.415 ms` | `-0.038 ms` | `60.04 MB` |
+| `1m` | 200 | `+2.167 ms` | `+1.664 ms` | `-0.038 ms` | `60.04 MB` |
 
-The benchmark also verified PostgreSQL ledger writing at 200 requests per second with 200 expected rows and 200 observed rows in that release artifact. Larger 500k and 1M token-class payloads are supported by the benchmark harness and smoke-tested, but they are not promoted to public speed claims until full dual-Xeon production proof is reviewed.
+HTTPS artifact with local self-signed TLS enabled: `benchmarks/artifacts/preview-2-https-1m-coding-context-summary.json`.
+
+| Payload | Concurrency | p50 router overhead | p99 router overhead | Streaming first-byte delta | Router memory max |
+|---|---:|---:|---:|---:|---:|
+| `1k` | 50 | `+0.357 ms` | `+96.932 ms` | `+21.251 ms` | `83.24 MB` |
+| `50k` | 50 | `+0.830 ms` | `+101.449 ms` | `+19.469 ms` | `83.24 MB` |
+| `200k` | 50 | `+1.972 ms` | `+68.994 ms` | `+20.504 ms` | `83.24 MB` |
+| `500k` | 50 | `+3.555 ms` | `+31.512 ms` | `+22.184 ms` | `83.24 MB` |
+| `1m` | 50 | `+7.008 ms` | `+12.055 ms` | `+21.760 ms` | `83.24 MB` |
+| `1m` | 200 | `+6.539 ms` | `+35.845 ms` | `+21.760 ms` | `83.24 MB` |
+
+The HTTPS streaming first-byte number includes the cost of a new local TLS connection in the sequential `curl` test. Production clients usually reuse connections, so this number should be read as a conservative new-connection measurement, not model streaming delay.
+
+Both full runs had `0` router non-200 responses, `0` ledger drops, and passed the command-level smoke result. The HTTP run sustained `8,496.18 RPS` for the 1k saturation check and the HTTPS run sustained `8,496.80 RPS`. PostgreSQL ledger checks at 2,000 RPS observed at least 99% of expected rows during the measurement window, with no dropped ledger events.
 
 ## Quick start
 
@@ -203,7 +228,7 @@ Default records:
 | Record | Created value | Purpose |
 |---|---|---|
 | Team | `Default Team` | Lets an admin create client API keys immediately. |
-| Demo client key | `lc-0123456789abcdef0123456789abcdef` | Local smoke testing only. Replace or disable it before shared use. |
+| Demo client key | `sk-brighto-0123456789abcdef0123456789abcdef` | Local smoke testing only. Replace or disable it before shared use. |
 | Model routes | None | You choose which provider models clients can call. |
 | Provider endpoints | OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, Custom LLM, Jina AI, Voyage AI, Cohere, Qwen Rerank | Friendly defaults for the Portal. They are endpoint templates, not usable routes until a tested model route is saved. |
 | Provider catalog | `PROVIDER_CATALOG` in `.env` | Controls the Add model provider dropdown. |
@@ -410,14 +435,15 @@ Benchmark matrix:
 | `1k` | 1, 50, 200 | Latency overhead, throughput, ledger lag | Normal team traffic must stay fast. |
 | `50k` | 1, 50, 200 | Latency overhead, first byte, memory | Retrieval and agent prompts must stay pass-through. |
 | `200k` | 1, 50, 200 | Latency overhead, first byte, memory flatness | Large-context calls must not create proportional router delay. |
-| `500k` | 1, 50, 200 after review | Correctness, memory, overhead | Extreme prompts should not corrupt data or grow memory unexpectedly. |
-| `1m` | 1, 50, 200 after review | Correctness, memory, overhead | Capacity planning for very large prompts on high-memory servers. |
+| `500k` | 1, 50, 200 | Correctness, memory, overhead, first byte | Extreme coding contexts should stay pass-through without memory growth. |
+| `1m` | 1, 50, 200 | Correctness, memory, overhead, first byte | Vibe-coding and repository-analysis contexts near 1M tokens must stay stable. |
 
 Current verified public-facing status:
 
-- 1k, 50k, and 200k release-gate payloads measured sub-millisecond p99 local mock overhead in `benchmarks/artifacts/1.0-preview-summary.json`.
-- 500k and 1M payload generation and mock pass-through have been verified in smoke mode.
-- Full 500k and 1M production proof should be run on the target dual-Xeon server before publishing claims for those sizes.
+- Preview-2 has full HTTP and HTTPS same-machine mock artifacts from `1k` through `1m`, at concurrency 1, 50, and 200.
+- The headline 1M HTTP result at concurrency 200 is `+2.167 ms p50` and `+1.664 ms p99` router overhead with `0` non-200 responses.
+- The headline 1M HTTPS result at concurrency 200 is `+6.539 ms p50` and `+35.845 ms p99` router overhead with `0` non-200 responses.
+- Hard release thresholds still apply to the calibrated `1k`, `50k`, and `200k` gates. The `500k` and `1m` artifacts are published measurement proof and will become hard gates only after we have more repeated public baselines.
 - “Fastest in the world” should be claimed only after public same-machine comparisons against named routers.
 
 Benchmark docs:

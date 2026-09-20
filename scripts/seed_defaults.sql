@@ -30,12 +30,12 @@ BEGIN
   -- these endpoints when the selected provider/model/key passes Test Connection.
 
   -- Local demo client key for first-run smoke tests and ./test_router.py.
-  -- Plaintext: lc-0123456789abcdef0123456789abcdef
+  -- Plaintext: sk-brighto-0123456789abcdef0123456789abcdef
   -- Safe to rerun; disable or delete before shared/production use.
   INSERT INTO api_keys (key_hash, key_prefix, team_id, owner, allowed_models, budget, rpm_limit, concurrency_limit, expires_at, enabled, key_secret)
   SELECT
-    '4aa892925e0be64d70cad871e803913056f1a9be0c9f06cb558870a8f2e347a4',
-    'lc-01234',
+    '1d86872169af3c343a921877fb32d18c5a4f0c4473a4063e7398c4457f63da2f',
+    'sk-brigh',
     t.id,
     'Local demo key',
     '[]',
@@ -44,10 +44,10 @@ BEGIN
     NULL,
     NULL,
     TRUE,
-    'lc-0123456789abcdef0123456789abcdef'
+    'sk-brighto-0123456789abcdef0123456789abcdef'
   FROM (SELECT id FROM teams WHERE name = 'Default Team' ORDER BY id LIMIT 1) t
   WHERE NOT EXISTS (
-    SELECT 1 FROM api_keys WHERE key_hash = '4aa892925e0be64d70cad871e803913056f1a9be0c9f06cb558870a8f2e347a4'
+    SELECT 1 FROM api_keys WHERE key_hash = '1d86872169af3c343a921877fb32d18c5a4f0c4473a4063e7398c4457f63da2f'
   );
 
   FOR item IN SELECT * FROM jsonb_array_elements(providers) LOOP

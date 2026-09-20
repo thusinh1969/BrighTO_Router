@@ -29,8 +29,8 @@ This is the benchmark guide to read first. It answers four questions:
 | `1k` | 1,000 tokens | 1, 50, 200 | Median overhead, p99 overhead, streaming TTFB, high-rate throughput, ledger lag | Hard gate at concurrency 50; B6 throughput gate at concurrency 200; B10 ledger gate at 2,000 RPS | Normal app traffic must not pay visible router cost. A 100-person team can send many small prompts through one endpoint without the router becoming the bottleneck. |
 | `50k` | 50,000 tokens | 1, 50, 200 | Median overhead, p99 overhead, streaming TTFB, memory samples | Hard gate at concurrency 50 | Common retrieval and agent prompts must remain pass-through. The router should route, enforce policy, and record usage without copying large bodies more than needed. |
 | `200k` | 200,000 tokens | 1, 50, 200 | Median overhead, p99 overhead, streaming TTFB, flatness versus `1k`, memory samples | Hard gate at concurrency 50 | Large research prompts must not make router overhead grow in proportion to prompt size. If 200k is much worse than 1k, the router is buffering or parsing too much. |
-| `500k` | 500,000 tokens | 1, 50, then 200 after review | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Measurement-first stress proof until a reviewed baseline exists | Extreme prompt pass-through must stay stable. We record memory and correctness first; we do not invent a speed target before the machine is calibrated. |
-| `1m` | 1,000,000 tokens. The name means 1M. | 1, 50, then 200 after review | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Measurement-first stress proof until a reviewed baseline exists | This proves the router can survive very large prompts without runaway memory. It is for capacity planning on high-memory servers, not a fake everyday target. |
+| `500k` | 500,000 tokens | 1, 50, 200 | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Full preview-2 measurement exists; no hard speed threshold yet | Extreme coding-context pass-through must stay stable without memory growth. |
+| `1m` | 1,000,000 tokens. The name means 1M. | 1, 50, 200 | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Full preview-2 measurement exists; no hard speed threshold yet | This covers large vibe-coding and repository-analysis contexts while keeping router memory visible. |
 
 ## How to read offered rate
 
@@ -81,28 +81,41 @@ After a run, read `bench/results/<timestamp>/summary.json` first.
 
 ## Current measured status
 
-The current repo has verified harness support for 1k, 50k, 200k, 500k, and 1M token-class payloads. The long local mock artifact before B10/baseline additions measured the main 1k to 200k gates on an Intel Xeon Gold 6148 machine:
+The preview-2 full benchmark has been run with coding-agent payloads from `1k` through `1m`, at concurrency 1, 50, and 200, over both HTTP and HTTPS. The benchmark uses a deterministic local Rust mock backend so model inference time and cloud network noise do not hide router overhead.
 
-| Payload | Concurrency | Median overhead | p99 overhead | Streaming TTFB delta |
-|---|---:|---:|---:|---:|
-| `1k` | 50 | +0.288 ms | +0.512 ms | +0.004 ms |
-| `50k` | 50 | +0.503 ms | +0.734 ms | +0.041 ms |
-| `200k` | 50 | +0.785 ms | +0.813 ms | -0.017 ms |
+HTTP artifact: `benchmarks/artifacts/preview-2-http-1m-coding-context-summary.json`.
 
-The same artifact sustained 8,499.48 RPS for the `1k` target-rate gate with zero non-200 responses.
+| Payload | c=1 p50 / p99 overhead | c=50 p50 / p99 overhead | c=200 p50 / p99 overhead |
+|---|---:|---:|---:|
+| `1k` | `+0.255 / +0.363 ms` | `+0.317 / +0.548 ms` | `+0.311 / +0.459 ms` |
+| `50k` | `+0.976 / +0.977 ms` | `+0.458 / +0.646 ms` | `+0.457 / +53.865 ms` |
+| `200k` | `+0.874 / +1.018 ms` | `+0.985 / +1.448 ms` | `+0.970 / +0.240 ms` |
+| `500k` | `+1.336 / +1.378 ms` | `+1.091 / +0.935 ms` | `+1.325 / +1.174 ms` |
+| `1m` | `+1.894 / +3.088 ms` | `+2.047 / +3.415 ms` | `+2.167 / +1.664 ms` |
 
-After the B10 harness change, a short current smoke run measured B10 ledger lag at reduced load:
+HTTPS artifact: `benchmarks/artifacts/preview-2-https-1m-coding-context-summary.json`.
 
-| Check | Result |
-|---|---:|
-| B10 target load | 200 RPS |
-| Observed rows in PostgreSQL | 200 / 200 |
-| p99 ledger lag | 0.991040 seconds |
-| non-200 responses | 0 |
+| Payload | c=1 p50 / p99 overhead | c=50 p50 / p99 overhead | c=200 p50 / p99 overhead |
+|---|---:|---:|---:|
+| `1k` | `+0.301 / +0.420 ms` | `+0.357 / +96.932 ms` | `+0.355 / +261.090 ms` |
+| `50k` | `+1.578 / +1.755 ms` | `+0.830 / +101.449 ms` | `+0.919 / +341.180 ms` |
+| `200k` | `+2.134 / +2.336 ms` | `+1.972 / +68.994 ms` | `+1.949 / +55.035 ms` |
+| `500k` | `+3.720 / +5.122 ms` | `+3.555 / +31.512 ms` | `+3.696 / +33.680 ms` |
+| `1m` | `+7.105 / +9.744 ms` | `+7.008 / +12.055 ms` | `+6.539 / +35.845 ms` |
 
-A short local stress smoke has also verified that the harness can run `500k` and `1m` at concurrency 1 after raising the mock backend body limit. That smoke is engineering evidence, not public release proof.
+Full-run health results:
 
-The next official release proof is a full run with `BASELINE_BOOTSTRAP=1`, followed by review and commit of `bench/baseline.json`. The 500k and 1M stress proof must be run on the dual-Xeon server and reviewed before any public claim about those payload sizes.
+| Check | HTTP result | HTTPS result |
+|---|---:|---:|
+| Router non-200 responses | `0` | `0` |
+| Max router RSS | `60.04 MB` | `83.24 MB` |
+| Ledger drops | `0` | `0` |
+| 1k saturation check | `8,496.18 RPS`, `0` non-200 | `8,496.80 RPS`, `0` non-200 |
+| Ledger check at 2,000 RPS | `15,964 / 15,999` rows observed | `15,922 / 16,000` rows observed |
+
+Streaming first-byte delta was near zero on HTTP from `1k` to `1m`. HTTPS first-byte delta was about `19-22 ms` in this benchmark because the sequential `curl` probe opens new local TLS connections with a self-signed certificate. That is useful as a conservative new-connection number; production clients should reuse connections.
+
+The `50k` HTTP run at concurrency 200 had one p99 tail spike in the artifact. It did not produce errors, ledger drops, or RSS growth, and the larger `200k`, `500k`, and `1m` concurrency-200 runs stayed low. Keep the raw artifact when comparing future runs so tail behavior remains visible.
 
 ## Commands
 
@@ -119,19 +132,26 @@ BASELINE_BOOTSTRAP=1 ./start.sh gate
 cp bench/results/<timestamp>/baseline_candidate.json bench/baseline.json
 ```
 
-Large prompt stress proof:
+Full preview-2 HTTP proof through 1M:
 
 ```bash
-BENCH_PAYLOADS=500k,1m \
-BENCH_STREAM_PAYLOADS=500k-stream,1m-stream \
-CONCS=1,50,200 \
-RUNS=3 \
-DUR=60s \
-WARM=15s \
-BENCH_B6=0 \
-BENCH_B10=0 \
+TLS_CERT_PATH= TLS_KEY_PATH= \
+BENCH_PAYLOADS=1k,50k,200k,500k,1m \
+BENCH_STREAM_PAYLOADS=1k-stream,50k-stream,200k-stream,500k-stream,1m-stream \
+CONCS=1,50,200 RUNS=1 DUR=8s WARM=2s \
 REQUIRE_PASS=0 \
-python3 scripts/bench_real.py
+python3 -u scripts/bench_real.py
+```
+
+Full preview-2 HTTPS proof through 1M, using `ssl/fullchain.pem` and `ssl/privkey.pem` by default:
+
+```bash
+BENCH_TLS=1 \
+BENCH_PAYLOADS=1k,50k,200k,500k,1m \
+BENCH_STREAM_PAYLOADS=1k-stream,50k-stream,200k-stream,500k-stream,1m-stream \
+CONCS=1,50,200 RUNS=1 DUR=8s WARM=2s \
+REQUIRE_PASS=0 \
+python3 -u scripts/bench_real.py
 ```
 
 ## Model and media support

@@ -96,7 +96,7 @@ For providers that do not expose a compatible `/models` endpoint, type the provi
 After saving a model route and creating a client API key, run one request with the helper script:
 
 ```bash
-python3 test_router.py --router http://127.0.0.1:18080 --api-key lc-... --model <public-model-name> --text "Reply OK"
+python3 test_router.py --router http://127.0.0.1:18080 --api-key sk-brighto-... --model <public-model-name> --text "Reply OK"
 ```
 
 If you use the seeded local demo key, the script can read it from `.env`:
