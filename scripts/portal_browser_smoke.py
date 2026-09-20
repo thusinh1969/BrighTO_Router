@@ -189,9 +189,14 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await providerSelect.selectOption('qwen');
             await expect(modal.locator('input').nth(0)).toHaveAttribute('placeholder', /workspace/);
             await expect(modal).toContainText('your workspace root');
+            await expect(modal.locator('input').nth(2)).toHaveValue('qwen3-rerank');
+            await providerSelect.selectOption('cohere');
+            await expect(modal.locator('input').nth(2)).toHaveValue('rerank-v3.5');
+            await expect(modal.locator('input').nth(3)).toHaveValue('rerank-v3.5');
             await modal.getByRole('button', {{ name: /Load models/i }}).click();
             const picker = page.locator('.picker-overlay .modal').last();
-            await expect(picker).toContainText('qwen3-rerank');
+            await expect(picker).toContainText('rerank-v3.5');
+            await expect(picker).not.toContainText('qwen3-rerank');
             await picker.getByRole('button', {{ name: 'Cancel' }}).click();
             await modal.getByRole('button', {{ name: 'Cancel' }}).click();
             await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);

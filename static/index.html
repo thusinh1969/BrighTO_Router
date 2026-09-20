@@ -1515,7 +1515,22 @@ function openRouteModal(route){
     var taskName={chat:"chat",embedding:"embedding",rerank:"rerank",asr:"ASR"}[task]||task;
     pHint.textContent = (e.dialect==="anthropic" ? "Anthropic Messages API" : "OpenAI-compatible API") + " · " + taskName + " route";
     var sug=suggestedModels(e,task);
-    if(!route.model_name && sug.length && typeof ms!=="undefined" && ms && !ms.value){ ms.value=sug[0]; if(typeof mi!=="undefined" && mi && !mi.value) mi.value=sug[0]; }
+    if(typeof ms!=="undefined" && ms && typeof mi!=="undefined" && mi){
+      var nextModel=sug.length?sug[0]:"";
+      if(applyCat.resetModel){
+        var oldProviderModel=(applyCat.oldProviderModel||"").trim();
+        var oldPublicModel=(applyCat.oldPublicModel||"").trim();
+        var publicWasAuto=!oldPublicModel || (oldProviderModel && oldPublicModel===oldProviderModel);
+        ms.value=nextModel;
+        if(publicWasAuto) mi.value=nextModel;
+      } else if(!route.model_name && nextModel && !ms.value){
+        ms.value=nextModel;
+        if(!mi.value) mi.value=nextModel;
+      }
+      applyCat.resetModel=false;
+      applyCat.oldProviderModel="";
+      applyCat.oldPublicModel="";
+    }
     if(e.key_set){ keyHint.textContent="Using key from .env ("+e.key_env+") — leave blank to use it, or paste to override."; }
     else if(e.key_env){ keyHint.textContent="No key in .env ("+e.key_env+") — paste the API key (stored per model, write-only)."; }
     else { keyHint.textContent="Paste the API key (stored per model, write-only)."; }
@@ -1528,8 +1543,13 @@ function openRouteModal(route){
   }
   function setConnectionStatus(kind,msg){ stat.className="connection-status"+(kind?" "+kind:""); stat.textContent=msg; }
   function clearTest(msg){ testState.ok=false; save.disabled=true; save.title="Run Test connection before saving an enabled route"; setConnectionStatus("",msg||"Run Test connection before saving an enabled route."); }
-  ps.onchange=function(){ applyCat(); clearTest("Provider changed — test connection again before saving enabled."); };
-  ts.onchange=function(){ refreshProviderOptions(); ms.value=""; mi.value=""; applyCat(); clearTest("Task changed — test connection again before saving enabled."); };
+  function markModelReset(){
+    if(typeof ms!=="undefined" && ms) applyCat.oldProviderModel=ms.value||"";
+    if(typeof mi!=="undefined" && mi) applyCat.oldPublicModel=mi.value||"";
+    applyCat.resetModel=true;
+  }
+  ps.onchange=function(){ markModelReset(); applyCat(); clearTest("Provider changed — test connection again before saving enabled."); };
+  ts.onchange=function(){ markModelReset(); refreshProviderOptions(); applyCat(); clearTest("Task changed — test connection again before saving enabled."); };
   applyCat();
   url.oninput=function(){ clearTest(""); };
   pk.oninput=function(){ clearTest(""); };
