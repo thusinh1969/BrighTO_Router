@@ -1,10 +1,10 @@
 # BrighTO-Router
 
-**The ultra-fast, self-hosted LLM router for teams that want speed, control, and simple operations.**
+**The ultra-fast, self-hosted AI router for chat, embeddings, rerank, and ASR (speech-to-text).**
 
-BrighTO-Router gives your team one clean endpoint for OpenAI-compatible, Anthropic-compatible, cloud, and local models. It is built in Rust for low-overhead pass-through, uses PostgreSQL as the single durable store, and scales by running stateless router replicas behind a load balancer.
+BrighTO-Router preview-2 gives your team one clean endpoint for OpenAI-compatible chat/completions/embeddings, Anthropic Messages, provider-specific rerank adapters for search ranking, OpenAI-compatible ASR/transcription, cloud models, and local models. It is built in Rust for low-overhead pass-through, uses PostgreSQL as the single durable store, and scales by running stateless router replicas behind a load balancer.
 
-| V1.0 proof point | Result |
+| Preview benchmark proof point | Result |
 |---|---:|
 | 200k-token mock pass-through, 50 concurrent requests | `0.958 ms p99 router overhead` |
 | 50k-token mock pass-through, 50 concurrent requests | `0.707 ms p99 router overhead` |
@@ -15,11 +15,11 @@ Measured on Intel Xeon Gold 6148 using the same-machine benchmark artifact at `b
 
 Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 
-Official Docker image for this branch: `thusinh1969/brighto_airouter:preview-2`
+Official Docker image for the latest preview-2 branch: `thusinh1969/brighto_airouter:preview-2`
 
-Release version: `1.0-preview-2`
+Release version: `1.0-preview-2` (latest preview)
 
-This branch is the preview-2 adapter release. It keeps the V1.0 fast chat/completions/embeddings router path and adds task-aware adapter routes for rerank and ASR. See [ADAPTERS.md](ADAPTERS.md).
+This is the latest preview-2 adapter release. It keeps the fast chat/completions/embeddings router path and adds task-aware adapter routes for rerank and ASR. See [ADAPTERS.md](ADAPTERS.md).
 
 ## Why BrighTO-Router
 
@@ -29,11 +29,11 @@ For the preview line, the product promise is deliberately narrow and strong: Rus
 
 | If you need... | BrighTO-Router gives you... |
 |---|---|
-| One endpoint for team apps | OpenAI-compatible chat/completions/embeddings and Anthropic-compatible messages through one router. |
+| One endpoint for team apps | Chat, completions, embeddings, rerank, ASR, and Anthropic Messages through one router. |
 | A simple self-hosted install | `./start.sh install` starts PostgreSQL, runs migrations, seeds provider templates, and starts the router. |
 | Fast pass-through behavior | Rust hot path, streaming proxy, in-memory routing snapshot, async PostgreSQL ledger writes. |
 | Cost and usage control | Teams, visible client API keys, budgets, expiry, request-per-minute limits, and concurrency limits. |
-| Provider setup without YAML pain | Portal flow: choose provider, paste API key, load models, test connection, save one model route. |
+| Provider setup without YAML pain | Portal flow: choose task type, choose provider, paste API key, load or type one model, test connection, save one route. |
 | Honest benchmarking | Same-machine direct-backend versus router-backend tests, from small prompts to very large payloads. |
 | A clean production dependency model | Rust router + PostgreSQL as the required datastore. |
 | Scale beyond one box | Stateless router instances can run as multiple Docker/Kubernetes replicas behind a load balancer. |
@@ -49,7 +49,7 @@ BrighTO-Router is designed to stay fast in both common team traffic and heavy co
 | Many concurrent users with small or average conversations | A 100-person team using chat, short multi-turn prompts, OpenAI-compatible embedding calls, and normal app traffic throughout the day. | The router keeps the hot path small: authenticate, check policy, choose a route, stream the response, and write usage asynchronously. |
 | Many developers or coding agents with large contexts | Vibe-coding sessions, repository analysis, long prompts, retrieval-heavy requests, and multiple developers using large-context models at once. | Large JSON bodies are passed through without transforming media or rewriting prompt content, so router overhead stays low even when the backend receives much larger context. |
 
-The verified 1.0-preview public benchmark covers `1k`, `50k`, and `200k` token-class payloads at 50 concurrent requests. That gives a practical range from normal chat traffic to large-context coding workflows. The benchmark harness can generate `500k` and `1m` token-class payloads, but those numbers should be promoted only after full production-machine proof is reviewed.
+The verified preview benchmark artifact covers `1k`, `50k`, and `200k` token-class payloads at 50 concurrent requests. That gives a practical range from normal chat traffic to large-context coding workflows. The benchmark harness can generate `500k` and `1m` token-class payloads, but those numbers should be promoted only after full production-machine proof is reviewed.
 
 ## Benchmark proof
 
@@ -138,13 +138,13 @@ Embeddings through an OpenAI-compatible embedding route:
 python3 test_router.py --mode embeddings --model <public-embedding-route> --text "BrighTO embedding smoke test"
 ```
 
-Rerank through a configured rerank route on the preview-2 adapter branch:
+Rerank through a configured preview-2 rerank route:
 
 ```bash
 python3 test_router.py --mode rerank --model <public-rerank-route> --text "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
 ```
 
-ASR / transcription through an OpenAI-compatible multipart route on the preview-2 adapter branch:
+ASR / transcription through a configured preview-2 multipart route:
 
 ```bash
 python3 test_router.py --mode asr --model <public-asr-route> --file tests/fixtures/asr_smoke.wav
@@ -292,7 +292,7 @@ If a customer needs full transcript auditing, that should be an explicit enterpr
 
 ## Multimodal and media support
 
-BrighTO-Router preview-2 routes LLM, embedding, rerank, and OpenAI-compatible ASR requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
+BrighTO-Router preview-2 routes LLM, embeddings, rerank, and OpenAI-compatible ASR/transcription requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
 
 | Capability | preview-2 status | What it means |
 |---|---|---|

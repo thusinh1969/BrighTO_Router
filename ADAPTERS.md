@@ -1,6 +1,6 @@
-# Preview-2 adapters
+# Preview-2 adapters: embeddings, rerank, and ASR
 
-This branch adds adapter endpoints without changing the existing chat/completions hot path.
+This is the latest preview-2 adapter scope: embeddings stay on the OpenAI-compatible route, and rerank plus ASR/transcription are task-specific adapters that do not change the chat/completions hot path.
 
 Implemented and tested in this branch:
 
