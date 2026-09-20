@@ -15,17 +15,17 @@ Measured on Intel Xeon Gold 6148 using the same-machine benchmark artifact at `b
 
 Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 
-Official Docker image: `thusinh1969/brighto_airouter:v1`
+Official Docker image for this branch: `thusinh1969/brighto_airouter:preview-2`
 
-Release version: `1.0-preview`
+Release version: `1.0-preview-2`
 
-Preview-2 adapter branch: embeddings remain first-class, and experimental adapter endpoints for rerank and ASR are implemented behind route protocols. See [ADAPTERS.md](ADAPTERS.md).
+This branch is the preview-2 adapter release. It keeps the V1.0 fast chat/completions/embeddings router path and adds task-aware adapter routes for rerank and ASR. See [ADAPTERS.md](ADAPTERS.md).
 
 ## Why BrighTO-Router
 
 Broad AI gateways are useful when you need a huge provider catalog, hosted accounts, prompt tooling, agent tooling, and enterprise workflow in one platform. BrighTO-Router is for teams with a sharper requirement: run a very fast gateway they control, with a clean Portal, transparent usage, and a production stack small enough to understand.
 
-For V1.0, the product promise is deliberately narrow and strong: Rust on the request path, PostgreSQL for durable state, stateless router replicas for horizontal scale, one Docker image, one install script, and benchmark artifacts that compare router latency against a direct backend on the same machine.
+For the preview line, the product promise is deliberately narrow and strong: Rust on the request path, PostgreSQL for durable state, stateless router replicas for horizontal scale, one Docker image, one install script, and benchmark artifacts that compare router latency against a direct backend on the same machine.
 
 | If you need... | BrighTO-Router gives you... |
 |---|---|
@@ -49,7 +49,7 @@ BrighTO-Router is designed to stay fast in both common team traffic and heavy co
 | Many concurrent users with small or average conversations | A 100-person team using chat, short multi-turn prompts, OpenAI-compatible embedding calls, and normal app traffic throughout the day. | The router keeps the hot path small: authenticate, check policy, choose a route, stream the response, and write usage asynchronously. |
 | Many developers or coding agents with large contexts | Vibe-coding sessions, repository analysis, long prompts, retrieval-heavy requests, and multiple developers using large-context models at once. | Large JSON bodies are passed through without transforming media or rewriting prompt content, so router overhead stays low even when the backend receives much larger context. |
 
-The verified V1.0 public benchmark covers `1k`, `50k`, and `200k` token-class payloads at 50 concurrent requests. That gives a practical range from normal chat traffic to large-context coding workflows. The benchmark harness can generate `500k` and `1m` token-class payloads, but those numbers should be promoted only after full production-machine proof is reviewed.
+The verified 1.0-preview public benchmark covers `1k`, `50k`, and `200k` token-class payloads at 50 concurrent requests. That gives a practical range from normal chat traffic to large-context coding workflows. The benchmark harness can generate `500k` and `1m` token-class payloads, but those numbers should be promoted only after full production-machine proof is reviewed.
 
 ## Benchmark proof
 
@@ -72,6 +72,8 @@ git clone https://github.com/thusinh1969/BrighTO_Router.git
 cd BrighTO_Router
 ./start.sh install
 ```
+
+This branch pulls the preview-2 Docker image by default: `thusinh1969/brighto_airouter:preview-2`. If you already have an old `.env`, make sure it contains `BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-2`, then run `./start.sh restart`.
 
 Open the Portal on the server:
 
@@ -109,13 +111,14 @@ Check the stack at any time:
 
 Open **Models & Routes → Add model** in the Portal.
 
-1. Choose a provider preset such as OpenAI, Anthropic, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, or **Custom LLM**.
-2. Accept the default Base URL or enter your own.
-3. Paste the provider API key, or leave it blank when the matching `.env` key is already set.
-4. Click **Load models**.
-5. Select one model.
-6. Click **Test connection**.
-7. Save the route.
+1. Choose **Task type**: Chat / LLM, Embedding, Rerank, or ASR / transcription.
+2. Choose a provider preset such as OpenAI, Anthropic, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Jina AI, Voyage AI, Cohere, or **Custom LLM**.
+3. Accept the default Base URL or enter your own.
+4. Paste the provider API key, or leave it blank when the matching `.env` key is already set.
+5. Click **Load models** when the provider supports it, or use the task-specific suggestions/manual model name.
+6. Select one provider model and set the public model name your apps will call.
+7. Click **Test connection**.
+8. Save the route only after the test passes.
 
 The provider API key belongs to the model route. Client applications do not receive provider keys. They call BrighTO-Router with a client API key issued from the **API Keys** screen.
 
@@ -154,6 +157,12 @@ python3 scripts/adapter_smoke.py --provider jina --task embedding
 python3 scripts/adapter_smoke.py --provider jina --task rerank
 ```
 
+Full preview-2 router smoke through Admin API and public client endpoints, using whichever provider keys exist in `.env`:
+
+```bash
+python3 scripts/adapter_router_smoke.py
+```
+
 Image input through an OpenAI-style multimodal chat route:
 
 ```bash
@@ -170,7 +179,7 @@ For HTTPS with a self-signed certificate, add `--insecure`. The image and audio 
 
 ## What install creates
 
-`./start.sh install` creates `.env` from `.env.example`, starts PostgreSQL in Docker, runs migrations, seeds default records, pulls `thusinh1969/brighto_airouter:v1`, and starts the router.
+`./start.sh install` creates `.env` from `.env.example`, starts PostgreSQL in Docker, runs migrations, seeds default records, pulls `thusinh1969/brighto_airouter:preview-2`, and starts the router.
 
 Default records:
 
@@ -179,7 +188,7 @@ Default records:
 | Team | `Default Team` | Lets an admin create client API keys immediately. |
 | Demo client key | `lc-0123456789abcdef0123456789abcdef` | Local smoke testing only. Replace or disable it before shared use. |
 | Model routes | None | You choose which provider models clients can call. |
-| Provider endpoints | OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, Custom LLM | Friendly defaults for the Portal. They are not usable routes until a tested model route is saved. |
+| Provider endpoints | OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, Custom LLM, Jina AI, Voyage AI, Cohere, Qwen Rerank | Friendly defaults for the Portal. They are endpoint templates, not usable routes until a tested model route is saved. |
 | Provider catalog | `PROVIDER_CATALOG` in `.env` | Controls the Add model provider dropdown. |
 
 `./start.sh start`, `./start.sh restart`, Docker image pulls, and Docker image rebuilds do **not** wipe PostgreSQL. Local data is stored in the Docker named volume `brighto-airouter_pg-data`. Data is removed only when you explicitly delete the volume, run `docker compose down -v`, or manually reset the database.
@@ -245,12 +254,12 @@ Why use Kubernetes if the router is already very fast? Availability and operatio
 
 More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROVIDERS.md), [k8s/README.md](k8s/README.md).
 
-## What teams get in V1.0
+## What teams get in preview-2
 
 - One internal endpoint for multiple model providers.
 - OpenAI-style routes: `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`.
 - Anthropic Messages route: `/v1/messages`.
-- Preview-2 adapter branch: `/v1/rerank` and `/v1/audio/transcriptions` are implemented, Portal task-aware, mock/integration tested, and live-smoked with OpenAI, Qwen/DashScope, Jina, Voyage, and Cohere.
+- Adapter routes: `/v1/rerank` and `/v1/audio/transcriptions` are implemented, Portal task-aware, mock/integration tested, and live-smoked with OpenAI, Qwen/DashScope, Jina, Voyage, and Cohere.
 - Multimodal LLM JSON pass-through when the selected backend supports that request shape.
 - Model aliases and provider-backed model routes.
 - Weighted backend routing, fallback backend support, and circuit breaking.
@@ -264,11 +273,11 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 
 ## Logging, analytics, and privacy
 
-BrighTO-Router logs one usage record per API call. It does not store chat content, prompts, uploaded media, tool payloads, or model responses. In V1.0-preview, a "session" in the router means request-level traffic metadata, not a stored conversation transcript.
+BrighTO-Router logs one usage record per API call. It does not store chat content, prompts, uploaded media, tool payloads, or model responses. In 1.0-preview-2, a "session" in the router means request-level traffic metadata, not a stored conversation transcript.
 
 Usage records are written to PostgreSQL in `usage_ledger`. If PostgreSQL is temporarily unavailable, the router writes usage events to the local JSONL file configured by `LEDGER_FALLBACK_FILE` (`/var/lib/brighto-router/ledger-fallback.jsonl` in the default Docker setup) and replays them when the database is available again. PostgreSQL is the source for Portal reporting, budget counters, historical analytics, and Grafana SQL dashboards. The fallback file is only a durability buffer during database outages.
 
-| Customer question | V1.0-preview answer | Why it matters |
+| Customer question | preview-2 answer | Why it matters |
 |---|---|---|
 | Do we log request size? | Yes, by `input_tokens`, `output_tokens`, and an `estimated` flag when the provider did not return exact usage. | Enough for budget, cost, and capacity analysis without storing content. |
 | Do we log speed? | Yes: `ttfb_ms` (time to first byte), `total_ms` (whole request), and `router_overhead_ms` (router work before provider forwarding). Token-per-second values are derived from token counts and duration. | Admins can see whether latency comes from the provider, large payloads, or router overhead. |
@@ -283,21 +292,21 @@ If a customer needs full transcript auditing, that should be an explicit enterpr
 
 ## Multimodal and media support
 
-BrighTO-Router V1.0 routes LLM requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
+BrighTO-Router preview-2 routes LLM, embedding, rerank, and OpenAI-compatible ASR requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
 
-| Capability | V1.0 status | What it means |
+| Capability | preview-2 status | What it means |
 |---|---|---|
 | Text chat/completions | Yes | Supported through OpenAI-style `/v1/chat/completions` and `/v1/completions`. |
 | Embeddings | Proxy yes | Supported through OpenAI-style `/v1/embeddings` when the backend provides embeddings. BrighTO-Router forwards the request and returns the vector response unchanged. |
 | Anthropic Messages | Yes | Supported through `/v1/messages` for Anthropic-compatible backends. |
 | Image input inside LLM chat JSON | Conditional yes | Passed through when the selected backend accepts that JSON shape and the request stays under `MAX_BODY_BYTES`. |
-| Audio input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts audio data in the same JSON endpoint. There is no dedicated audio adapter in V1.0. |
+| Audio input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts audio data in the same JSON endpoint. This is separate from the multipart ASR adapter below. |
 | Video input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts video data in the same JSON endpoint and the body-size limit allows it. |
-| OpenAI Images API such as `/v1/images/generations` | No | Planned as a future media adapter, not part of V1.0. |
-| Audio generation, Text-to-Speech, Speech-to-Text, F5-TTS, transcription routes | No | Planned as future media adapters, not part of V1.0. |
-| Video generation routes | No | Planned as future media adapters, not part of V1.0. |
-| Reranking APIs | Preview-2 branch | `/v1/rerank` supports Jina, Voyage, Cohere, Qwen/DashScope, and OpenAI-compatible/custom rerank adapters. |
-| Multipart ASR upload | Preview-2 branch | `/v1/audio/transcriptions` supports OpenAI-compatible transcription providers. |
+| OpenAI Images API such as `/v1/images/generations` | No | Planned as a future media adapter, not part of preview-2. |
+| Audio generation / TTS | No | Planned as future media adapters. Preview-2 supports ASR/transcription only for OpenAI-compatible multipart providers. |
+| Video generation routes | No | Planned as future media adapters, not part of preview-2. |
+| Reranking APIs | Yes | `/v1/rerank` supports Jina, Voyage, Cohere, Qwen/DashScope, and OpenAI-compatible/custom rerank adapters. |
+| Multipart ASR upload | Yes | `/v1/audio/transcriptions` supports OpenAI-compatible transcription providers and has live OpenAI smoke coverage. |
 | Realtime voice or WebSocket media sessions | No | Future enterprise/media work if customer demand requires it. |
 
 The practical rule is simple: if a provider exposes a model through a supported JSON LLM endpoint, BrighTO-Router can route it. If the provider needs a separate image/audio/video/rerank API, multipart upload flow, realtime session, or provider-specific media protocol, that belongs in a future adapter.
@@ -442,7 +451,7 @@ Enterprise work will focus on packaging and operating that architecture professi
 
 Billing should be an enterprise adapter beside the router, not code inside the fastest request path. The open-source router already records durable usage in PostgreSQL. An enterprise billing adapter can read that ledger and connect it to Stripe, Chargebee, an internal billing system, prepaid credits, monthly invoices, departmental chargeback, and customer-specific pricing. Keeping billing outside the hot path protects latency and keeps the open-source core simple.
 
-Dedicated media APIs should also be future adapters, not hidden V1.0 promises. Possible enterprise or later open-source extensions include image generation routes, audio generation, Text-to-Speech, Speech-to-Text, F5-TTS-compatible endpoints, video generation, multipart upload handling, and realtime voice sessions. Those adapters should plug into the same auth, budget, team, ledger, and Portal model without making the core LLM router harder to operate.
+Dedicated media APIs should also be future adapters, not hidden preview promises. Possible enterprise or later open-source extensions include image generation routes, audio generation, Text-to-Speech, F5-TTS-compatible endpoints, video generation, more provider-specific ASR adapters, larger multipart policies, and realtime voice sessions. Those adapters should plug into the same auth, budget, team, ledger, and Portal model without making the core LLM router harder to operate.
 
 ## Development
 
