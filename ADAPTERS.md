@@ -2,7 +2,7 @@
 
 This is the latest preview-2 adapter scope: embeddings stay on the OpenAI-compatible route, and rerank plus ASR/transcription are task-specific adapters that do not change the chat/completions hot path.
 
-Implemented and tested in this branch:
+Implemented and tested in preview-2:
 
 | Task | Public BrighTO endpoint | Route protocol | Request shape | Status |
 |---|---|---|---|---|
@@ -73,7 +73,7 @@ python3 test_router.py \
   --router http://127.0.0.1:18080 \
   --api-key lc-... \
   --model <public-rerank-route> \
-  --text "router speed" \
+  --query "router speed" \
   --document "BrighTO-Router is a fast Rust gateway" \
   --document "Bananas are yellow fruit" \
   --top-n 1
@@ -145,7 +145,7 @@ Save enabled only after Test Connection passes. Save draft remains available for
 - ASR currently expects OpenAI-compatible `/v1/audio/transcriptions` multipart behavior.
 - Additional Qwen/Alibaba ASR or media adapters should wait for exact provider API proof before coding.
 
-## Validation already in this branch
+## Validation already in preview-2
 
 - `cargo fmt --check`
 - `cargo check --locked`

@@ -1,6 +1,6 @@
 # Provider setup
 
-BrighTO-Router preview-2 keeps provider setup simple: choose a task type first, then choose a provider preset, test the exact endpoint, and save one model route. The same Portal flow covers chat, embeddings, rerank, and ASR/transcription.
+BrighTO-Router preview-2, intended to become `main` after final feedback, keeps provider setup simple: choose a task type first, then choose a provider preset, test the exact endpoint, and save one model route. The same Portal flow covers chat, embeddings, rerank, and ASR/transcription.
 
 A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
 

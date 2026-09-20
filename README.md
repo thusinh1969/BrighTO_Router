@@ -15,11 +15,11 @@ Measured on Intel Xeon Gold 6148 using the same-machine benchmark artifact at `b
 
 Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 
-Official Docker image for the latest preview-2 branch: `thusinh1969/brighto_airouter:preview-2`
+Official Docker image for preview-2: `thusinh1969/brighto_airouter:preview-2`
 
-Release version: `1.0-preview-2` (latest preview)
+Release version: `1.0-preview-2` (latest preview; intended to become `main` after final field feedback)
 
-This is the latest preview-2 adapter release. It keeps the fast chat/completions/embeddings router path and adds task-aware adapter routes for rerank and ASR. See [ADAPTERS.md](ADAPTERS.md).
+This is the preview-2 adapter release that will become the main line once final public-demo feedback is folded in. It keeps the fast chat/completions/embeddings router path and adds task-aware adapter routes for rerank and ASR. See [ADAPTERS.md](ADAPTERS.md).
 
 ## Why BrighTO-Router
 
@@ -73,7 +73,7 @@ cd BrighTO_Router
 ./start.sh install
 ```
 
-This branch pulls the preview-2 Docker image by default: `thusinh1969/brighto_airouter:preview-2`. If you already have an old `.env`, make sure it contains `BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-2`, then run `./start.sh restart`.
+This preview line pulls `thusinh1969/brighto_airouter:preview-2` by default. If you already have an old `.env`, make sure it contains `BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-2`, then run `./start.sh restart`.
 
 Open the Portal on the server:
 
@@ -332,7 +332,7 @@ The practical rule is simple: if a provider exposes a model through a supported 
 
 `/v1/embeddings` is a proxy route, not an embedding engine. The backend creates the vector. BrighTO-Router only applies authentication, model-route policy, budget checks, provider credential handling, response forwarding, and usage logging. It does not store vectors, build a vector index, run semantic search, or convert one provider's embedding format into another.
 
-BGE or Qwen text embedding models can be routed when they are exposed by an OpenAI-compatible backend that accepts `/v1/embeddings`; preview-2 live-smokes Qwen `qwen3.7-text-embedding` this way. Qwen `tongyi-embedding-vision-flash` is a multimodal embedding model, but it uses DashScope multimodal embedding APIs and should be handled by a future dedicated adapter. On the preview-2 branch, reranking is implemented as a separate adapter endpoint because reranking has a different request and response shape from embeddings.
+BGE or Qwen text embedding models can be routed when they are exposed by an OpenAI-compatible backend that accepts `/v1/embeddings`; preview-2 live-smokes Qwen `qwen3.7-text-embedding` this way. Qwen `tongyi-embedding-vision-flash` is a multimodal embedding model, but it uses DashScope multimodal embedding APIs and should be handled by a future dedicated adapter. In preview-2, reranking is implemented as a separate adapter endpoint because reranking has a different request and response shape from embeddings.
 
 ## Why Rust instead of Python
 

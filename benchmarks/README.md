@@ -143,10 +143,12 @@ Current supported API paths are:
 | `/v1/chat/completions` | Supported for OpenAI-compatible chat payloads. |
 | `/v1/completions` | Supported for OpenAI-compatible completion payloads. |
 | `/v1/embeddings` | Supported for OpenAI-compatible embedding payloads. |
+| `/v1/rerank` | Preview-2 supported for Qwen/DashScope, Jina, Voyage, Cohere, and OpenAI-compatible/custom rerank adapters. |
+| `/v1/audio/transcriptions` | Preview-2 supported for OpenAI-compatible multipart ASR/transcription providers. |
 | `/v1/models` | Supported. Lists configured model aliases. |
 | `/v1/messages` | Supported for Anthropic-compatible messages payloads. |
 | `/v1/images/*` | Not implemented as a dedicated route. |
-| `/v1/audio/*` | Not implemented as a dedicated route. |
+| `/v1/audio/generations`, `/v1/audio/speech` | Not implemented as dedicated TTS/audio-generation routes. |
 | `/v1/video/*` | Not implemented as a dedicated route. |
 
-Chat-style image inputs can pass through `/v1/chat/completions` when the backend accepts the same JSON format and the body stays under `MAX_BODY_BYTES`. This has not yet been given a separate benchmark gate. Audio and video usually need different routes or multipart handling, so they are future work, not current functionality.
+Chat-style image/audio inputs can pass through `/v1/chat/completions` when the backend accepts the same JSON format and the body stays under `MAX_BODY_BYTES`. Preview-2 adds dedicated rerank and ASR routes. Image generation, TTS/audio generation, video, and realtime media remain future adapter work.

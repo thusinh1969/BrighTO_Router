@@ -11,7 +11,7 @@ cd BrighTO_Router
 ./start.sh status
 ```
 
-This preview-2 branch uses `thusinh1969/brighto_airouter:preview-2` by default. Existing local `.env` files from older branches should include:
+This preview-2 line uses `thusinh1969/brighto_airouter:preview-2` by default and is intended to become `main` after final field feedback. Existing local `.env` files from older installs should include:
 
 ```bash
 BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-2
