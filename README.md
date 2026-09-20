@@ -144,7 +144,7 @@ python3 test_router.py --mode rerank --model <public-rerank-route> --text "route
 ASR / transcription through an OpenAI-compatible multipart route on the preview-2 adapter branch:
 
 ```bash
-python3 test_router.py --mode asr --model <public-asr-route> --file ./sample.wav
+python3 test_router.py --mode asr --model <public-asr-route> --file tests/fixtures/asr_smoke.wav
 ```
 
 Live provider smoke tests for adapter keys and endpoints:
@@ -163,7 +163,7 @@ python3 test_router.py --model <vision-model-route> --text "Describe this image.
 Audio input through an OpenAI-style multimodal chat route:
 
 ```bash
-python3 test_router.py --model <audio-model-route> --text "Summarize this audio." --audio ./sample.wav
+python3 test_router.py --model <audio-model-route> --text "Summarize this audio." --audio tests/fixtures/asr_smoke.wav
 ```
 
 For HTTPS with a self-signed certificate, add `--insecure`. The image and audio examples are JSON pass-through examples; the selected backend model must support that payload shape.

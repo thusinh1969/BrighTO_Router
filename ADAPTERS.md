@@ -20,7 +20,7 @@ Use `scripts/adapter_smoke.py` to prove a provider API key, endpoint, and model 
 python3 scripts/adapter_smoke.py --provider jina --task embedding
 python3 scripts/adapter_smoke.py --provider jina --task rerank
 python3 scripts/adapter_smoke.py --provider all --task all
-python3 scripts/adapter_smoke.py --provider openai --task asr --file ./sample.wav
+python3 scripts/adapter_smoke.py --provider openai --task asr --file tests/fixtures/asr_smoke.wav
 ```
 
 Provider key env vars:
@@ -71,7 +71,7 @@ python3 test_router.py \
   --router http://127.0.0.1:18080 \
   --api-key lc-... \
   --model <public-asr-route> \
-  --file ./sample.wav
+  --file tests/fixtures/asr_smoke.wav
 ```
 
 Raw curl equivalents:
@@ -94,7 +94,7 @@ curl -sS http://127.0.0.1:18080/v1/rerank \
 curl -sS http://127.0.0.1:18080/v1/audio/transcriptions \
   -H "Authorization: Bearer lc-..." \
   -F "model=<public-asr-route>" \
-  -F "file=@./sample.wav"
+  -F "file=@tests/fixtures/asr_smoke.wav"
 ```
 
 ## Route creation status
