@@ -9,9 +9,10 @@ COMPOSE_FILE_PATH="${COMPOSE_FILE_PATH:-$ROOT/docker-compose.yml}"
 ENV_FILE="$ROOT/.env"
 DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router"
 DEFAULT_ADMIN_KEY="brightoIsGreat@2026"
-DEFAULT_DEMO_CLIENT_KEY="lc-0123456789abcdef0123456789abcdef"
+DEFAULT_DEMO_CLIENT_KEY="sk-brighto-0123456789abcdef0123456789abcdef"
 DEFAULT_LISTEN_ADDR="0.0.0.0:18080"
-DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1'
+DEFAULT_ROUTER_IMAGE="thusinh1969/brighto_airouter:preview-2"
+DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;jina|Jina AI|https://api.jina.ai|openai|JINA_API_KEY|1;voyage|Voyage AI|https://api.voyageai.com|openai|VOYAGE_API_KEY|1;cohere|Cohere|https://api.cohere.com/v2|openai|COHERE_API_KEY|1;meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1'
 # Legacy defaults are kept only to upgrade old local .env files in place.
 OLD_DEFAULT_LISTEN_ADDR="0.0.0.0:8080"
 OLD_DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router"
@@ -97,8 +98,13 @@ ensure_env_defaults() {
   if ! grep -q "^BRIGHTO_MODEL=" "$ENV_FILE"; then
     set_env_var BRIGHTO_MODEL ""
   fi
+  if ! grep -q "^BRIGHTO_ROUTER_IMAGE=" "$ENV_FILE"; then
+    set_env_var BRIGHTO_ROUTER_IMAGE "$DEFAULT_ROUTER_IMAGE"
+  elif grep -q "^BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1$" "$ENV_FILE"; then
+    set_env_var BRIGHTO_ROUTER_IMAGE "$DEFAULT_ROUTER_IMAGE"
+  fi
   local env_key
-  for env_key in OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY KIMI_API_KEY QWEN_API_KEY ZAI_API_KEY OPENROUTER_API_KEY META_MUSE_API_KEY CUSTOM_LLM_API_KEY; do
+  for env_key in OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY KIMI_API_KEY QWEN_API_KEY DASHSCOPE_API_KEY ZAI_API_KEY OPENROUTER_API_KEY JINA_API_KEY VOYAGE_API_KEY COHERE_API_KEY META_MUSE_API_KEY CUSTOM_LLM_API_KEY; do
     if ! grep -q "^${env_key}=" "$ENV_FILE"; then
       set_env_var "$env_key" ""
     fi
@@ -286,11 +292,15 @@ provider_env_name() {
     deepseek) echo DEEPSEEK_API_KEY ;;
     kimi) echo KIMI_API_KEY ;;
     qwen) echo QWEN_API_KEY ;;
+    dashscope) echo DASHSCOPE_API_KEY ;;
     zai|z.ai) echo ZAI_API_KEY ;;
+    jina) echo JINA_API_KEY ;;
+    voyage) echo VOYAGE_API_KEY ;;
+    cohere) echo COHERE_API_KEY ;;
     openrouter) echo OPENROUTER_API_KEY ;;
     meta|meta-muse|muse) echo META_MUSE_API_KEY ;;
     custom|custom-llm) echo CUSTOM_LLM_API_KEY ;;
-    *) fail "unknown provider '$1'. Known: openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-llm" ;;
+    *) fail "unknown provider '$1'. Known: openai anthropic gemini deepseek kimi qwen dashscope zai openrouter jina voyage cohere meta-muse custom-llm" ;;
   esac
 }
 
@@ -612,7 +622,7 @@ case "$cmd" in
 BrighTO-Router helper
 
 First-time install:
-  ./start.sh install                         Local Docker PostgreSQL + migrations + provider templates + router
+  ./start.sh install                         Local Docker PostgreSQL + migrations + provider templates + preview-2 router
   ./start.sh install --database-url URL      Use an existing PostgreSQL database
   ./start.sh install --k8s --replicas 2      Install to Kubernetes with two router pods
 
@@ -635,7 +645,7 @@ Default local admin key:
   brightoIsGreat@2026
 
 Provider names for set-key:
-  openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-llm
+  openai anthropic gemini deepseek kimi qwen dashscope zai openrouter jina voyage cohere meta-muse custom-llm
 USAGE
     ;;
   *)

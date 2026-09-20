@@ -37,7 +37,7 @@ The release gate measures these payloads at concurrency 1, 50, and 200. Hard pas
 | `500k` | 500,000 | 2 MB | pass-through stress proof |
 | `1m` | 1,000,000. The name means 1M. | 4 MB | extreme pass-through and memory proof |
 
-The 500k and 1M runs are measurement-first until a reviewed baseline exists. They must record correctness, router overhead, streaming time to first byte, ledger drops, and router memory. Do not add arbitrary speed thresholds for these payloads.
+Preview-2 includes full HTTP and HTTPS measurement artifacts for 500k and 1M at concurrency 1, 50, and 200. They record correctness, router overhead, streaming time to first byte, ledger drops, and router memory. Do not add arbitrary pass/fail speed thresholds for these payloads until repeated public baselines justify them.
 
 ## Current Layer B release gates
 
@@ -54,7 +54,7 @@ Layer B uses `brighto-router-mock`, a deterministic local backend that returns i
 | `INTERNAL_LEDGER_DROPS` | Internal safety counter from metrics. | all measured traffic | `router_ledger_dropped_total = 0` |
 | `baseline` | Regression against `bench/baseline.json`. | every gate row above | no metric worse than baseline by more than 10% |
 
-The harness also records raw data for 500k and 1M when requested through environment variables, but does not fail those sizes on uncalibrated speed thresholds.
+The harness records raw data for 500k and 1M in full preview-2 runs, but does not fail those sizes on uncalibrated speed thresholds.
 
 ## Commands
 
@@ -77,19 +77,26 @@ BASELINE_BOOTSTRAP=1 make gate
 cp bench/results/<timestamp>/baseline_candidate.json bench/baseline.json
 ```
 
-Large prompt stress proof:
+Full preview-2 HTTP proof through 1M:
 
 ```bash
-BENCH_PAYLOADS=500k,1m \
-BENCH_STREAM_PAYLOADS=500k-stream,1m-stream \
-CONCS=1,50,200 \
-RUNS=3 \
-DUR=60s \
-WARM=15s \
-BENCH_B6=0 \
-BENCH_B10=0 \
+TLS_CERT_PATH= TLS_KEY_PATH= \
+BENCH_PAYLOADS=1k,50k,200k,500k,1m \
+BENCH_STREAM_PAYLOADS=1k-stream,50k-stream,200k-stream,500k-stream,1m-stream \
+CONCS=1,50,200 RUNS=1 DUR=8s WARM=2s \
 REQUIRE_PASS=0 \
-python3 scripts/bench_real.py
+python3 -u scripts/bench_real.py
+```
+
+Full preview-2 HTTPS proof through 1M:
+
+```bash
+BENCH_TLS=1 \
+BENCH_PAYLOADS=1k,50k,200k,500k,1m \
+BENCH_STREAM_PAYLOADS=1k-stream,50k-stream,200k-stream,500k-stream,1m-stream \
+CONCS=1,50,200 RUNS=1 DUR=8s WARM=2s \
+REQUIRE_PASS=0 \
+python3 -u scripts/bench_real.py
 ```
 
 ## Target changes

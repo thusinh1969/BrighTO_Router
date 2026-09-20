@@ -29,3 +29,7 @@ __pycache__/
 # local auditor watcher output
 swarm/
 AGENT.md
+MUST_NOT.md
+ADAPTER_PLAN.md
+AGENTS.md
+audits/

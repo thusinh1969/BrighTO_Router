@@ -3,8 +3,12 @@
 
 Examples:
   python3 test_router.py --model my-model --text "Reply OK"
-  python3 test_router.py --router http://SERVER:18080 --api-key lc-... --model my-model --text "Reply OK"
+  python3 test_router.py --router http://SERVER:18080 --api-key sk-brighto-... --model my-model --text "Reply OK"
   python3 test_router.py --mode embeddings --model my-embedding --text "hello"
+  python3 test_router.py --mode rerank --model my-reranker --text "search query" --document "doc one" --document "doc two"
+  python3 test_router.py --mode asr --model my-asr --file ./sample.wav
+  python3 test_router.py --provider qwen --mode embeddings --text "hello"
+  python3 test_router.py --provider jina --mode rerank --query "search query"
   python3 test_router.py --model my-vision-model --text "What is this?" --image ./photo.jpg
   python3 test_router.py --model my-audio-model --text "Transcribe briefly" --audio ./sample.wav
 
@@ -28,7 +32,18 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_ROUTER = "http://127.0.0.1:18080"
-DEFAULT_DEMO_KEY = "lc-0123456789abcdef0123456789abcdef"
+DEFAULT_DEMO_KEY = "sk-brighto-0123456789abcdef0123456789abcdef"
+
+# Public route-name shortcuts used by the preview-2 smoke flow and docs.
+# They are client-side conveniences only. If your Portal route uses a custom public
+# model name, pass --model explicitly and ignore these presets.
+PROVIDER_ROUTE_PRESETS: dict[str, dict[str, str]] = {
+    "openai": {"embeddings": "openai-embedding", "asr": "openai-asr"},
+    "qwen": {"embeddings": "qwen-embedding", "rerank": "qwen-rerank"},
+    "jina": {"embeddings": "jina-embedding", "rerank": "jina-rerank"},
+    "voyage": {"embeddings": "voyage-embedding", "rerank": "voyage-rerank"},
+    "cohere": {"rerank": "cohere-rerank"},
+}
 
 
 class CliError(Exception):
@@ -62,6 +77,27 @@ def first_env(names: list[str], env_file_values: dict[str, str]) -> str:
         if value:
             return value
     return ""
+
+
+def preset_model_name(provider: str, mode: str) -> str:
+    provider_key = provider.strip().lower()
+    if provider_key not in PROVIDER_ROUTE_PRESETS:
+        known = ", ".join(sorted(PROVIDER_ROUTE_PRESETS))
+        raise CliError(f"unknown provider preset '{provider}'. Known: {known}")
+    task_routes = PROVIDER_ROUTE_PRESETS[provider_key]
+    if mode not in task_routes:
+        available = ", ".join(sorted(task_routes))
+        raise CliError(f"provider preset '{provider}' has no {mode} route shortcut. Available modes: {available}")
+    return task_routes[mode]
+
+
+def print_presets() -> None:
+    print("Preview-2 provider route presets")
+    print("These are public route names expected after creating routes with the documented names.")
+    print("Use --model when your Portal route has a different public name.\n")
+    for provider, modes in sorted(PROVIDER_ROUTE_PRESETS.items()):
+        for mode, model in sorted(modes.items()):
+            print(f"{provider:8s} {mode:10s} -> {model}")
 
 
 def guess_media_type(path: Path, fallback: str) -> str:
@@ -141,6 +177,24 @@ def build_body(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
             raise CliError("embeddings mode accepts text only in this helper")
         return "/v1/embeddings", {"model": args.model, "input": args.text}
 
+    if args.mode == "rerank":
+        if args.image or args.audio:
+            raise CliError("rerank mode accepts text documents only")
+        docs = args.document or [
+            "BrighTO-Router is a fast Rust AI gateway.",
+            "Bananas are yellow fruit.",
+            "Rerankers score documents against a query.",
+        ]
+        query = (args.query or args.text or "").strip()
+        if not query:
+            raise CliError("rerank mode requires --query or --text")
+        return "/v1/rerank", {
+            "model": args.model,
+            "query": query,
+            "documents": docs,
+            "top_n": min(args.top_n or len(docs), len(docs)),
+        }
+
     if args.mode == "messages":
         if args.image or args.audio:
             raise CliError("messages mode in this helper is text-only; use --mode chat for OpenAI-style image/audio JSON")
@@ -151,6 +205,40 @@ def build_body(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
         }
 
     raise CliError(f"unknown mode: {args.mode}")
+
+
+def post_multipart_asr(url: str, api_key: str, model: str, file_path: str, timeout: int, verify_tls: bool) -> tuple[int, dict[str, str], bytes]:
+    path = Path(file_path)
+    if not path.exists() or not path.is_file():
+        raise CliError(f"file not found: {file_path}")
+    boundary = "----brighto-router-test-boundary"
+    mime = guess_media_type(path, "application/octet-stream")
+    file_bytes = path.read_bytes()
+    parts = [
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n{model}\r\n".encode("utf-8"),
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name}\"\r\nContent-Type: {mime}\r\n\r\n".encode("utf-8"),
+        file_bytes,
+        f"\r\n--{boundary}--\r\n".encode("utf-8"),
+    ]
+    data = b"".join(parts)
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "authorization": f"Bearer {api_key}",
+            "content-type": f"multipart/form-data; boundary={boundary}",
+            "accept": "application/json",
+        },
+    )
+    ctx = None if verify_tls else ssl._create_unverified_context()
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
+            return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, {k.lower(): v for k, v in exc.headers.items()}, exc.read()
+    except urllib.error.URLError as exc:
+        raise CliError(f"cannot reach router: {exc}") from exc
 
 
 def post_json(url: str, api_key: str, body: dict[str, Any], timeout: int, verify_tls: bool) -> tuple[int, dict[str, str], bytes]:
@@ -209,6 +297,26 @@ def print_embeddings(data: dict[str, Any]) -> None:
         print("usage:", json.dumps(data["usage"], ensure_ascii=False))
 
 
+def print_rerank(data: dict[str, Any]) -> None:
+    results = data.get("results") or data.get("data") or []
+    print(f"results: {len(results) if isinstance(results, list) else 0}")
+    if isinstance(results, list):
+        for r in results[:10]:
+            if isinstance(r, dict):
+                print(f"index={r.get('index')} score={r.get('relevance_score', r.get('score'))}")
+    if data.get("usage") is not None:
+        print("usage:", json.dumps(data["usage"], ensure_ascii=False))
+    if data.get("meta") is not None:
+        print("meta:", json.dumps(data["meta"], ensure_ascii=False))
+
+
+def print_asr(data: dict[str, Any]) -> None:
+    if data.get("text") is not None:
+        print(data["text"])
+    else:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+
+
 def print_messages(data: dict[str, Any]) -> None:
     content = data.get("content")
     if isinstance(content, list):
@@ -224,7 +332,7 @@ def print_messages(data: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Call BrighTO-Router once with a chat, embeddings, or Anthropic Messages request.",
+        description="Call BrighTO-Router once with chat, embeddings, rerank, ASR, or Anthropic Messages.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Environment fallback order:
   router URL: BRIGHTO_ROUTER_URL, then BASE_URL from .env, then http://127.0.0.1:18080
@@ -232,15 +340,31 @@ def main() -> int:
   model:      BRIGHTO_MODEL
 
 Provider keys such as OPENAI_API_KEY are intentionally ignored. This script tests the router as a client app.
+
+Provider shortcuts use standard public route names created in the docs/smoke flow:
+  python3 test_router.py --provider qwen --mode embeddings --text "hello"
+  python3 test_router.py --provider qwen --mode rerank --query "router speed"
+  python3 test_router.py --provider jina --mode embeddings --text "hello"
+  python3 test_router.py --provider jina --mode rerank --query "router speed"
+  python3 test_router.py --provider voyage --mode embeddings --text "hello"
+  python3 test_router.py --provider voyage --mode rerank --query "router speed"
+  python3 test_router.py --provider cohere --mode rerank --query "router speed"
+  python3 test_router.py --provider openai --mode asr --file tests/fixtures/asr_smoke.wav
 """,
     )
     parser.add_argument("--router", help="Router base URL, for example http://127.0.0.1:18080")
-    parser.add_argument("--api-key", help="BrighTO client API key, usually starts with lc-")
+    parser.add_argument("--api-key", help="BrighTO client API key, usually starts with sk-brighto-")
     parser.add_argument("--model", help="Public model route name in BrighTO-Router")
-    parser.add_argument("--text", default="Reply OK in one short sentence.", help="Text input to send")
-    parser.add_argument("--mode", choices=["chat", "embeddings", "messages"], default="chat", help="Request type")
+    parser.add_argument("--provider", choices=sorted(PROVIDER_ROUTE_PRESETS), help="Use a preview-2 provider route preset, for example qwen + embeddings -> qwen-embedding")
+    parser.add_argument("--list-presets", action="store_true", help="Print preview-2 provider route presets and exit")
+    parser.add_argument("--text", default="Reply OK in one short sentence.", help="Text input to send; in rerank mode this is the query unless --query is set")
+    parser.add_argument("--query", help="Search query for --mode rerank. Friendly alias; overrides --text for rerank only")
+    parser.add_argument("--mode", choices=["chat", "embeddings", "rerank", "asr", "messages"], default="chat", help="Request type")
     parser.add_argument("--image", action="append", default=[], help="Image file path, http URL, https URL, or data URL for OpenAI-style chat JSON")
     parser.add_argument("--audio", action="append", default=[], help="Audio file path for OpenAI-style chat JSON")
+    parser.add_argument("--document", action="append", default=[], help="Document text for --mode rerank; repeat for multiple documents")
+    parser.add_argument("--top-n", type=int, help="Number of rerank results to return")
+    parser.add_argument("--file", help="Audio file path for --mode asr multipart upload")
     parser.add_argument("--max-tokens", type=int, default=128, help="Max output tokens for chat/messages")
     parser.add_argument("--temperature", type=float, help="Optional chat temperature")
     parser.add_argument("--timeout", type=int, default=120, help="HTTP timeout seconds")
@@ -249,34 +373,50 @@ Provider keys such as OPENAI_API_KEY are intentionally ignored. This script test
     parser.add_argument("--raw-response", action="store_true", help="Print full JSON response")
     parser.add_argument("--dry-run", action="store_true", help="Print the request that would be sent, with media bytes redacted")
     args = parser.parse_args()
+    if args.list_presets:
+        print_presets()
+        return 0
 
     env_file_values = parse_env_file(Path(args.env_file))
     router = (args.router or first_env(["BRIGHTO_ROUTER_URL", "BASE_URL"], env_file_values) or DEFAULT_ROUTER).rstrip("/")
     api_key = args.api_key or first_env(["BRIGHTO_ROUTER_API_KEY", "ROUTER_API_KEY", "BRIGHTO_API_KEY"], env_file_values)
-    model = args.model or first_env(["BRIGHTO_MODEL"], env_file_values)
+    model = args.model or (preset_model_name(args.provider, args.mode) if args.provider else "") or first_env(["BRIGHTO_MODEL"], env_file_values)
     if not api_key:
         raise CliError(
-            "missing BrighTO client API key. Pass --api-key lc-... or set BRIGHTO_ROUTER_API_KEY in .env. "
+            "missing BrighTO client API key. Pass --api-key sk-brighto-... or set BRIGHTO_ROUTER_API_KEY in .env. "
             f"For a fresh local install, the demo key is {DEFAULT_DEMO_KEY}."
         )
-    if api_key.startswith("sk-"):
-        raise CliError("this looks like a provider key. Use a BrighTO client key from the Portal API Keys screen, usually lc-...")
+    if api_key.startswith("sk-") and not api_key.startswith("sk-brighto-"):
+        raise CliError("this looks like a provider key. Use a BrighTO client key from the Portal API Keys screen, usually sk-brighto-...")
     if not model:
-        raise CliError("missing model. Pass --model <public-model-route> or set BRIGHTO_MODEL in .env")
+        raise CliError("missing model. Pass --model <public-model-route>, use --provider with a supported --mode, or set BRIGHTO_MODEL in .env")
     args.model = model
 
-    path, body = build_body(args)
-    url = router + path
-    if args.dry_run:
-        print("router:", router)
-        print("endpoint:", path)
-        print("model:", model)
-        print("body:")
-        print(json.dumps(redact_large_media(body), ensure_ascii=False, indent=2))
-        return 0
-
-    started = time.perf_counter()
-    status, headers, raw = post_json(url, api_key, body, args.timeout, verify_tls=not args.insecure)
+    if args.mode == "asr":
+        if not args.file:
+            raise CliError("--mode asr requires --file ./audio.wav")
+        path = "/v1/audio/transcriptions"
+        url = router + path
+        if args.dry_run:
+            print("router:", router)
+            print("endpoint:", path)
+            print("model:", model)
+            print("file:", args.file)
+            return 0
+        started = time.perf_counter()
+        status, headers, raw = post_multipart_asr(url, api_key, model, args.file, args.timeout, verify_tls=not args.insecure)
+    else:
+        path, body = build_body(args)
+        url = router + path
+        if args.dry_run:
+            print("router:", router)
+            print("endpoint:", path)
+            print("model:", model)
+            print("body:")
+            print(json.dumps(redact_large_media(body), ensure_ascii=False, indent=2))
+            return 0
+        started = time.perf_counter()
+        status, headers, raw = post_json(url, api_key, body, args.timeout, verify_tls=not args.insecure)
     elapsed_ms = (time.perf_counter() - started) * 1000
 
     print(f"status: {status}")
@@ -300,6 +440,10 @@ Provider keys such as OPENAI_API_KEY are intentionally ignored. This script test
         print(json.dumps(data, ensure_ascii=False, indent=2))
     elif args.mode == "embeddings":
         print_embeddings(data)
+    elif args.mode == "rerank":
+        print_rerank(data)
+    elif args.mode == "asr":
+        print_asr(data)
     elif args.mode == "messages":
         print_messages(data)
     else:

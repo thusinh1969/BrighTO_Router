@@ -4,7 +4,7 @@ name: brighto-airouter
 # Production default uses PostgreSQL only.
 services:
   router:
-    image: ${BRIGHTO_ROUTER_IMAGE:-thusinh1969/brighto_airouter:v1}
+    image: ${BRIGHTO_ROUTER_IMAGE:-thusinh1969/brighto_airouter:preview-2}
     pull_policy: always
     network_mode: host                 # lowest local overhead; see README production notes
     env_file: .env

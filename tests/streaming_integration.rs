@@ -105,9 +105,199 @@ const SSE_WITH_USAGE: &str = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"
 const SSE_NO_USAGE: &str =
     "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n";
 
+async fn spawn_adapter_backend() -> String {
+    let app = axum::Router::new()
+        .route(
+            "/v1/embeddings",
+            axum::routing::post(|body: Bytes| async move {
+                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(body["model"], "mock-embedding");
+                axum::Json(serde_json::json!({
+                    "object":"list",
+                    "model":"mock-embedding",
+                    "data":[{"object":"embedding","index":0,"embedding":[0.1,0.2,0.3]}],
+                    "usage":{"prompt_tokens":3,"total_tokens":3}
+                }))
+            }),
+        )
+        .route(
+            "/v1/rerank",
+            axum::routing::post(|body: Bytes| async move {
+                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(body["model"], "mock-rerank");
+                assert_eq!(body["query"], "router speed");
+                axum::Json(serde_json::json!({
+                    "id":"rerank-test",
+                    "results":[{"index":0,"relevance_score":0.98}],
+                    "usage":{"prompt_tokens":9,"total_tokens":9}
+                }))
+            }),
+        )
+        .route(
+            "/v1/audio/transcriptions",
+            axum::routing::post(|body: Bytes| async move {
+                assert!(
+                    std::str::from_utf8(&body)
+                        .unwrap()
+                        .contains("name=\"model\"\r\n\r\nmock-asr")
+                );
+                axum::Json(serde_json::json!({
+                    "text":"mock transcription ok",
+                    "usage":{"prompt_tokens":4,"total_tokens":4}
+                }))
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    format!("http://{addr}")
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn embeddings_adapter_proxies_and_records_usage(pool: PgPool) {
+    let backend_base = spawn_adapter_backend().await;
+    let (state, mut ledger_rx) = build_state_for_route(
+        pool,
+        backend_base,
+        "public-embedding",
+        "mock-embedding",
+        "openai_embeddings",
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/embeddings")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"public-embedding","input":"hello"}"#,
+        ))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = to_bytes(resp.into_body(), 10 * 1024 * 1024).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["model"], "mock-embedding");
+    assert_eq!(json["data"][0]["embedding"].as_array().unwrap().len(), 3);
+
+    let ev = tokio::time::timeout(Duration::from_secs(2), ledger_rx.recv())
+        .await
+        .expect("ledger event within 2s")
+        .expect("ledger event present");
+    assert_eq!(ev.model, "public-embedding");
+    assert_eq!(ev.input_tokens, 3);
+    assert_eq!(ev.output_tokens, 0);
+    assert!(!ev.estimated);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn rerank_adapter_proxies_rewrites_model_and_records_usage(pool: PgPool) {
+    let backend_base = spawn_adapter_backend().await;
+    let (state, mut ledger_rx) = build_state_for_route(
+        pool,
+        backend_base,
+        "public-rerank",
+        "mock-rerank",
+        "cohere_rerank",
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/rerank")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"public-rerank","query":"router speed","documents":["fast rust router","slow proxy"],"top_n":1}"#,
+        ))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = to_bytes(resp.into_body(), 10 * 1024 * 1024).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["results"][0]["index"], 0);
+
+    let ev = tokio::time::timeout(Duration::from_secs(2), ledger_rx.recv())
+        .await
+        .expect("ledger event within 2s")
+        .expect("ledger event present");
+    assert_eq!(ev.model, "public-rerank");
+    assert_eq!(ev.input_tokens, 9);
+    assert_eq!(ev.output_tokens, 0);
+    assert!(!ev.estimated);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn asr_adapter_proxies_multipart_and_records_usage(pool: PgPool) {
+    let backend_base = spawn_adapter_backend().await;
+    let (state, mut ledger_rx) = build_state_for_route(
+        pool,
+        backend_base,
+        "mock-asr",
+        "mock-asr",
+        "openai_audio_transcriptions",
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let boundary = "----brighto-test";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nmock-asr\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"sample.wav\"\r\nContent-Type: audio/wav\r\n\r\nabc\r\n--{boundary}--\r\n"
+    );
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/audio/transcriptions")
+        .header("authorization", "Bearer test-key")
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(Body::from(body))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = to_bytes(resp.into_body(), 10 * 1024 * 1024).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["text"], "mock transcription ok");
+
+    let ev = tokio::time::timeout(Duration::from_secs(2), ledger_rx.recv())
+        .await
+        .expect("ledger event within 2s")
+        .expect("ledger event present");
+    assert_eq!(ev.model, "mock-asr");
+    assert_eq!(ev.input_tokens, 4);
+    assert_eq!(ev.output_tokens, 0);
+    assert!(!ev.estimated);
+}
+
 async fn build_state(
     pool: PgPool,
     backend_base: String,
+) -> (Arc<AppState>, tokio::sync::mpsc::Receiver<UsageEvent>) {
+    build_state_for_route(
+        pool,
+        backend_base,
+        "test-model",
+        "test-model",
+        "openai_chat",
+    )
+    .await
+}
+
+async fn build_state_for_route(
+    pool: PgPool,
+    backend_base: String,
+    public_model: &str,
+    provider_model: &str,
+    protocol: &str,
 ) -> (Arc<AppState>, tokio::sync::mpsc::Receiver<UsageEvent>) {
     set_test_env();
     // key file cho backend (không dùng env để test không phụ thuộc môi trường).
@@ -126,9 +316,12 @@ async fn build_state(
     .unwrap();
 
     sqlx::query(
-        "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout) \
-         VALUES ('test-model', '[1]', NULL, 4.0, 180)",
+        "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, provider_model_name, protocol) \
+         VALUES ($1, '[1]', NULL, 4.0, 180, $2, $3)",
     )
+    .bind(public_model)
+    .bind(provider_model)
+    .bind(protocol)
     .execute(&pool)
     .await
     .unwrap();
@@ -144,7 +337,7 @@ async fn build_state(
     let key_hash = hex::encode(brighto_router::auth::hash_key("test-key"));
     sqlx::query(
         "INSERT INTO api_keys (id, key_hash, key_prefix, team_id, owner, allowed_models, budget, rpm_limit, concurrency_limit, expires_at, enabled) \
-         VALUES (1, $1, 'lc-test00', 1, 'tester', '[]', NULL, NULL, NULL, NULL, TRUE)",
+         VALUES (1, $1, 'sk-brigh', 1, 'tester', '[]', NULL, NULL, NULL, NULL, TRUE)",
     )
     .bind(&key_hash)
     .execute(&pool)

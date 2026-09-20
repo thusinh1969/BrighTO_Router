@@ -7,7 +7,8 @@
 //!   x-mock-status               : trả thẳng status này (503, 429, ...) không body
 //!   x-mock-no-usage             : không trả usage (test ước lượng)
 //!   x-mock-hang                 : nhận rồi im (test first-byte timeout)
-//! Endpoint: POST /v1/chat/completions (OpenAI), POST /v1/messages (Anthropic), GET /v1/models, GET /health
+//! Endpoint: POST /v1/chat/completions, /v1/embeddings, /v1/rerank, /v2/rerank,
+//! POST /v1/audio/transcriptions, POST /v1/messages, GET /v1/models, GET /health
 //! Thống kê để test so sánh: GET /_stats → {"requests":N,"prompt_tokens_total":..,"completion_tokens_total":..}
 use axum::{
     Router,
@@ -56,8 +57,12 @@ async fn main() {
     let st: S = Arc::new(Stats::default());
     let app = Router::new()
         .route("/v1/chat/completions", post(openai))
+        .route("/v1/embeddings", post(embeddings))
+        .route("/v1/rerank", post(rerank))
+        .route("/v2/rerank", post(rerank))
+        .route("/v1/audio/transcriptions", post(transcriptions))
         .route("/v1/messages", post(anthropic))
-        .route("/v1/models", get(|| async { Json(serde_json::json!({"object":"list","data":[{"id":"mock-model","object":"model","owned_by":"mock"}]})) }))
+        .route("/v1/models", get(|| async { Json(serde_json::json!({"object":"list","data":[{"id":"mock-model","object":"model","owned_by":"mock"},{"id":"mock-embedding","object":"model","owned_by":"mock"},{"id":"mock-rerank","object":"model","owned_by":"mock"},{"id":"mock-asr","object":"model","owned_by":"mock"}]})) }))
         .route("/health", get(|| async { "ok" }))
         .route("/_stats", get(|State(s): State<S>| async move {
             Json(serde_json::json!({"requests": s.requests.load(Ordering::Relaxed),
@@ -115,6 +120,59 @@ fn is_stream(body: &Bytes) -> bool {
     serde_json::from_slice::<P>(body)
         .map(|p| p.stream)
         .unwrap_or(false)
+}
+
+async fn embeddings(State(st): State<S>, headers: HeaderMap, body: Bytes) -> Response {
+    let (p, _, _, _, _, no_usage) = match common(&headers, &st, &body).await {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let mut j = serde_json::json!({
+        "object":"list",
+        "model":"mock-embedding",
+        "data":[{"object":"embedding","index":0,"embedding":[0.1,0.2,0.3,0.4]}]
+    });
+    if !no_usage {
+        j["usage"] = serde_json::json!({"prompt_tokens":p,"total_tokens":p});
+    }
+    Json(j).into_response()
+}
+
+async fn rerank(State(st): State<S>, headers: HeaderMap, body: Bytes) -> Response {
+    let (p, _, _, _, _, no_usage) = match common(&headers, &st, &body).await {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let doc_count = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| {
+            v.get("documents")
+                .and_then(|d| d.as_array())
+                .map(|a| a.len())
+        })
+        .unwrap_or(2);
+    let mut results = Vec::new();
+    for i in 0..doc_count.min(3) {
+        results.push(serde_json::json!({"index":i,"relevance_score":1.0/(i as f64+1.0)}));
+    }
+    let mut j = serde_json::json!({"id":"rerank-mock","results":results});
+    if !no_usage {
+        j["usage"] = serde_json::json!({"prompt_tokens":p,"total_tokens":p});
+        j["meta"] = serde_json::json!({"billed_units":{"search_units":1}});
+    }
+    Json(j).into_response()
+}
+
+async fn transcriptions(State(st): State<S>, headers: HeaderMap, body: Bytes) -> Response {
+    let (p, _, _, _, _, no_usage) = match common(&headers, &st, &body).await {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let mut j = serde_json::json!({"text":"mock transcription ok"});
+    if !no_usage {
+        j["usage"] = serde_json::json!({"prompt_tokens":p,"total_tokens":p});
+    }
+    Json(j).into_response()
 }
 
 async fn openai(State(st): State<S>, headers: HeaderMap, body: Bytes) -> Response {

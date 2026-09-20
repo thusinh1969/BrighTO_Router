@@ -11,13 +11,19 @@ cd BrighTO_Router
 ./start.sh status
 ```
 
+This preview-2 line uses `thusinh1969/brighto_airouter:preview-2` by default and is intended to become `main` after final field feedback. Existing local `.env` files from older installs should include:
+
+```bash
+BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-2
+```
+
 What happens:
 
 1. `.env` is created from `.env.example` if it does not exist.
 2. Docker starts PostgreSQL 16.
 3. SQL migrations run.
 4. The default team and local demo client key are seeded.
-5. Docker pulls and starts `thusinh1969/brighto_airouter:v1`.
+5. Docker pulls and starts `thusinh1969/brighto_airouter:preview-2`.
 
 Open on the same server:
 
@@ -80,7 +86,7 @@ Use the portal:
 Provider key names supported by `set-key` if you prefer `.env` secrets:
 
 ```text
-openai anthropic gemini deepseek kimi qwen zai openrouter meta-muse custom-llm
+openai anthropic gemini deepseek kimi qwen dashscope zai openrouter jina voyage cohere meta-muse custom-llm
 ```
 
 For providers that do not expose a compatible `/models` endpoint, type the provider model name manually and still use **Test connection** before saving enabled.
@@ -90,7 +96,7 @@ For providers that do not expose a compatible `/models` endpoint, type the provi
 After saving a model route and creating a client API key, run one request with the helper script:
 
 ```bash
-python3 test_router.py --router http://127.0.0.1:18080 --api-key lc-... --model <public-model-name> --text "Reply OK"
+python3 test_router.py --router http://127.0.0.1:18080 --api-key sk-brighto-... --model <public-model-name> --text "Reply OK"
 ```
 
 If you use the seeded local demo key, the script can read it from `.env`:
@@ -103,8 +109,28 @@ Other quick modes:
 
 ```bash
 python3 test_router.py --mode embeddings --model <public-embedding-route> --text "hello"
+python3 test_router.py --mode rerank --model <public-rerank-route> --query "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
+python3 test_router.py --mode asr --model <public-asr-route> --file tests/fixtures/asr_smoke.wav
+python3 test_router.py --provider qwen --mode embeddings --text "hello"
+python3 test_router.py --provider qwen --mode rerank --query "router speed"
+python3 test_router.py --provider jina --mode embeddings --text "hello"
+python3 test_router.py --provider jina --mode rerank --query "router speed"
+python3 test_router.py --provider voyage --mode embeddings --text "hello"
+python3 test_router.py --provider voyage --mode rerank --query "router speed"
+python3 test_router.py --provider cohere --mode rerank --query "router speed"
 python3 test_router.py --model <vision-model-route> --text "Describe this image." --image ./photo.jpg
 python3 test_router.py --model <audio-model-route> --text "Summarize this audio." --audio ./sample.wav
+```
+
+`--provider` uses standard public route names. Run `python3 test_router.py --list-presets` to see the mapping, or pass `--model` when your route name is custom. In rerank mode, `--query` and `--text` both work; `--query` is clearer and takes priority.
+
+Preview-2 live provider smoke tests:
+
+```bash
+python3 scripts/adapter_smoke.py --provider qwen --task embedding
+python3 scripts/adapter_smoke.py --provider qwen --task rerank
+python3 scripts/adapter_smoke.py --provider all --task all
+python3 scripts/adapter_router_smoke.py
 ```
 
 For self-signed HTTPS, add `--insecure`. Image and audio examples require a backend model that accepts OpenAI-style multimodal chat JSON.
