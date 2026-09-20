@@ -12,7 +12,29 @@ Implemented and tested in this branch:
 
 The router still does not run models. It forwards to a configured provider or local service, applies client-key auth, route policy, budget/concurrency limits, and usage logging. It does not store vectors, rerank documents, audio files, transcripts, prompts, or provider response bodies.
 
-## Client smoke tests
+## Live provider smoke tests
+
+Use `scripts/adapter_smoke.py` to prove a provider API key, endpoint, and model with tiny direct requests. It reads keys from environment or `.env`, never prints provider keys, and skips missing providers.
+
+```bash
+python3 scripts/adapter_smoke.py --provider jina --task embedding
+python3 scripts/adapter_smoke.py --provider jina --task rerank
+python3 scripts/adapter_smoke.py --provider all --task all
+python3 scripts/adapter_smoke.py --provider openai --task asr --file ./sample.wav
+```
+
+Provider key env vars:
+
+| Provider | Env key | Tasks |
+|---|---|---|
+| OpenAI | `OPENAI_API_KEY` | embedding, ASR |
+| Jina AI | `JINA_API_KEY` | embedding, rerank |
+| Voyage AI | `VOYAGE_API_KEY` | embedding, rerank |
+| Cohere | `COHERE_API_KEY` | rerank |
+
+Keep stress tests on mock providers. Live provider smoke should stay small and cheap.
+
+## Client smoke tests through BrighTO-Router
 
 These commands call BrighTO-Router as a client app. They require a BrighTO client API key and a public model route that already exists.
 
@@ -98,7 +120,7 @@ For now:
 - `cargo fmt --check`
 - `cargo check --locked`
 - `cargo clippy --locked --all-targets -- -D warnings`
-- `python3 -m py_compile test_router.py`
+- `python3 -m py_compile test_router.py scripts/adapter_smoke.py`
 - `./scripts/test_postgres.sh`
 
 `./scripts/test_postgres.sh` includes integration tests for embeddings, rerank, ASR multipart, streaming chat, large non-stream uploads, PostgreSQL ledger writing, and fallback behavior.

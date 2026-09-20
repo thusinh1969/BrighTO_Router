@@ -147,6 +147,13 @@ ASR / transcription through an OpenAI-compatible multipart route on the preview-
 python3 test_router.py --mode asr --model <public-asr-route> --file ./sample.wav
 ```
 
+Live provider smoke tests for adapter keys and endpoints:
+
+```bash
+python3 scripts/adapter_smoke.py --provider jina --task embedding
+python3 scripts/adapter_smoke.py --provider jina --task rerank
+```
+
 Image input through an OpenAI-style multimodal chat route:
 
 ```bash
