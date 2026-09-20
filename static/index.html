@@ -1175,7 +1175,7 @@ function renderProviders(c){
   hActions.appendChild(filt);
   h.appendChild(hActions);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Provider endpoints are the base URLs BrighTO sends model traffic to. They are created automatically when you add a model. Manage enable/disable and deletion safety here. API keys live on model routes."));
+  p.appendChild(el("p","hint","Provider endpoints are reusable Base URL templates. Chat, Embedding, Rerank, and ASR are chosen in Models & Routes → Add model → Task type. API keys live on model routes; save enabled only after Test Connection passes."));
   var fv=(window.provFilter||"all");
   var shown=backends.filter(function(b){ return fv==="all" || (fv==="enabled"?b.enabled:!b.enabled); });
   if(!backends.length){ p.appendChild(emptyBox("No provider endpoints yet — add a model and one is created automatically.")); }
@@ -1353,7 +1353,7 @@ function renderModels(c){
   hActions.appendChild(filt);
   h.appendChild(hActions);
   p.appendChild(h);
-  p.appendChild(el("p","hint","One guided flow: pick a provider, load its models, choose one, test the provider endpoint, then save. The endpoint is created or reused for you."));
+  p.appendChild(el("p","hint","One guided flow: choose Task type first. Chat calls chat/messages, Embedding calls /v1/embeddings, Rerank calls /v1/rerank, and ASR uploads audio. Pick a provider, test the exact endpoint, then save enabled."));
   var fv=(window.modelFilter||"all");
   var shown=routes.filter(function(r){ return fv==="all" || (fv==="enabled"?r.effective_enabled:!r.effective_enabled); });
   if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
@@ -1507,7 +1507,8 @@ function openRouteModal(route){
     var qwenRerank=providerKey==="qwen" && task==="rerank";
     if(qwenRerank){
       var qwenDefault=e.base_url||"";
-      if(!route.model_name && (!url.value || url.value===qwenDefault)) url.value="";
+      var qwenRerankBase="https://dashscope-intl.aliyuncs.com";
+      if(!route.model_name && (!url.value || url.value===qwenDefault)) url.value=qwenRerankBase;
       url.placeholder="https://dashscope-intl.aliyuncs.com or https://<workspace>.<region>.maas.aliyuncs.com";
     } else if(e.base_url){ url.value=e.base_url; url.placeholder=e.base_url; }
     else { url.value=""; url.placeholder="https://…"; }

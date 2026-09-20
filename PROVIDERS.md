@@ -28,6 +28,21 @@ The catalog is configured by `PROVIDER_CATALOG` in `.env`. The default catalog i
 
 **OpenAI-compatible** means the backend accepts routes such as `/v1/chat/completions` and usually returns models from `/v1/models`.
 
+
+## Default seeded provider endpoints
+
+`./start.sh seed` inserts missing provider endpoint templates into the database so the Portal **Providers** screen is useful on first run. These endpoints are templates and are inserted disabled; creating an enabled model route still happens in **Models & Routes → Add model** after **Test connection** passes.
+
+Seeded adapter endpoint templates include:
+
+| Endpoint template | Base URL | Typical task type in Add model | Notes |
+|---|---|---|---|
+| `qwen` | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | Embedding | Use `qwen3.7-text-embedding` for the current text embedding smoke. |
+| `qwen-rerank` | `https://dashscope-intl.aliyuncs.com` | Rerank | Use `qwen3-rerank`; do not use `/compatible-mode/v1` for rerank. |
+| `jina` | `https://api.jina.ai` | Embedding or Rerank | Use Jina embedding/rerank model names from the wizard suggestions. |
+| `voyage` | `https://api.voyageai.com` | Embedding or Rerank | Free trial accounts may need slower testing because of rate limits. |
+| `cohere` | `https://api.cohere.com/v2` | Rerank | Cohere rerank maps BrighTO `/v1/rerank` to provider `/v2/rerank`. |
+
 ## Add a model route
 
 In the Portal:

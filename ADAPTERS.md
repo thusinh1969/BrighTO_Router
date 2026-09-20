@@ -97,6 +97,17 @@ curl -sS http://127.0.0.1:18080/v1/audio/transcriptions \
   -F "file=@tests/fixtures/asr_smoke.wav"
 ```
 
+## Portal setup: how adapter routes differ from chat
+
+Embedding and rerank routes are not selected by changing only the provider. In **Models & Routes → Add model**, choose the **Task type** first:
+
+1. **Embedding** creates a route for `/v1/embeddings`. The provider model must be an embedding model such as Qwen `qwen3.7-text-embedding`, Jina embedding models, Voyage embedding models, or OpenAI embedding models.
+2. **Rerank** creates a route for `/v1/rerank`. The provider model must be a reranker such as Qwen `qwen3-rerank`, Jina reranker, Voyage reranker, or Cohere reranker.
+3. **ASR / transcription** creates a route for `/v1/audio/transcriptions` and tests with the small bundled WAV fixture.
+4. **Chat / LLM** remains the normal `/v1/chat/completions` or Anthropic Messages flow.
+
+Provider endpoint templates in **Providers** are only Base URLs. A route becomes usable only after the task-specific **Test connection** passes and the route is saved enabled.
+
 ## Route creation status
 
 The Portal model wizard supports task-specific route creation for Chat, Embedding, Rerank, and ASR. Test Connection uses the selected task's exact endpoint shape before enabling the route:

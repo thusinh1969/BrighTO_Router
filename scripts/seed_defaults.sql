@@ -13,6 +13,10 @@ DECLARE
     {"name":"qwen", "base_url":"https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "api_key_ref":"env:QWEN_API_KEY", "format":"openai"},
     {"name":"zai", "base_url":"https://api.z.ai/api/paas/v4", "api_key_ref":"env:ZAI_API_KEY", "format":"openai"},
     {"name":"openrouter", "base_url":"https://openrouter.ai/api/v1", "api_key_ref":"env:OPENROUTER_API_KEY", "format":"openai"},
+    {"name":"jina", "base_url":"https://api.jina.ai", "api_key_ref":"env:JINA_API_KEY", "format":"openai"},
+    {"name":"voyage", "base_url":"https://api.voyageai.com", "api_key_ref":"env:VOYAGE_API_KEY", "format":"openai"},
+    {"name":"cohere", "base_url":"https://api.cohere.com/v2", "api_key_ref":"env:COHERE_API_KEY", "format":"openai"},
+    {"name":"qwen-rerank", "base_url":"https://dashscope-intl.aliyuncs.com", "api_key_ref":"env:QWEN_API_KEY", "format":"openai"},
     {"name":"meta-muse", "base_url":"https://api.meta.ai/v1", "api_key_ref":"env:META_MUSE_API_KEY", "format":"openai"},
     {"name":"custom-llm", "base_url":"http://127.0.0.1:8088/v1", "api_key_ref":"env:CUSTOM_LLM_API_KEY", "format":"openai"}
   ]'::jsonb;
@@ -20,6 +24,10 @@ BEGIN
   INSERT INTO teams (name, budget, enabled)
   SELECT 'Default Team', '{"period":"month","max_tokens":1000000,"per_model":{}}', TRUE
   WHERE NOT EXISTS (SELECT 1 FROM teams WHERE name = 'Default Team');
+
+  -- Provider endpoints are templates only. They stay disabled until a tested model route uses them.
+  -- The Add Model wizard supports Chat, Embedding, Rerank, and ASR task types and creates/reuses
+  -- these endpoints when the selected provider/model/key passes Test Connection.
 
   -- Local demo client key for first-run smoke tests and ./test_router.py.
   -- Plaintext: lc-0123456789abcdef0123456789abcdef
