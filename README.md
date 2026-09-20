@@ -153,9 +153,26 @@ python3 test_router.py --mode asr --model <public-asr-route> --file tests/fixtur
 Live provider smoke tests for adapter keys and endpoints:
 
 ```bash
+python3 scripts/adapter_smoke.py --provider qwen --task embedding
+python3 scripts/adapter_smoke.py --provider qwen --task rerank
 python3 scripts/adapter_smoke.py --provider jina --task embedding
 python3 scripts/adapter_smoke.py --provider jina --task rerank
 ```
+
+Provider shortcut tests through BrighTO-Router, using standard public route names such as `qwen-embedding`, `qwen-rerank`, `jina-embedding`, `jina-rerank`, `voyage-embedding`, `voyage-rerank`, and `cohere-rerank`:
+
+```bash
+python3 test_router.py --list-presets
+python3 test_router.py --provider qwen --mode embeddings --text "hello"
+python3 test_router.py --provider qwen --mode rerank --text "router speed"
+python3 test_router.py --provider jina --mode embeddings --text "hello"
+python3 test_router.py --provider jina --mode rerank --text "router speed"
+python3 test_router.py --provider voyage --mode embeddings --text "hello"
+python3 test_router.py --provider voyage --mode rerank --text "router speed"
+python3 test_router.py --provider cohere --mode rerank --text "router speed"
+```
+
+Use `--model <your-public-route>` instead of `--provider` when your Portal route has a custom public name.
 
 Full preview-2 router smoke through Admin API and public client endpoints, using whichever provider keys exist in `.env`:
 

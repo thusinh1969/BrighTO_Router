@@ -42,6 +42,16 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "asr_url": "https://api.openai.com/v1/audio/transcriptions",
         "asr_model": "whisper-1",
     },
+    "qwen": {
+        "key_env": "QWEN_API_KEY",
+        "key_env_alt": "DASHSCOPE_API_KEY",
+        "embedding_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
+        "embedding_model": "qwen3.7-text-embedding",
+        "rerank_base_env": "QWEN_RERANK_BASE_URL",
+        "rerank_base_url": "https://dashscope-intl.aliyuncs.com",
+        "rerank_path": "/compatible-api/v1/reranks",
+        "rerank_model": "qwen3-rerank",
+    },
     "jina": {
         "key_env": "JINA_API_KEY",
         "embedding_url": "https://api.jina.ai/v1/embeddings",
@@ -153,8 +163,21 @@ def parse_json(raw: bytes) -> Any:
         raise SmokeError(f"provider returned non-JSON body: {raw[:200]!r}") from exc
 
 
-def smoke_embedding(provider: str, cfg: dict[str, Any], key: str, model: str | None, timeout: int) -> bool:
-    url = cfg.get("embedding_url")
+def provider_url(cfg: dict[str, Any], task: str, env_file_values: dict[str, str]) -> str | None:
+    direct = cfg.get(f"{task}_url")
+    if direct:
+        return str(direct)
+    base_env = cfg.get(f"{task}_base_env")
+    base = env_value(str(base_env), env_file_values).strip() if base_env else ""
+    base = base or str(cfg.get(f"{task}_base_url") or "")
+    path = str(cfg.get(f"{task}_path") or "")
+    if not base:
+        return None
+    return base.rstrip("/") + "/" + path.lstrip("/")
+
+
+def smoke_embedding(provider: str, cfg: dict[str, Any], key: str, model: str | None, timeout: int, env_file_values: dict[str, str]) -> bool:
+    url = provider_url(cfg, "embedding", env_file_values)
     if not url:
         print(f"SKIP {provider} embedding: provider has no embedding endpoint in this smoke")
         return True
@@ -178,8 +201,8 @@ def smoke_embedding(provider: str, cfg: dict[str, Any], key: str, model: str | N
     return ok
 
 
-def smoke_rerank(provider: str, cfg: dict[str, Any], key: str, model: str | None, timeout: int) -> bool:
-    url = cfg.get("rerank_url")
+def smoke_rerank(provider: str, cfg: dict[str, Any], key: str, model: str | None, timeout: int, env_file_values: dict[str, str]) -> bool:
+    url = provider_url(cfg, "rerank", env_file_values)
     if not url:
         print(f"SKIP {provider} rerank: provider has no rerank endpoint in this smoke")
         return True
@@ -213,8 +236,8 @@ def smoke_rerank(provider: str, cfg: dict[str, Any], key: str, model: str | None
     return ok
 
 
-def smoke_asr(provider: str, cfg: dict[str, Any], key: str, model: str | None, file_path: str | None, timeout: int) -> bool:
-    url = cfg.get("asr_url")
+def smoke_asr(provider: str, cfg: dict[str, Any], key: str, model: str | None, file_path: str | None, timeout: int, env_file_values: dict[str, str]) -> bool:
+    url = provider_url(cfg, "asr", env_file_values)
     if not url:
         print(f"SKIP {provider} asr: provider has no ASR endpoint in this smoke")
         return True
@@ -256,7 +279,7 @@ def selected(items: str, all_items: list[str]) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run tiny live-provider smoke tests for preview-2 adapters.")
-    parser.add_argument("--provider", default="all", help="Provider: openai, jina, voyage, cohere, or all. Comma-separated is allowed.")
+    parser.add_argument("--provider", default="all", help="Provider: openai, qwen, jina, voyage, cohere, or all. Comma-separated is allowed.")
     parser.add_argument("--task", default="all", help="Task: embedding, rerank, asr, or all. Comma-separated is allowed.")
     parser.add_argument("--model", help="Override provider model for a single provider/task run")
     parser.add_argument("--file", help="Audio file for --task asr")
@@ -280,17 +303,21 @@ def main() -> int:
     for provider in providers:
         cfg = PROVIDERS[provider]
         key_env = cfg["key_env"]
+        key_env_alt = cfg.get("key_env_alt")
         key = env_value(key_env, env_file_values).strip()
+        if not key and key_env_alt:
+            key = env_value(str(key_env_alt), env_file_values).strip()
         if not key:
-            print(f"SKIP {provider}: missing {key_env}")
+            suffix = f" or {key_env_alt}" if key_env_alt else ""
+            print(f"SKIP {provider}: missing {key_env}{suffix}")
             continue
         for task in tasks:
             if task == "embedding":
-                checks.append(smoke_embedding(provider, cfg, key, args.model, args.timeout))
+                checks.append(smoke_embedding(provider, cfg, key, args.model, args.timeout, env_file_values))
             elif task == "rerank":
-                checks.append(smoke_rerank(provider, cfg, key, args.model, args.timeout))
+                checks.append(smoke_rerank(provider, cfg, key, args.model, args.timeout, env_file_values))
             elif task == "asr":
-                checks.append(smoke_asr(provider, cfg, key, args.model, args.file, args.timeout))
+                checks.append(smoke_asr(provider, cfg, key, args.model, args.file, args.timeout, env_file_values))
     if not checks:
         print("RESULT SKIP: no runnable checks; set provider keys in environment or .env")
         return 2

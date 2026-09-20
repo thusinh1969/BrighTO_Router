@@ -111,13 +111,24 @@ Other quick modes:
 python3 test_router.py --mode embeddings --model <public-embedding-route> --text "hello"
 python3 test_router.py --mode rerank --model <public-rerank-route> --text "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
 python3 test_router.py --mode asr --model <public-asr-route> --file tests/fixtures/asr_smoke.wav
+python3 test_router.py --provider qwen --mode embeddings --text "hello"
+python3 test_router.py --provider qwen --mode rerank --text "router speed"
+python3 test_router.py --provider jina --mode embeddings --text "hello"
+python3 test_router.py --provider jina --mode rerank --text "router speed"
+python3 test_router.py --provider voyage --mode embeddings --text "hello"
+python3 test_router.py --provider voyage --mode rerank --text "router speed"
+python3 test_router.py --provider cohere --mode rerank --text "router speed"
 python3 test_router.py --model <vision-model-route> --text "Describe this image." --image ./photo.jpg
 python3 test_router.py --model <audio-model-route> --text "Summarize this audio." --audio ./sample.wav
 ```
 
+`--provider` uses standard public route names. Run `python3 test_router.py --list-presets` to see the mapping, or pass `--model` when your route name is custom.
+
 Preview-2 live provider smoke tests:
 
 ```bash
+python3 scripts/adapter_smoke.py --provider qwen --task embedding
+python3 scripts/adapter_smoke.py --provider qwen --task rerank
 python3 scripts/adapter_smoke.py --provider all --task all
 python3 scripts/adapter_router_smoke.py
 ```

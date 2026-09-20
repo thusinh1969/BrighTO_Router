@@ -17,6 +17,8 @@ The router still does not run models. It forwards to a configured provider or lo
 Use `scripts/adapter_smoke.py` to prove a provider API key, endpoint, and model with tiny direct requests. It reads keys from environment or `.env`, never prints provider keys, and skips missing providers.
 
 ```bash
+python3 scripts/adapter_smoke.py --provider qwen --task embedding
+python3 scripts/adapter_smoke.py --provider qwen --task rerank
 python3 scripts/adapter_smoke.py --provider jina --task embedding
 python3 scripts/adapter_smoke.py --provider jina --task rerank
 python3 scripts/adapter_smoke.py --provider all --task all
@@ -28,6 +30,7 @@ Provider key env vars:
 | Provider | Env key | Tasks |
 |---|---|---|
 | OpenAI | `OPENAI_API_KEY` | embedding, ASR |
+| Qwen/DashScope | `QWEN_API_KEY` or `DASHSCOPE_API_KEY` | embedding, rerank |
 | Jina AI | `JINA_API_KEY` | embedding, rerank |
 | Voyage AI | `VOYAGE_API_KEY` | embedding, rerank |
 | Cohere | `COHERE_API_KEY` | rerank |
@@ -47,6 +50,19 @@ python3 test_router.py \
   --api-key lc-... \
   --model <public-embedding-route> \
   --text "BrighTO embedding smoke test"
+```
+
+Provider shortcuts when you use the documented public route names:
+
+```bash
+python3 test_router.py --list-presets
+python3 test_router.py --provider qwen --mode embeddings --text "hello"
+python3 test_router.py --provider qwen --mode rerank --text "router speed"
+python3 test_router.py --provider jina --mode embeddings --text "hello"
+python3 test_router.py --provider jina --mode rerank --text "router speed"
+python3 test_router.py --provider voyage --mode embeddings --text "hello"
+python3 test_router.py --provider voyage --mode rerank --text "router speed"
+python3 test_router.py --provider cohere --mode rerank --text "router speed"
 ```
 
 Rerank:
