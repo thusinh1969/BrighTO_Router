@@ -10,7 +10,10 @@ bench/
 benchmarks/results/
 benchmarks/payloads/
 k8s/
-tests/
+tests/*
+!tests/fixtures/
+tests/fixtures/*
+!tests/fixtures/asr_smoke.wav
 *.tar.gz
 
 # local/generated files
