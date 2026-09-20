@@ -29,6 +29,10 @@ import sys
 import time
 
 import requests
+try:
+    requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
+except Exception:
+    pass
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 KEY = "bench-key"
@@ -56,6 +60,9 @@ B10_MAX_LAG_SECONDS = 2.0
 B10_TARGET_RPS = int(os.environ.get("B10_TARGET_RPS", "2000"))
 RUN_B6 = os.environ.get("BENCH_B6", "1") != "0"
 RUN_B10 = os.environ.get("BENCH_B10", "1") != "0"
+BENCH_TLS = os.environ.get("BENCH_TLS", "0") == "1"
+BENCH_TLS_CERT = pathlib.Path(os.environ.get("BENCH_TLS_CERT", str(REPO / "ssl/fullchain.pem")))
+BENCH_TLS_KEY = pathlib.Path(os.environ.get("BENCH_TLS_KEY", str(REPO / "ssl/privkey.pem")))
 BASELINE_PATH = pathlib.Path(os.environ.get("BENCH_BASELINE", str(REPO / "bench/baseline.json")))
 BASELINE_BOOTSTRAP = os.environ.get("BASELINE_BOOTSTRAP", "0") == "1"
 BASELINE_MAX_REGRESSION = 1.10
@@ -221,6 +228,8 @@ def oha_run(url, payload, conc, out, raw_label, rate=None, warmup=True):
         ]
         if rate is not None:
             warm[1:1] = ["-q", str(rate)]
+        if url.startswith("https://"):
+            warm.insert(1, "--insecure")
         subprocess.run(warm, capture_output=True, text=True)
 
     cmd = [
@@ -231,6 +240,8 @@ def oha_run(url, payload, conc, out, raw_label, rate=None, warmup=True):
     ]
     if rate is not None:
         cmd[1:1] = ["-q", str(rate)]
+    if url.startswith("https://"):
+        cmd.insert(1, "--insecure")
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError("oha failed (%s %s c=%s): %s" % (raw_label, payload, conc, p.stderr[-2000:]))
@@ -245,7 +256,9 @@ def ttfb(url, payload):
     vals = []
     for _ in range(30):
         p = subprocess.run(
-            ["curl", "-s", "-o", "/dev/null", "-N", "-w", "%{time_starttransfer}",
+            ["curl", "-s", "-o", "/dev/null", "-N", "-w", "%{time_starttransfer}"]
+            + (["-k"] if url.startswith("https://") else [])
+            + [
              "-H", "Content-Type: application/json",
              "-H", "Authorization: Bearer " + KEY,
              "--data-binary", "@" + str(REPO / "benchmarks/payloads" / (payload + ".json")),
@@ -264,7 +277,7 @@ def ttfb(url, payload):
 def wait_ready(url, path):
     for _ in range(200):
         try:
-            if requests.get(url + path, timeout=1).status_code == 200:
+            if requests.get(url + path, timeout=1, verify=False).status_code == 200:
                 return
         except Exception:
             pass
@@ -274,7 +287,7 @@ def wait_ready(url, path):
 
 def scrape_metrics(url, outdir):
     try:
-        text = requests.get(url + "/metrics", timeout=2).text
+        text = requests.get(url + "/metrics", timeout=2, verify=False).text
     except Exception as e:
         text = "# scrape_failed: %s\n" % e
     (outdir / "router-metrics.txt").write_text(text)
@@ -495,9 +508,12 @@ def main():
     mock_port = int(os.environ.get("MOCK_PORT") or free_tcp_port())
     router_port = int(os.environ.get("ROUTER_PORT") or free_tcp_port())
     mock_url = "http://127.0.0.1:%d" % mock_port
-    router_url = "http://127.0.0.1:%d" % router_port
+    router_scheme = "https" if BENCH_TLS else "http"
+    router_url = "%s://127.0.0.1:%d" % (router_scheme, router_port)
     print("host:", host)
-    print("mock_url:", mock_url, "router_url:", router_url)
+    print("mock_url:", mock_url, "router_url:", router_url, "tls:", BENCH_TLS)
+    if BENCH_TLS and (not BENCH_TLS_CERT.exists() or not BENCH_TLS_KEY.exists()):
+        raise RuntimeError("BENCH_TLS=1 but cert/key are missing: %s / %s" % (BENCH_TLS_CERT, BENCH_TLS_KEY))
 
     # Build release: router + mock (mock giờ là bin trong root crate).
     sh("cargo", "build", "--release", "--locked", cwd=REPO)
@@ -545,10 +561,17 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
             stdout=mock_log,
             stderr=subprocess.STDOUT,
         )
+        router_env = dict(os.environ, DATABASE_URL=db, LISTEN_ADDR="127.0.0.1:%d" % router_port,
+                          ADMIN_MASTER_KEY=ADMIN_KEY, MOCK_KEY="bench-mock-key", RUST_LOG="error")
+        if BENCH_TLS:
+            router_env["TLS_CERT_PATH"] = str(BENCH_TLS_CERT)
+            router_env["TLS_KEY_PATH"] = str(BENCH_TLS_KEY)
+        else:
+            router_env["TLS_CERT_PATH"] = ""
+            router_env["TLS_KEY_PATH"] = ""
         router = subprocess.Popen(
             [str(REPO / "target/release/brighto-router")],
-            env=dict(os.environ, DATABASE_URL=db, LISTEN_ADDR="127.0.0.1:%d" % router_port,
-                     ADMIN_MASTER_KEY=ADMIN_KEY, MOCK_KEY="bench-mock-key", RUST_LOG="error"),
+            env=router_env,
             stdout=router_log,
             stderr=subprocess.STDOUT,
         )
@@ -720,6 +743,7 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                 "command_pass": command_pass,
                 "knobs": {"DUR": DUR, "WARM": WARM, "RUNS": RUNS, "CONCS": CONCS,
                           "PAYLOADS": PAYLOADS, "STREAM_PAYLOADS": STREAM_PAYLOADS, "RUN_B6": RUN_B6, "RUN_B10": RUN_B10,
+                          "BENCH_TLS": BENCH_TLS,
                           "ADMIN_MASTER_KEY_set": bool(ADMIN_KEY), "B6_TARGET_RPS": B6_TARGET_RPS,
                           "B10_TARGET_RPS": B10_TARGET_RPS, "MODEL": MODEL, "B10_MODEL": B10_MODEL,
                           "BENCH_TARGET_RPS": BENCH_TARGET_RPS,
@@ -740,6 +764,7 @@ VALUES (1,'{kh}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
             gate = {"sha": host["sha"], "host": {"cpu": host["cpu"], "kernel": host["kernel"]},
                     "knobs": {"DUR": DUR, "WARM": WARM, "RUNS": RUNS, "CONCS": CONCS,
                               "PAYLOADS": PAYLOADS, "STREAM_PAYLOADS": STREAM_PAYLOADS, "RUN_B6": RUN_B6, "RUN_B10": RUN_B10,
+                              "BENCH_TLS": BENCH_TLS,
                               "B6_TARGET_RPS": B6_TARGET_RPS, "B10_TARGET_RPS": B10_TARGET_RPS, "MODEL": MODEL, "B10_MODEL": B10_MODEL,
                               "BENCH_TARGET_RPS": BENCH_TARGET_RPS,
                               "MOCK_PORT": mock_port, "ROUTER_PORT": router_port},
