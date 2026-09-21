@@ -250,7 +250,7 @@ def main() -> int:
         else:
             for migration in sorted((REPO / "migrations").glob("*.sql")):
                 sh("psql", db, "-v", "ON_ERROR_STOP=1", "-f", str(migration), env=migrate_env)
-        sh("psql", db, "-q", "-c", "INSERT INTO teams (id,name,budget,enabled) VALUES (1,'Browser Team',NULL,TRUE);", env=migrate_env)
+        sh("psql", db, "-q", "-c", "INSERT INTO teams (name,budget,enabled) VALUES ('Browser Team',NULL,TRUE);", env=migrate_env)
 
         with (log_dir / "mock.log").open("w") as f:
             mock = subprocess.Popen(
