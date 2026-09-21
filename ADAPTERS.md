@@ -150,7 +150,10 @@ Save enabled only after Test Connection passes. Save draft remains available for
 - `cargo fmt --check`
 - `cargo check --locked`
 - `cargo clippy --locked --all-targets -- -D warnings`
-- `python3 -m py_compile test_router.py scripts/adapter_smoke.py`
+- `python3 -m py_compile test_router.py scripts/adapter_smoke.py scripts/api_matrix_smoke.py scripts/adapter_router_smoke.py scripts/anthropic_smoke.py`
+- `python3 scripts/api_matrix_smoke.py` for deterministic mock coverage of OpenAI-compatible chat, Anthropic Messages, embeddings, rerank, ASR multipart, and protocol guard behavior.
+- `python3 scripts/adapter_router_smoke.py` for live OpenAI chat/embeddings/ASR plus Qwen, Jina, Voyage, and Cohere adapter coverage when keys are present.
+- `python3 scripts/anthropic_smoke.py` for live Anthropic Messages coverage when `ANTHROPIC_API_KEY` is present.
 - `./scripts/test_postgres.sh`
 
 `./scripts/test_postgres.sh` includes integration tests for embeddings, rerank, ASR multipart, streaming chat, large non-stream uploads, PostgreSQL ledger writing, and fallback behavior.

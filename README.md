@@ -219,10 +219,22 @@ python3 test_router.py --provider cohere --mode rerank --query "router speed"
 
 Use `--model <your-public-route>` instead of `--provider` when your Portal route has a custom public name. In rerank mode, `--query` and `--text` both work; `--query` is clearer and takes priority.
 
-Full preview-2 router smoke through Admin API and public client endpoints, using whichever provider keys exist in `.env`:
+Deterministic API matrix smoke with no paid provider keys. It starts temporary PostgreSQL, a temporary router, and the local mock upstream, then tests OpenAI-compatible chat, Anthropic Messages, embeddings, rerank, ASR multipart, and one protocol guard:
+
+```bash
+python3 scripts/api_matrix_smoke.py
+```
+
+Live router smoke through Admin API and public client endpoints, using whichever provider keys exist in `.env`. It covers OpenAI chat, OpenAI embeddings, OpenAI ASR, Qwen embeddings/rerank, Jina embeddings/rerank, Voyage embeddings/rerank, and Cohere rerank when the matching keys are present:
 
 ```bash
 python3 scripts/adapter_router_smoke.py
+```
+
+Anthropic Messages live smoke is separate so teams can run it only when `ANTHROPIC_API_KEY` is available:
+
+```bash
+python3 scripts/anthropic_smoke.py
 ```
 
 Image input through an OpenAI-style multimodal chat route:

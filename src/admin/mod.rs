@@ -2,7 +2,7 @@
 //! Auth: master key từ env + IP allowlist. Admin có thể xem lại client key qua /admin/keys/{id}/reveal.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Write as _,
     io::Read,
     net::{IpAddr, SocketAddr},
@@ -25,7 +25,9 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 
 use crate::auth;
 use crate::config::{DbConfigLoader, resolve_backend_key};
-use crate::contract::{ApiKey, AppState, Budget, KeyHash, ModelRoute, ProviderProtocol};
+use crate::contract::{
+    ApiKey, AppState, Budget, KeyHash, ModelRoute, ProviderProtocol, RoutingPolicy,
+};
 
 /// Phân biệt "field bị bỏ qua" (None) với "field = null" (Some(None)) cho Option<Option<T>>.
 /// serde mặc định map null -> None (giống bỏ qua); helper này giữ null -> Some(None).
@@ -463,6 +465,47 @@ struct UpsertRoute {
     auth_mode: Option<String>,
     /// Route-level protocol, for example openai_chat, openai_embeddings, cohere_rerank, openai_audio_transcriptions.
     protocol: Option<String>,
+    /// Model Group routing policy: least_loaded_weighted | round_robin | weighted_round_robin.
+    routing_policy: Option<String>,
+    /// Optional endpoint overrides for Model Group load balancing. Omitted = keep existing endpoint rows.
+    endpoints: Option<Vec<UpsertRouteEndpoint>>,
+}
+
+#[derive(Deserialize)]
+struct UpsertRouteEndpoint {
+    backend_id: i64,
+    provider_model_name: Option<String>,
+    provider_key: Option<String>,
+    provider_key_ref: Option<String>,
+    auth_mode: Option<String>,
+    protocol: Option<String>,
+    weight: Option<u32>,
+    max_inflight: Option<u32>,
+    enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+struct ValidatedRouteEndpoint {
+    backend_id: i64,
+    provider_model_name: String,
+    provider_key_ref: Option<String>,
+    auth_mode: String,
+    protocol: String,
+    weight: u32,
+    max_inflight: u32,
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+struct RouteEndpointResponse {
+    backend_id: i64,
+    provider_model_name: String,
+    provider_key_ref: Option<String>,
+    auth_mode: String,
+    protocol: String,
+    weight: u32,
+    max_inflight: u32,
+    enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -480,6 +523,8 @@ struct RouteResponse {
     enabled: bool,
     auth_mode: String,
     protocol: String,
+    routing_policy: String,
+    endpoints: Vec<RouteEndpointResponse>,
     /// route.enabled && có ít nhất 1 backend tham chiếu enabled.
     effective_enabled: bool,
     /// None nếu effective; 'disabled manually' / 'provider disabled'.
@@ -753,16 +798,48 @@ async fn load_lifecycle_data(pool: &PgPool) -> Result<LifecycleData, ApiError> {
     })
 }
 
+async fn load_route_endpoint_responses(
+    pool: &PgPool,
+) -> Result<HashMap<String, Vec<RouteEndpointResponse>>, ApiError> {
+    let rows = sqlx::query::<sqlx::Postgres>(
+        "SELECT model_name, backend_id, provider_model_name, provider_key_ref, auth_mode, \
+         protocol, weight, max_inflight, enabled FROM model_route_endpoints \
+         ORDER BY model_name, backend_id",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut out: HashMap<String, Vec<RouteEndpointResponse>> = HashMap::new();
+    for row in rows {
+        let model_name: String = row.try_get("model_name")?;
+        let weight: i64 = row.try_get("weight")?;
+        let max_inflight: i64 = row.try_get("max_inflight")?;
+        out.entry(model_name)
+            .or_default()
+            .push(RouteEndpointResponse {
+                backend_id: row.try_get("backend_id")?,
+                provider_model_name: row.try_get("provider_model_name")?,
+                provider_key_ref: row.try_get("provider_key_ref")?,
+                auth_mode: row.try_get("auth_mode")?,
+                protocol: row.try_get("protocol")?,
+                weight: u32::try_from(weight.max(1)).unwrap_or(1),
+                max_inflight: u32::try_from(max_inflight.max(0)).unwrap_or(0),
+                enabled: row.try_get("enabled")?,
+            });
+    }
+    Ok(out)
+}
+
 async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiError> {
     let rows = sqlx::query::<sqlx::Postgres>(
         "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
-         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, auth_mode, protocol \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, auth_mode, protocol, routing_policy \
          FROM model_routes ORDER BY model_name",
     )
     .fetch_all(pool)
     .await?;
     let lc = load_lifecycle_data(pool).await?;
+    let mut endpoint_rows = load_route_endpoint_responses(pool).await?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
@@ -788,6 +865,7 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
             None
         };
         let usage_count = lc.usage_by_model.get(&model_name).copied().unwrap_or(0);
+        let endpoints = endpoint_rows.remove(&model_name).unwrap_or_default();
 
         out.push(RouteResponse {
             model_name,
@@ -803,6 +881,8 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
             enabled,
             auth_mode: row.try_get("auth_mode")?,
             protocol: row.try_get("protocol")?,
+            routing_policy: row.try_get("routing_policy")?,
+            endpoints,
             effective_enabled,
             disabled_reason,
             usage_count,
@@ -943,7 +1023,8 @@ async fn put_backend_key(
     if !exists {
         return Err(ApiError::not_found("backend not found"));
     }
-    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
+    let data_dir =
+        std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
     let dir = std::path::Path::new(&data_dir).join("provider_keys");
     let path = dir.join(format!("{id}.key"));
     write_provider_key_file(&path, &key)?;
@@ -1807,6 +1888,54 @@ struct ValidatedRoute {
     provider_key_ref: Option<String>,
     auth_mode: String,
     protocol: String,
+    routing_policy: RoutingPolicy,
+    endpoints: Option<Vec<ValidatedRouteEndpoint>>,
+}
+
+fn protocol_family(protocol: &str) -> &'static str {
+    match ProviderProtocol::parse(protocol) {
+        ProviderProtocol::OpenAiChat
+        | ProviderProtocol::LocalOpenAiChat
+        | ProviderProtocol::CustomOpenAiChat => "openai_chat",
+        ProviderProtocol::OpenAiCompletions => "openai_completions",
+        ProviderProtocol::OpenAiEmbeddings => "openai_embeddings",
+        ProviderProtocol::OpenAiRerank => "openai_rerank",
+        ProviderProtocol::QwenRerank => "qwen_rerank",
+        ProviderProtocol::CohereRerank => "cohere_rerank",
+        ProviderProtocol::VoyageRerank => "voyage_rerank",
+        ProviderProtocol::JinaRerank => "jina_rerank",
+        ProviderProtocol::OpenAiAudioTranscriptions => "openai_audio_transcriptions",
+        ProviderProtocol::AnthropicMessages => "anthropic_messages",
+    }
+}
+
+fn validate_key_ref(value: &str) -> Result<String, ApiError> {
+    let r = value.trim();
+    if !(r.starts_with("env:") || r.starts_with("file:")) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "provider_key_ref must be env:NAME or file:/path",
+        ));
+    }
+    Ok(r.to_string())
+}
+
+fn write_route_endpoint_key_file(
+    model_name: &str,
+    backend_id: i64,
+    key: &str,
+) -> Result<String, ApiError> {
+    let data_dir =
+        std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
+    let dir = std::path::Path::new(&data_dir).join("provider_keys");
+    let file = format!(
+        "route_{}_backend_{}.key",
+        hex_encode(&Sha256::digest(model_name.as_bytes())),
+        backend_id
+    );
+    let path = dir.join(&file);
+    write_provider_key_file(&path, key)?;
+    Ok(format!("file:{}", path.display()))
 }
 
 fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
@@ -1920,18 +2049,123 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
-            Some(r) => {
-                if !(r.starts_with("env:") || r.starts_with("file:")) {
-                    return Err(ApiError::new(
-                        StatusCode::BAD_REQUEST,
-                        "provider_key_ref must be env:NAME or file:/path",
-                    ));
-                }
-                Some(r.to_string())
-            }
+            Some(r) => Some(validate_key_ref(r)?),
             None => None,
         },
     };
+    let routing_policy = RoutingPolicy::parse(
+        payload
+            .routing_policy
+            .as_deref()
+            .unwrap_or("least_loaded_weighted"),
+    );
+
+    let endpoints = match payload.endpoints {
+        Some(items) => {
+            let mut seen = HashSet::new();
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                if item.backend_id <= 0 {
+                    return Err(ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        "endpoint backend_id must be positive",
+                    ));
+                }
+                if !payload.backend_ids.contains(&item.backend_id) {
+                    return Err(ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        format!(
+                            "endpoint backend_id {} must be listed in backend_ids",
+                            item.backend_id
+                        ),
+                    ));
+                }
+                if !seen.insert(item.backend_id) {
+                    return Err(ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        format!("duplicate endpoint backend_id {}", item.backend_id),
+                    ));
+                }
+                let endpoint_auth = match item.auth_mode.as_deref().unwrap_or(&auth_mode).trim() {
+                    "bearer" | "anthropic" | "none" => item
+                        .auth_mode
+                        .as_deref()
+                        .unwrap_or(&auth_mode)
+                        .trim()
+                        .to_string(),
+                    other => {
+                        return Err(ApiError::new(
+                            StatusCode::BAD_REQUEST,
+                            format!(
+                                "endpoint auth_mode must be bearer, anthropic or none, got: {other}"
+                            ),
+                        ));
+                    }
+                };
+                let endpoint_protocol = item
+                    .protocol
+                    .as_deref()
+                    .map(ProviderProtocol::parse)
+                    .unwrap_or_else(|| ProviderProtocol::parse(&protocol))
+                    .as_str()
+                    .to_string();
+                if protocol_family(&endpoint_protocol) != protocol_family(&protocol) {
+                    return Err(ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        format!(
+                            "endpoint protocol {} is not compatible with group protocol {}",
+                            endpoint_protocol, protocol
+                        ),
+                    ));
+                }
+                let endpoint_key_ref = match item
+                    .provider_key
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
+                    Some(key) => {
+                        if endpoint_auth == "none" {
+                            return Err(ApiError::new(
+                                StatusCode::BAD_REQUEST,
+                                "endpoint provider key must be empty when auth_mode is none",
+                            ));
+                        }
+                        Some(write_route_endpoint_key_file(
+                            &model_name,
+                            item.backend_id,
+                            key,
+                        )?)
+                    }
+                    None => match item
+                        .provider_key_ref
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        Some(r) => Some(validate_key_ref(r)?),
+                        None => None,
+                    },
+                };
+                out.push(ValidatedRouteEndpoint {
+                    backend_id: item.backend_id,
+                    provider_model_name: item
+                        .provider_model_name
+                        .filter(|s| !s.trim().is_empty())
+                        .unwrap_or_else(|| provider_model_name.clone()),
+                    provider_key_ref: endpoint_key_ref,
+                    auth_mode: endpoint_auth,
+                    protocol: endpoint_protocol,
+                    weight: item.weight.unwrap_or(1).max(1),
+                    max_inflight: item.max_inflight.unwrap_or(0),
+                    enabled: item.enabled.unwrap_or(true),
+                });
+            }
+            Some(out)
+        }
+        None => None,
+    };
+
     let backend_ids_json = serde_json::to_string(&payload.backend_ids)?;
     Ok(ValidatedRoute {
         model_name,
@@ -1949,6 +2183,8 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
         provider_key_ref,
         auth_mode,
         protocol,
+        routing_policy,
+        endpoints,
     })
 }
 
@@ -1967,6 +2203,22 @@ fn route_response(v: ValidatedRoute) -> RouteResponse {
         enabled: v.enabled,
         auth_mode: v.auth_mode,
         protocol: v.protocol,
+        routing_policy: v.routing_policy.as_str().to_string(),
+        endpoints: v
+            .endpoints
+            .unwrap_or_default()
+            .into_iter()
+            .map(|e| RouteEndpointResponse {
+                backend_id: e.backend_id,
+                provider_model_name: e.provider_model_name,
+                provider_key_ref: e.provider_key_ref,
+                auth_mode: e.auth_mode,
+                protocol: e.protocol,
+                weight: e.weight,
+                max_inflight: e.max_inflight,
+                enabled: e.enabled,
+            })
+            .collect(),
         effective_enabled: v.enabled,
         disabled_reason: None,
         usage_count: 0,
@@ -1991,6 +2243,39 @@ async fn enable_referenced_backends(
     Ok(())
 }
 
+async fn replace_route_endpoints(
+    pool: &sqlx::PgPool,
+    model_name: &str,
+    endpoints: Option<&[ValidatedRouteEndpoint]>,
+) -> Result<(), ApiError> {
+    let Some(endpoints) = endpoints else {
+        return Ok(());
+    };
+    sqlx::query::<sqlx::Postgres>("DELETE FROM model_route_endpoints WHERE model_name = $1")
+        .bind(model_name)
+        .execute(pool)
+        .await?;
+    for endpoint in endpoints {
+        sqlx::query::<sqlx::Postgres>(
+            "INSERT INTO model_route_endpoints \
+             (model_name, backend_id, provider_model_name, provider_key_ref, auth_mode, protocol, weight, max_inflight, enabled) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(model_name)
+        .bind(endpoint.backend_id)
+        .bind(&endpoint.provider_model_name)
+        .bind(&endpoint.provider_key_ref)
+        .bind(&endpoint.auth_mode)
+        .bind(&endpoint.protocol)
+        .bind(endpoint.weight as i64)
+        .bind(endpoint.max_inflight as i64)
+        .bind(endpoint.enabled)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
 async fn upsert_route(
     Extension(state): Extension<Arc<AdminState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -2003,8 +2288,8 @@ async fn upsert_route(
     sqlx::query::<sqlx::Postgres>(
         "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
-         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol, routing_policy) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) \
          ON CONFLICT (model_name) DO UPDATE SET \
          backend_ids = EXCLUDED.backend_ids, fallback_backend_id = EXCLUDED.fallback_backend_id, \
          chars_per_token = EXCLUDED.chars_per_token, first_byte_timeout = EXCLUDED.first_byte_timeout, \
@@ -2014,7 +2299,7 @@ async fn upsert_route(
          price_output_per_mtok_usd = EXCLUDED.price_output_per_mtok_usd, enabled = EXCLUDED.enabled, \
          provider_key_ref = COALESCE(EXCLUDED.provider_key_ref, model_routes.provider_key_ref), \
          auth_mode = EXCLUDED.auth_mode, \
-         protocol = EXCLUDED.protocol",
+         protocol = EXCLUDED.protocol, routing_policy = EXCLUDED.routing_policy",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -2030,8 +2315,10 @@ async fn upsert_route(
     .bind(&v.provider_key_ref)
     .bind(&v.auth_mode)
     .bind(&v.protocol)
+    .bind(v.routing_policy.as_str())
     .execute(pool)
     .await?;
+    replace_route_endpoints(pool, &v.model_name, v.endpoints.as_deref()).await?;
     // Provider templates ship disabled; a tested route saved as enabled must activate them.
     if v.enabled {
         enable_referenced_backends(pool, &v.backend_ids, v.fallback_backend_id).await?;
@@ -2086,7 +2373,7 @@ async fn patch_route(
          context_tokens = $7, max_output_tokens = $8, price_input_per_mtok_usd = $9, \
          price_output_per_mtok_usd = $10, enabled = $11, \
          provider_key_ref = COALESCE($12, provider_key_ref), auth_mode = $13, \
-         protocol = $14 WHERE model_name = $15",
+         protocol = $14, routing_policy = $15 WHERE model_name = $16",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -2102,12 +2389,14 @@ async fn patch_route(
     .bind(&v.provider_key_ref)
     .bind(&v.auth_mode)
     .bind(&v.protocol)
+    .bind(v.routing_policy.as_str())
     .bind(&old_name)
     .execute(pool)
     .await?;
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("route not found"));
     }
+    replace_route_endpoints(pool, &v.model_name, v.endpoints.as_deref()).await?;
     // Kích hoạt provider endpoints khi lưu route enabled (giống upsert_route).
     if v.enabled {
         enable_referenced_backends(pool, &v.backend_ids, v.fallback_backend_id).await?;
@@ -2146,7 +2435,8 @@ async fn delete_route(
         return Err(ApiError::not_found("route not found"));
     }
     // Xoá file provider key của route (tránh orphan plaintext secret).
-    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
+    let data_dir =
+        std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
     let key_path = std::path::Path::new(&data_dir)
         .join("provider_keys")
         .join(format!(
@@ -3438,7 +3728,11 @@ mod tests {
         let key = generate_key().expect("generate key");
         assert!(key.starts_with("sk-brighto-"));
         assert_eq!(key.len(), "sk-brighto-".len() + 32);
-        assert!(key["sk-brighto-".len()..].chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(
+            key["sk-brighto-".len()..]
+                .chars()
+                .all(|c| c.is_ascii_hexdigit())
+        );
     }
 
     #[test]

@@ -17,6 +17,8 @@ use serde::Deserialize;
 use serde_json::value::RawValue;
 
 use crate::auth;
+#[cfg(test)]
+use crate::contract::RoutingPolicy;
 use crate::contract::{ApiKey, AppState, BudgetError, ModelRoute, ProviderProtocol};
 use crate::proxy::{self, ProxyContext, ProxyRequestBody};
 
@@ -546,8 +548,9 @@ async fn handle_generate(
     }
 
     // 5. Budget reserve + concurrency (RAII: nếu mọi đường return sau đây, tự rollback/release).
-    let allow_streaming_upload =
-        route.backend_ids.len() == 1 && route.fallback_backend_id.is_none();
+    let allow_streaming_upload = route.backend_ids.len() == 1
+        && route.fallback_backend_id.is_none()
+        && route.endpoints.is_empty();
     let body_len = incoming.body_len();
     let est_tokens = estimate_tokens_len(body_len, &route);
     let (head, proxy_body) = match incoming
@@ -579,21 +582,24 @@ async fn handle_generate(
     let (head, mut proxy_body) = (head, proxy_body);
     match &proxy_body {
         ProxyRequestBody::Buffered(body) => {
-            if let Some(b) = rewrite_json_proxy_body(body, &route, protocol) {
-                proxy_body = ProxyRequestBody::Buffered(Bytes::from(b));
-            } else if route.provider_model_name != model
-                || protocol == ProviderProtocol::VoyageRerank
-                || protocol == ProviderProtocol::QwenRerank
-            {
-                return build_error(
-                    &request_id,
-                    StatusCode::BAD_REQUEST,
-                    "could not rewrite adapter request body",
-                );
+            if route.endpoints.is_empty() {
+                if let Some(b) = rewrite_json_proxy_body(body, &route, protocol) {
+                    proxy_body = ProxyRequestBody::Buffered(Bytes::from(b));
+                } else if route.provider_model_name != model
+                    || protocol == ProviderProtocol::VoyageRerank
+                    || protocol == ProviderProtocol::QwenRerank
+                {
+                    return build_error(
+                        &request_id,
+                        StatusCode::BAD_REQUEST,
+                        "could not rewrite adapter request body",
+                    );
+                }
             }
         }
         ProxyRequestBody::Streaming { .. } => {
-            if route.provider_model_name != model
+            if !route.endpoints.is_empty()
+                || route.provider_model_name != model
                 || protocol == ProviderProtocol::VoyageRerank
                 || protocol == ProviderProtocol::QwenRerank
             {
@@ -650,6 +656,7 @@ async fn handle_generate(
     };
 
     // 6. Forward qua proxy (nơi duy nhất forward/stream/tap).
+    let rewrite_model_in_proxy = !route.endpoints.is_empty();
     let ctx = ProxyContext {
         api_key: key,
         model_name: model.to_string(),
@@ -657,6 +664,7 @@ async fn handle_generate(
         request_id,
         stream,
         stream_options_present,
+        rewrite_model_in_proxy,
         reservation,
         concurrency,
         start: started,
@@ -824,6 +832,7 @@ async fn handle_multipart_adapter(
         request_id,
         stream: false,
         stream_options_present: true,
+        rewrite_model_in_proxy: false,
         reservation,
         concurrency,
         start: started,
@@ -983,6 +992,8 @@ fn rewrite_model_field(body: &[u8], new_model: &str) -> Option<Vec<u8>> {
         auth_mode: "bearer".to_string(),
         protocol: "openai_chat".to_string(),
         provider_key: None,
+        routing_policy: RoutingPolicy::LeastLoadedWeighted,
+        endpoints: std::collections::HashMap::new(),
     };
     rewrite_json_proxy_body(body, &route, ProviderProtocol::OpenAiChat)
 }
@@ -1089,6 +1100,8 @@ mod tests {
             auth_mode: "bearer".to_string(),
             protocol: "openai_chat".to_string(),
             provider_key: None,
+            routing_policy: RoutingPolicy::LeastLoadedWeighted,
+            endpoints: std::collections::HashMap::new(),
         }
     }
 
@@ -1215,6 +1228,8 @@ mod tests {
             auth_mode: "bearer".to_string(),
             protocol: "openai_chat".to_string(),
             provider_key: None,
+            routing_policy: RoutingPolicy::LeastLoadedWeighted,
+            endpoints: std::collections::HashMap::new(),
         };
         let body = Bytes::from_static(b"hello world");
         let est = estimate_tokens_len(body.len(), &route);

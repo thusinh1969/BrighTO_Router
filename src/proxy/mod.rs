@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::budget::{BudgetReservation, ConcurrencyGuard};
 use crate::contract::{ApiKey, AppState, BackendFormat, ModelRoute, UsageEvent};
-use crate::route::{BackendExclusions, BackendLease};
+use crate::route::{AcquireError, BackendExclusions, BackendLease};
 
 /// Quick check trước khi parse — tránh parse cả body 1MB. memchr, không cấp phát.
 pub fn chunk_may_have_usage(chunk: &[u8]) -> bool {
@@ -37,6 +37,19 @@ pub fn splice_include_usage(body: &[u8]) -> Option<Vec<u8>> {
     new_body.extend_from_slice(b",\"stream_options\":{\"include_usage\":true}");
     new_body.extend_from_slice(&body[last_brace..]);
     Some(new_body)
+}
+
+fn rewrite_top_level_model(body: &[u8], provider_model_name: &str) -> Option<Bytes> {
+    let mut value: Value = serde_json::from_slice(body).ok()?;
+    let obj = value.as_object_mut()?;
+    if obj.get("model").and_then(|v| v.as_str()) == Some(provider_model_name) {
+        return Some(Bytes::copy_from_slice(body));
+    }
+    obj.insert(
+        "model".to_string(),
+        Value::String(provider_model_name.to_string()),
+    );
+    serde_json::to_vec(&value).ok().map(Bytes::from)
 }
 
 /// Heuristic nhẹ: body có yêu cầu stream hay không (không parse full JSON).
@@ -390,6 +403,8 @@ pub struct ProxyContext {
     pub request_id: String,
     pub stream: bool,
     pub stream_options_present: bool,
+    /// True only when proxy must rewrite top-level JSON model after endpoint selection.
+    pub rewrite_model_in_proxy: bool,
     pub reservation: Option<BudgetReservation>,
     pub concurrency: Option<ConcurrencyGuard>,
     pub start: Instant,
@@ -607,11 +622,11 @@ fn build_response(
     builder.body(body).expect("failed to build response")
 }
 
-fn no_backend_body(reason: &'static str) -> Response<Body> {
+fn no_backend_body(reason: impl Into<String>) -> Response<Body> {
     build_response(
         StatusCode::SERVICE_UNAVAILABLE,
         reqwest::header::HeaderMap::new(),
-        Body::from(reason),
+        Body::from(reason.into()),
     )
 }
 
@@ -827,7 +842,22 @@ pub async fn proxy_forward(
     let concurrency = ctx.concurrency.take();
 
     let mut tried = BackendExclusions::default();
-    let mut lease = state.backends.acquire_excluding(&ctx.route, &mut tried);
+    let mut lease = match state
+        .backends
+        .acquire_excluding(&ctx.route, &mut tried)
+        .await
+    {
+        Ok(lease) => lease,
+        Err(AcquireError::CounterUnavailable(msg)) => {
+            request_total_for(&ctx, "", 503);
+            return tag_router_headers(
+                no_backend_body(&msg),
+                &ctx.request_id,
+                None,
+                start.elapsed().as_millis() as u64,
+            );
+        }
+    };
 
     loop {
         let Some(l) = lease else {
@@ -857,6 +887,8 @@ pub async fn proxy_forward(
             );
         };
 
+        let endpoint = ctx.route.endpoint_for(backend_id);
+
         let Some(body_for_attempt) = upload_body.take() else {
             request_total_for(&ctx, &backend.name, 502);
             return tag_router_headers(
@@ -873,16 +905,36 @@ pub async fn proxy_forward(
 
         let request_body = match body_for_attempt {
             ProxyRequestBody::Buffered(body) => {
-                let bytes = if backend.format == BackendFormat::OpenAi
-                    && stream_request
-                    && !ctx.stream_options_present
+                let mut bytes = if ctx.rewrite_model_in_proxy
+                    && endpoint.provider_model_name != ctx.model_name
                 {
-                    splice_include_usage(&body)
-                        .map(Bytes::from)
-                        .unwrap_or_else(|| body.clone())
+                    match rewrite_top_level_model(&body, &endpoint.provider_model_name) {
+                        Some(b) => b,
+                        None => {
+                            request_total_for(&ctx, &backend.name, 400);
+                            return tag_router_headers(
+                                build_response(
+                                    StatusCode::BAD_REQUEST,
+                                    reqwest::header::HeaderMap::new(),
+                                    Body::from("could not rewrite endpoint model field"),
+                                ),
+                                &ctx.request_id,
+                                Some(&backend.name),
+                                start.elapsed().as_millis() as u64,
+                            );
+                        }
+                    }
                 } else {
                     body.clone()
                 };
+                if backend.format == BackendFormat::OpenAi
+                    && stream_request
+                    && !ctx.stream_options_present
+                {
+                    bytes = splice_include_usage(&bytes)
+                        .map(Bytes::from)
+                        .unwrap_or(bytes);
+                }
                 upload_body = Some(ProxyRequestBody::Buffered(body));
                 reqwest::Body::from(bytes)
             }
@@ -907,14 +959,17 @@ pub async fn proxy_forward(
         };
 
         let url = build_target_url(&backend.base_url, &uri);
-        // Ưu tiên route-level credential; nếu route không có key riêng thì dùng key của backend
-        // được chọn (mỗi backend có key riêng, kể cả fallback/secondary).
-        let auth_key = ctx
-            .route
-            .provider_key
-            .as_deref()
-            .or(backend.api_key.as_deref())
-            .unwrap_or("");
+        // Endpoint-level credential wins. auth_mode=none means no provider auth header, even if
+        // the backend template has an env key. If no endpoint key exists, fallback to backend key.
+        let auth_key = if endpoint.auth_mode == "none" {
+            ""
+        } else {
+            endpoint
+                .provider_key
+                .as_deref()
+                .or(backend.api_key.as_deref())
+                .unwrap_or("")
+        };
         let built = build_reqwest_request(
             &state.client,
             &method,
@@ -931,11 +986,27 @@ pub async fn proxy_forward(
             state.backends.note_result(backend_id, false);
             drop(l);
             request_total_for(&ctx, &backend.name, 502);
-            if upload_replayable
-                && let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried)
-            {
-                lease = Some(next);
-                continue;
+            if upload_replayable {
+                match state
+                    .backends
+                    .acquire_excluding(&ctx.route, &mut tried)
+                    .await
+                {
+                    Ok(Some(next)) => {
+                        lease = Some(next);
+                        continue;
+                    }
+                    Ok(None) => {}
+                    Err(AcquireError::CounterUnavailable(msg)) => {
+                        request_total_for(&ctx, "", 503);
+                        return tag_router_headers(
+                            no_backend_body(&msg),
+                            &ctx.request_id,
+                            None,
+                            start.elapsed().as_millis() as u64,
+                        );
+                    }
+                }
             }
             return tag_router_headers(
                 build_response(
@@ -959,12 +1030,29 @@ pub async fn proxy_forward(
                 let status = resp.status().as_u16();
                 if is_retryable_status(status) {
                     state.backends.note_result(backend_id, false);
-                    if upload_replayable
-                        && let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried)
-                    {
-                        drop(l);
-                        lease = Some(next);
-                        continue;
+                    if upload_replayable {
+                        match state
+                            .backends
+                            .acquire_excluding(&ctx.route, &mut tried)
+                            .await
+                        {
+                            Ok(Some(next)) => {
+                                drop(l);
+                                lease = Some(next);
+                                continue;
+                            }
+                            Ok(None) => {}
+                            Err(AcquireError::CounterUnavailable(msg)) => {
+                                drop(l);
+                                request_total_for(&ctx, "", 503);
+                                return tag_router_headers(
+                                    no_backend_body(&msg),
+                                    &ctx.request_id,
+                                    None,
+                                    start.elapsed().as_millis() as u64,
+                                );
+                            }
+                        }
                     }
                     // Không còn backend dự phòng, hoặc upload body đã là stream một lần: forward phản hồi lỗi này.
                 } else {
@@ -994,11 +1082,27 @@ pub async fn proxy_forward(
                 state.backends.note_result(backend_id, false);
                 drop(l);
                 request_total_for(&ctx, &backend.name, 502);
-                if upload_replayable
-                    && let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried)
-                {
-                    lease = Some(next);
-                    continue;
+                if upload_replayable {
+                    match state
+                        .backends
+                        .acquire_excluding(&ctx.route, &mut tried)
+                        .await
+                    {
+                        Ok(Some(next)) => {
+                            lease = Some(next);
+                            continue;
+                        }
+                        Ok(None) => {}
+                        Err(AcquireError::CounterUnavailable(msg)) => {
+                            request_total_for(&ctx, "", 503);
+                            return tag_router_headers(
+                                no_backend_body(&msg),
+                                &ctx.request_id,
+                                None,
+                                start.elapsed().as_millis() as u64,
+                            );
+                        }
+                    }
                 }
                 return tag_router_headers(
                     build_response(
@@ -1015,11 +1119,27 @@ pub async fn proxy_forward(
                 state.backends.note_result(backend_id, false);
                 drop(l);
                 request_total_for(&ctx, &backend.name, 504);
-                if upload_replayable
-                    && let Some(next) = state.backends.acquire_excluding(&ctx.route, &mut tried)
-                {
-                    lease = Some(next);
-                    continue;
+                if upload_replayable {
+                    match state
+                        .backends
+                        .acquire_excluding(&ctx.route, &mut tried)
+                        .await
+                    {
+                        Ok(Some(next)) => {
+                            lease = Some(next);
+                            continue;
+                        }
+                        Ok(None) => {}
+                        Err(AcquireError::CounterUnavailable(msg)) => {
+                            request_total_for(&ctx, "", 503);
+                            return tag_router_headers(
+                                no_backend_body(&msg),
+                                &ctx.request_id,
+                                None,
+                                start.elapsed().as_millis() as u64,
+                            );
+                        }
+                    }
                 }
                 return tag_router_headers(
                     build_response(

@@ -24,6 +24,31 @@ LLAMA_BASE = "http://127.0.0.1:8088/v1"
 DEEPSEEK_BASE = "https://api.deepseek.com"
 
 
+def source_newer_than_binary(binary):
+    if not binary.exists():
+        return True
+    cutoff = binary.stat().st_mtime
+    roots = [REPO / "src", REPO / "migrations", REPO / "static", REPO / "Cargo.toml", REPO / "Cargo.lock"]
+    for root in roots:
+        if root.is_file():
+            if root.stat().st_mtime > cutoff:
+                return True
+            continue
+        if root.exists():
+            for item in root.rglob("*"):
+                if item.is_file() and item.stat().st_mtime > cutoff:
+                    return True
+    return False
+
+
+def ensure_binary():
+    if os.environ.get("BRIGHTO_SKIP_RELEASE_BUILD") == "1" and BIN.exists():
+        return
+    if source_newer_than_binary(BIN):
+        print("Building release router binary for smoke test...")
+        subprocess.run(["cargo", "build", "--release", "--locked"], cwd=REPO, check=True)
+
+
 def free_port():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -37,6 +62,7 @@ def sh(*a, **kw):
 
 
 def main():
+    ensure_binary()
     if "DEEPSEEK_KEY" not in os.environ:
         print("Set DEEPSEEK_KEY=sk-... to run this smoke.", file=sys.stderr)
         sys.exit(2)

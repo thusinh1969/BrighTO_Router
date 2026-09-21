@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,8 +8,8 @@ use sqlx::Row;
 use sqlx::postgres::{PgPool, PgRow};
 
 use crate::contract::{
-    ApiKey, Backend, BackendFormat, Budget, ConfigSnapshot, KeyHash, ModelRoute, ProviderProtocol,
-    Team,
+    ApiKey, Backend, BackendFormat, Budget, ConfigSnapshot, KeyHash, ModelEndpoint, ModelRoute,
+    ProviderProtocol, RoutingPolicy, Team,
 };
 
 pub struct DbConfigLoader {
@@ -108,12 +109,13 @@ impl DbConfigLoader {
     }
 
     async fn load_routes(&self) -> Result<Vec<ModelRoute>> {
+        let mut endpoint_overrides = self.load_route_endpoints().await?;
         let rows = fetch_rows(
             &self.pool,
             "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
              provider_model_name, context_tokens, max_output_tokens, \
              price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, \
-             provider_key_ref, auth_mode, protocol FROM model_routes",
+             provider_key_ref, auth_mode, protocol, routing_policy FROM model_routes",
         )
         .await
         .context("load model_routes")?;
@@ -139,6 +141,7 @@ impl DbConfigLoader {
             let auth_mode = g_str(&row, 12)?;
             let protocol_raw = g_str(&row, 13)?;
             let protocol = ProviderProtocol::parse(&protocol_raw).as_str().to_string();
+            let routing_policy = RoutingPolicy::parse(&g_str(&row, 14)?);
             // Resolve route-level credential (nếu có). Khi route không có credential riêng, để
             // provider_key = None; proxy sẽ dùng backend.api_key của backend được chọn tại thời điểm
             // forward (mỗi backend có key riêng, kể cả fallback/secondary).
@@ -149,6 +152,7 @@ impl DbConfigLoader {
             } else {
                 None
             };
+            let endpoints = endpoint_overrides.remove(&model_name).unwrap_or_default();
             out.push(ModelRoute {
                 model_name,
                 backend_ids,
@@ -165,7 +169,57 @@ impl DbConfigLoader {
                 auth_mode,
                 protocol,
                 provider_key,
+                routing_policy,
+                endpoints,
             });
+        }
+        Ok(out)
+    }
+
+    async fn load_route_endpoints(&self) -> Result<HashMap<String, HashMap<i64, ModelEndpoint>>> {
+        let rows = fetch_rows(
+            &self.pool,
+            "SELECT model_name, backend_id, provider_model_name, provider_key_ref, auth_mode, \
+             protocol, weight, max_inflight, enabled FROM model_route_endpoints",
+        )
+        .await
+        .context("load model_route_endpoints")?;
+
+        let mut out: HashMap<String, HashMap<i64, ModelEndpoint>> = HashMap::new();
+        for row in rows {
+            let model_name = g_str(&row, 0)?;
+            let backend_id = g_i64(&row, 1)?;
+            let provider_model_name = g_str(&row, 2)?;
+            let provider_key_ref: Option<String> =
+                row.try_get::<Option<String>, _>(3).unwrap_or(None);
+            let auth_mode = g_str(&row, 4)?;
+            let protocol = ProviderProtocol::parse(&g_str(&row, 5)?)
+                .as_str()
+                .to_string();
+            let weight = g_i64(&row, 6)?.max(1);
+            let max_inflight = g_i64(&row, 7)?.max(0);
+            let enabled = g_bool(&row, 8)?;
+            let provider_key = if auth_mode == "none" {
+                None
+            } else if let Some(kr) = &provider_key_ref {
+                resolve_backend_key(kr)
+            } else {
+                None
+            };
+            out.entry(model_name).or_default().insert(
+                backend_id,
+                ModelEndpoint {
+                    backend_id,
+                    provider_model_name,
+                    provider_key_ref,
+                    auth_mode,
+                    protocol,
+                    weight: u32::try_from(weight).unwrap_or(1),
+                    max_inflight: u32::try_from(max_inflight).unwrap_or(0),
+                    enabled,
+                    provider_key,
+                },
+            );
         }
         Ok(out)
     }

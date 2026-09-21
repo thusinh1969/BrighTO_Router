@@ -85,7 +85,15 @@ async fn main() -> anyhow::Result<()> {
 
     // Concrete runtime state.
     let budget = Arc::new(RamBudgetStore::new());
-    let backends = Arc::new(RamBackendPool::new());
+    let counter_block_size = std::env::var("ROUTE_COUNTER_BLOCK_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(1024)
+        .max(1);
+    let backends = Arc::new(RamBackendPool::new_with_counter_pool(
+        cfg_pool.clone(),
+        counter_block_size,
+    ));
     let client = build_client();
     let metrics = Metrics::install();
     let config_ok_at = Arc::new(std::sync::atomic::AtomicU64::new(0));

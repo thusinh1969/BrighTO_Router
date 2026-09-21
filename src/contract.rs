@@ -151,6 +151,56 @@ impl std::fmt::Debug for Backend {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoutingPolicy {
+    /// Production default from preview-2: choose the lowest inflight/weight healthy endpoint.
+    LeastLoadedWeighted,
+    /// One request per healthy endpoint in order. Endpoint weight is ignored.
+    RoundRobin,
+    /// Deterministic weighted sequence per model group.
+    WeightedRoundRobin,
+}
+
+impl RoutingPolicy {
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "round_robin" | "rr" => Self::RoundRobin,
+            "weighted_round_robin" | "weighted" | "wrr" => Self::WeightedRoundRobin,
+            _ => Self::LeastLoadedWeighted,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LeastLoadedWeighted => "least_loaded_weighted",
+            Self::RoundRobin => "round_robin",
+            Self::WeightedRoundRobin => "weighted_round_robin",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelEndpoint {
+    pub backend_id: i64,
+    /// Provider model for this endpoint inside the model group. Empty -> route provider_model_name.
+    pub provider_model_name: String,
+    pub provider_key_ref: Option<String>,
+    pub auth_mode: String,
+    pub protocol: String,
+    pub weight: u32,
+    pub max_inflight: u32,
+    pub enabled: bool,
+    pub provider_key: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EffectiveModelEndpoint {
+    pub provider_model_name: String,
+    pub provider_key: Option<String>,
+    pub auth_mode: String,
+    pub protocol: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct ModelRoute {
     pub model_name: String,               // tên client gọi (public)
@@ -173,6 +223,59 @@ pub struct ModelRoute {
     pub protocol: String,
     /// Key đã resolve lúc load (runtime-only). None khi auth_mode = none.
     pub provider_key: Option<String>,
+    /// Model Group load-balancing policy. Existing routes default to least_loaded_weighted.
+    pub routing_policy: RoutingPolicy,
+    /// Per-backend endpoint overrides for true mixed-provider groups. Empty keeps preview-2 behavior.
+    pub endpoints: HashMap<i64, ModelEndpoint>,
+}
+
+impl ModelRoute {
+    pub fn endpoint_for(&self, backend_id: i64) -> EffectiveModelEndpoint {
+        if let Some(endpoint) = self.endpoints.get(&backend_id) {
+            return EffectiveModelEndpoint {
+                provider_model_name: if endpoint.provider_model_name.trim().is_empty() {
+                    self.provider_model_name.clone()
+                } else {
+                    endpoint.provider_model_name.clone()
+                },
+                provider_key: endpoint
+                    .provider_key
+                    .clone()
+                    .or_else(|| self.provider_key.clone()),
+                auth_mode: endpoint.auth_mode.clone(),
+                protocol: endpoint.protocol.clone(),
+            };
+        }
+        EffectiveModelEndpoint {
+            provider_model_name: self.provider_model_name.clone(),
+            provider_key: self.provider_key.clone(),
+            auth_mode: self.auth_mode.clone(),
+            protocol: self.protocol.clone(),
+        }
+    }
+
+    pub fn endpoint_weight(&self, backend_id: i64) -> u32 {
+        self.endpoints
+            .get(&backend_id)
+            .filter(|e| e.enabled)
+            .map(|e| e.weight.max(1))
+            .unwrap_or(1)
+    }
+
+    pub fn endpoint_max_inflight(&self, backend_id: i64) -> u32 {
+        self.endpoints
+            .get(&backend_id)
+            .filter(|e| e.enabled)
+            .map(|e| e.max_inflight)
+            .unwrap_or(0)
+    }
+
+    pub fn endpoint_enabled(&self, backend_id: i64) -> bool {
+        self.endpoints
+            .get(&backend_id)
+            .map(|e| e.enabled)
+            .unwrap_or(true)
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -60,8 +60,27 @@ def sh(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedPro
     return subprocess.run(args, check=True, capture_output=True, text=True, env=env)
 
 
+def source_newer_than_binary(binary: pathlib.Path) -> bool:
+    if not binary.exists():
+        return True
+    cutoff = binary.stat().st_mtime
+    roots = [REPO / "src", REPO / "migrations", REPO / "static", REPO / "Cargo.toml", REPO / "Cargo.lock"]
+    for root in roots:
+        if root.is_file():
+            if root.stat().st_mtime > cutoff:
+                return True
+            continue
+        if root.exists():
+            for item in root.rglob("*"):
+                if item.is_file() and item.stat().st_mtime > cutoff:
+                    return True
+    return False
+
+
 def ensure_binary(env: dict[str, str]) -> None:
-    if BIN.exists():
+    if os.environ.get("BRIGHTO_SKIP_RELEASE_BUILD") == "1" and BIN.exists():
+        return
+    if not source_newer_than_binary(BIN):
         return
     print("Building release router binary for smoke test...")
     subprocess.run(["cargo", "build", "--release", "--locked"], cwd=REPO, check=True, env=env)
@@ -102,6 +121,17 @@ def is_provider_rate_limited(resp: requests.Response, key_env: str) -> bool:
 
 
 PROBES = [
+    {
+        "name": "openai-chat",
+        "key_env": "OPENAI_API_KEY",
+        "base_url": "https://api.openai.com",
+        "protocol": "openai_chat",
+        "model_env": "OPENAI_CHAT_MODEL",
+        "model": "gpt-4o-mini",
+        "endpoint": "/v1/chat/completions",
+        "body": {"model": "openai-chat", "messages": [{"role": "user", "content": "Reply OK."}], "max_tokens": 8, "stream": False},
+        "kind": "chat",
+    },
     {
         "name": "openai-embedding",
         "key_env": "OPENAI_API_KEY",
@@ -211,6 +241,8 @@ def validate_public_response(kind: str, resp: requests.Response) -> bool:
     if resp.status_code >= 400:
         return False
     data = resp.json()
+    if kind == "chat":
+        return bool(data.get("choices"))
     if kind == "embedding":
         emb = (((data.get("data") or [{}])[0]).get("embedding"))
         return isinstance(emb, list) and len(emb) > 0
@@ -308,12 +340,13 @@ def main() -> int:
             }, timeout=30)
             checks.append(check(f"create backend {probe['name']}", backend.status_code == 200, backend.status_code))
             backend_id = backend.json()["id"]
+            provider_model = env.get(probe.get("model_env", ""), "").strip() or probe["model"]
             test_payload = {
                 "base_url": probe_base_url,
                 "dialect": "openai",
                 "auth_mode": "bearer",
                 "provider_key_ref": "env:" + chosen_key_env,
-                "provider_model_name": probe["model"],
+                "provider_model_name": provider_model,
                 "protocol": probe["protocol"],
             }
             throttle_provider(chosen_key_env)
@@ -328,7 +361,7 @@ def main() -> int:
             route = requests.post(base + "/admin/routes", headers=ah, json={
                 "model_name": probe["name"],
                 "backend_ids": [backend_id],
-                "provider_model_name": probe["model"],
+                "provider_model_name": provider_model,
                 "provider_key_ref": "env:" + chosen_key_env,
                 "auth_mode": "bearer",
                 "protocol": probe["protocol"],
