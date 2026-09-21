@@ -76,12 +76,24 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
 
         async function openAddModel(page) {{
           await nav(page, 'models', 'Models');
-          const addButton = page.getByRole('button', {{ name: /^Add model$/ }}).last();
+          const addButton = page.getByRole('button', {{ name: /^Add model route$/ }}).last();
           await expect(addButton).toBeVisible({{ timeout: 15000 }});
           await addButton.click();
           const modal = page.locator('#modal-overlay .modal').last();
           await expect(modal).toBeVisible();
           await expect(modal).toContainText('Task type');
+          return modal;
+        }}
+
+        async function openCreateModelGroup(page) {{
+          await nav(page, 'models', 'Models');
+          const groupButton = page.getByRole('button', {{ name: /^Create model group$/ }}).last();
+          await expect(groupButton).toBeVisible({{ timeout: 15000 }});
+          await groupButton.click();
+          const modal = page.locator('#modal-overlay .modal').last();
+          await expect(modal).toBeVisible();
+          await expect(modal).toContainText('Create model group');
+          await expect(modal).toContainText('Model Group');
           return modal;
         }}
 
@@ -112,11 +124,9 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         }}
 
         async function createModelGroupRoute(page) {{
-          const modal = await openAddModel(page);
+          const modal = await openCreateModelGroup(page);
           const selects = modal.locator('select');
-          await selects.nth(0).selectOption('chat');
           await selects.nth(1).selectOption('custom-llm');
-          await selects.nth(2).selectOption('group');
           await expect(modal).toContainText('Model Group endpoints');
           await expect(selects.nth(0)).toBeDisabled();
           const inputs = modal.locator('input');
@@ -133,7 +143,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
 
           await inputs.nth(0).fill(mockURL + '/');
           await inputs.nth(4).fill('2');
-          await selects.nth(3).selectOption('weighted_round_robin');
+          await selects.nth(2).selectOption('weighted_round_robin');
           await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
           await expect(modal.locator('.connection-status')).toContainText('add this endpoint', {{ timeout: 15000 }});
           await modal.getByRole('button', {{ name: /^Add tested endpoint$/ }}).click();

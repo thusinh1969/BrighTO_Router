@@ -118,12 +118,25 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         async function openAddModel(page) {{
           await page.click('#nav-models');
           await expect(page.locator('#page-title')).toContainText('Models');
-          const addButton = page.getByRole('button', {{ name: /^Add model$/ }}).last();
+          const addButton = page.getByRole('button', {{ name: /^Add model route$/ }}).last();
           await expect(addButton).toBeVisible({{ timeout: 15000 }});
           await addButton.click();
           const modal = page.locator('#modal-overlay .modal').last();
           await expect(modal).toBeVisible();
           await expect(modal).toContainText('Task type');
+          return modal;
+        }}
+
+        async function openCreateModelGroup(page) {{
+          await page.click('#nav-models');
+          await expect(page.locator('#page-title')).toContainText('Models');
+          const groupButton = page.getByRole('button', {{ name: /^Create model group$/ }}).last();
+          await expect(groupButton).toBeVisible({{ timeout: 15000 }});
+          await groupButton.click();
+          const modal = page.locator('#modal-overlay .modal').last();
+          await expect(modal).toBeVisible();
+          await expect(modal).toContainText('Create model group');
+          await expect(modal).toContainText('Model Group');
           return modal;
         }}
 
@@ -156,11 +169,10 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         }}
 
         async function createModelGroup(page) {{
-          const modal = await openAddModel(page);
+          const modal = await openCreateModelGroup(page);
           const selects = modal.locator('select');
-          await selects.nth(0).selectOption('chat');
+          await expect(selects.nth(0)).toBeDisabled();
           await selects.nth(1).selectOption('custom-llm');
-          await selects.nth(2).selectOption('group');
           await expect(modal).toContainText('Model Group endpoints');
           const inputs = modal.locator('input');
           await inputs.nth(0).fill(mockURL);

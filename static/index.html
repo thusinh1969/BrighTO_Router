@@ -387,6 +387,10 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .group-endpoint-meta{color:var(--muted);font-size:11.5px;overflow-wrap:anywhere}
 .group-endpoint-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .route-mode-note{color:var(--accent-text);font-size:11.5px;font-weight:760;margin:4px 0 0}
+.route-kind-banner{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;background:rgba(15,23,42,.88);border:1px solid var(--border2);border-radius:13px;padding:10px 12px;margin:0 0 12px}
+.route-kind-banner b{font-size:13px;color:var(--text);white-space:nowrap}
+.route-kind-banner span{color:var(--muted);font-size:12px;line-height:1.35}
+.route-kind-banner.group{border-color:rgba(56,189,248,.35);background:rgba(8,47,73,.34)}
 .advanced-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0b1220;border:1px solid var(--border);border-radius:13px;color:var(--text);padding:12px 14px;margin:4px 0 12px;cursor:pointer;text-align:left}
 .advanced-toggle b{display:block;font-size:13px}
 .advanced-toggle span{display:block;color:var(--muted);font-size:12px;margin-top:2px;font-weight:500}
@@ -1178,7 +1182,7 @@ function renderProviders(c){
   var h=el("div","panel-head");
   h.appendChild(el("h3",null,"Provider endpoints"));
   var hActions=el("div","panel-head-actions providers-actions");
-  var addModel=el("button","btn primary sm","Add model"); addModel.title="Recommended flow: choose a provider, enter the API key, load models, test, then save."; addModel.onclick=function(){ go("models"); setTimeout(function(){ openRouteModal(); },50); };
+  var addModel=el("button","btn primary sm","Add model route"); addModel.title="Recommended flow: choose a provider, enter the API key, load models, test, then save."; addModel.onclick=function(){ go("models"); setTimeout(function(){ openRouteModal(null,{mode:"single"}); },50); };
   var advanced=el("button","btn ghost sm","Advanced endpoint"); advanced.title="Optional: prepare or disable a provider endpoint before adding model routes."; advanced.onclick=openProviderModal;
   hActions.appendChild(addModel); hActions.appendChild(advanced);
   var filt=el("select"); filt.style.maxWidth="160px";
@@ -1188,7 +1192,7 @@ function renderProviders(c){
   hActions.appendChild(filt);
   h.appendChild(hActions);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Provider endpoints are reusable Base URL templates. Chat, Embedding, Rerank, and ASR are chosen in Models & Routes → Add model → Task type. API keys live on model routes; save enabled only after Test Connection passes."));
+  p.appendChild(el("p","hint","Provider endpoints are reusable Base URL templates. For normal use, go to Models & Routes → Add model route. API keys live on model routes; save enabled only after Test Connection passes."));
   var fv=(window.provFilter||"all");
   var shown=backends.filter(function(b){ return fv==="all" || (fv==="enabled"?b.enabled:!b.enabled); });
   if(!backends.length){ p.appendChild(emptyBox("No provider endpoints yet — add a model and one is created automatically.")); }
@@ -1234,7 +1238,7 @@ function renderProviders(c){
   c.appendChild(p);
 }
 
-function openRouteModalFromConnection(b){ window.presetConnection=b; openRouteModal(); }
+function openRouteModalFromConnection(b){ window.presetConnection=b; openRouteModal(null,{mode:"single"}); }
 
 async function toggleBackend(b){
   try{
@@ -1259,7 +1263,7 @@ function openProviderModal(b){
   m.appendChild(modalHeader(b.id?"Edit endpoint · "+b.name:"Prepare provider endpoint"));
   m.appendChild(el("p","hint",b.id
     ?"This edits the provider endpoint only. API keys live on model routes."
-    :"Most teams should use Models & Routes → Add model. Prepare an endpoint only when you need to set up or disable a provider endpoint before adding routes."));
+    :"Most teams should use Models & Routes → Add model route. Prepare an endpoint only when you need to set up or disable a provider endpoint before adding routes."));
   m.appendChild(el("div","section-title","Provider preset"));
   // Chọn provider từ catalog hard-coded trong .env (chỉ 2 dialect: openai/anthropic).
   var fp=el("div","field"); fp.appendChild(el("label",null,"Provider"));
@@ -1357,8 +1361,9 @@ function renderModels(c){
   var p=el("div","panel");
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Models"));
   var hActions=el("div","panel-head-actions models-actions");
-  var add=el("button","btn primary sm","Add model"); add.onclick=function(){openRouteModal();};
-  hActions.appendChild(add);
+  var add=el("button","btn primary sm","Add model route"); add.onclick=function(){openRouteModal(null,{mode:"single"});};
+  var addGroup=el("button","btn sm","Create model group"); addGroup.onclick=function(){openRouteModal(null,{mode:"group"});};
+  hActions.appendChild(add); hActions.appendChild(addGroup);
   var filt=el("select"); filt.style.maxWidth="160px";
   [["all","All"],["enabled","Enabled only"],["disabled","Disabled only"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; filt.appendChild(o); });
   filt.value=(window.modelFilter||"all");
@@ -1366,7 +1371,7 @@ function renderModels(c){
   hActions.appendChild(filt);
   h.appendChild(hActions);
   p.appendChild(h);
-  p.appendChild(el("p","hint","One guided flow: choose Task type first. Chat calls chat/messages, Embedding calls /v1/embeddings, Rerank calls /v1/rerank, and ASR uploads audio. Pick a provider, test the exact endpoint, then save enabled."));
+  p.appendChild(el("p","hint","Add model route creates one tested endpoint. Create model group load-balances two or more tested OpenAI-compatible chat endpoints behind one public model name."));
   var fv=(window.modelFilter||"all");
   var shown=routes.filter(function(r){ return fv==="all" || (fv==="enabled"?r.effective_enabled:!r.effective_enabled); });
   if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
@@ -1432,19 +1437,26 @@ async function toggleRoute(r){
     routes=await api("/admin/routes","GET"); rerender();
   }catch(e){ toast("Toggle failed: "+e.message,"err"); }
 }
-function openRouteModal(route){
-  route=route||{};
+function openRouteModal(route,opts){
+  route=route||{}; opts=opts||{};
+  var initialMode=(route.endpoints&&route.endpoints.length)?"group":(opts.mode==="group"?"group":"single");
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal route-modal");
-  m.appendChild(modalHeader(route.model_name?"Edit model":"Add model"));
+  var routeMode=initialMode;
+  var modalTitle=route.model_name?(routeMode==="group"?"Edit model group":"Edit model route"):(routeMode==="group"?"Create model group":"Add model route");
+  m.appendChild(modalHeader(modalTitle));
   var steps=el("div","wizard-steps");
-  [["1","Connect","Provider, URL, and API key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]].forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
+  var stepCopy=routeMode==="group"?[["1","Connect endpoint","Provider, URL, API key"],["2","Add to group","Test endpoint, then add it"],["3","Save group","At least two tested endpoints"]]:[["1","Connect","Provider, URL, and API key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]];
+  stepCopy.forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
   m.appendChild(steps);
-  var routeMode=(route.endpoints&&route.endpoints.length)?"group":"single";
+  var modeBanner=el("div","route-kind-banner "+(routeMode==="group"?"group":"single"));
+  modeBanner.appendChild(el("b",null,routeMode==="group"?"Model Group":"Single model route"));
+  modeBanner.appendChild(el("span",null,routeMode==="group"?"Clients call one public model name; BrighTO load-balances across tested chat endpoints.":"Clients call one public model name; BrighTO sends it to one tested provider endpoint."));
+  m.appendChild(modeBanner);
   var groupEndpoints=[];
   var groupEndpointSeq=1;
 
-  m.appendChild(el("div","section-title","Provider endpoint"));
+  m.appendChild(el("div","section-title",routeMode==="group"?"Endpoint to add":"Provider endpoint"));
   var providerGrid=el("div","form-grid provider-connect-grid");
 
   function inferTaskFromProtocol(proto){
@@ -1466,11 +1478,9 @@ function openRouteModal(route){
   var pHint=el("p","hint");
   f0.appendChild(ps); f0.appendChild(pHint); providerGrid.appendChild(f0);
 
-  var fmMode=el("div","field"); fmMode.appendChild(el("label",null,"Route mode"));
-  var routeModeSel=el("select");
+  var routeModeSel=document.createElement("select");
   [["single","Single endpoint"],["group","Model Group / Load balance"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; routeModeSel.appendChild(o); });
   routeModeSel.value=routeMode;
-  fmMode.appendChild(routeModeSel); fmMode.appendChild(el("p","route-mode-note","Model Group keeps one public model name and balances OpenAI-compatible chat calls across endpoints.")); providerGrid.appendChild(fmMode);
 
   function providerSupportsTask(e,task){
     var k=(e.key||"").toLowerCase();
@@ -1583,7 +1593,7 @@ function openRouteModal(route){
   }
   ps.onchange=function(){ markModelReset(); applyCat(true); clearTest("Provider changed — test connection again before saving enabled."); };
   ts.onchange=function(){ markModelReset(); refreshProviderOptions(); applyCat(true); clearTest("Task changed — test connection again before saving enabled."); };
-  routeModeSel.onchange=function(){ routeMode=routeModeSel.value; updateRouteModeUi(); refreshProviderOptions(); applyCat(true); clearTest(routeMode==="group"?"Model Group mode — test each endpoint, add at least two, then save.":"Single endpoint mode — test connection before saving enabled."); };
+  routeModeSel.onchange=function(){ routeMode=routeModeSel.value; updateRouteModeUi(); refreshProviderOptions(); applyCat(true); clearTest(routeMode==="group"?"Test each endpoint, add at least two, then save the model group.":"Single endpoint mode — test connection before saving enabled."); };
   applyCat();
   url.oninput=function(){ clearTest(""); };
   pk.oninput=function(){ clearTest(""); };
@@ -1635,7 +1645,7 @@ function openRouteModal(route){
 
   var groupPanel=el("div","model-group-panel hidden");
   groupPanel.appendChild(el("div","section-title","Model Group endpoints"));
-  groupPanel.appendChild(el("p","hint","Add two or more tested OpenAI-compatible chat endpoints. Clients keep calling the public model name; BrighTO balances behind it."));
+  groupPanel.appendChild(el("p","hint","Test an endpoint, click Add tested endpoint, then repeat. Save is enabled after the group has at least two tested endpoints."));
   var groupGrid=el("div","form-grid");
   var fp=el("div","field"); fp.appendChild(el("label",null,"Routing policy"));
   var policySel=el("select"); [["round_robin","Round-robin"],["weighted_round_robin","Weighted round-robin"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; policySel.appendChild(o); });
@@ -1719,7 +1729,7 @@ function openRouteModal(route){
     fb.disabled=group;
     if(group){
       ts.value="chat";
-      taskHint.textContent="Model Group balances OpenAI-compatible chat endpoints behind one public model name. Embedding, rerank, ASR, and Anthropic stay as single routes.";
+      taskHint.textContent="Model Group is for OpenAI-compatible chat load balancing. Embedding, rerank, ASR, and Anthropic stay as single model routes.";
       fb.value="";
       if(catEntry(ps.value).dialect==="anthropic"){ refreshProviderOptions("custom-llm"); ps.value="custom-llm"; applyCat(true); }
     }
