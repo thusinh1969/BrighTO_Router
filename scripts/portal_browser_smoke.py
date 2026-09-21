@@ -155,6 +155,37 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(page.locator('#content')).toContainText(publicName, {{ timeout: 15000 }});
         }}
 
+        async function createModelGroup(page) {{
+          const modal = await openAddModel(page);
+          const selects = modal.locator('select');
+          await selects.nth(0).selectOption('chat');
+          await selects.nth(1).selectOption('custom-llm');
+          await selects.nth(2).selectOption('group');
+          await expect(modal).toContainText('Model Group endpoints');
+          const inputs = modal.locator('input');
+          await inputs.nth(0).fill(mockURL);
+          await modal.getByRole('button', {{ name: /Load models/i }}).click();
+          await choosePickerModel(page, 'mock-model');
+          await inputs.nth(3).fill('browser-model-group');
+          await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
+          await expect(modal.locator('.connection-status')).toContainText('add this endpoint', {{ timeout: 15000 }});
+          await modal.getByRole('button', {{ name: /^Add tested endpoint$/ }}).click();
+          await expect(modal.locator('.group-endpoint-card')).toHaveCount(1);
+
+          await inputs.nth(0).fill(mockURL + '/');
+          await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
+          await expect(modal.locator('.connection-status')).toContainText('add this endpoint', {{ timeout: 15000 }});
+          await modal.getByRole('button', {{ name: /^Add tested endpoint$/ }}).click();
+          await expect(modal.locator('.group-endpoint-card')).toHaveCount(2);
+          await expect(modal.getByRole('button', {{ name: /^Save enabled$/ }})).toBeEnabled();
+          await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+          await expect(page.locator('#content')).toContainText('browser-model-group', {{ timeout: 15000 }});
+          const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'browser-model-group' }}).first();
+          await expect(row).toContainText('Model Group');
+          await expect(row).toContainText('2 endpoints');
+        }}
+
         async function testedAdapterRoutes() {{
           const browser = await chromium.launch({{ executablePath: process.env.PLAYWRIGHT_CHROME_EXECUTABLE, headless: true, args: ['--no-sandbox'] }});
           const page = await browser.newPage({{ viewport: {{ width: 1440, height: 1000 }} }});
@@ -164,6 +195,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await createCustomRoute(page, 'embedding', 'mock-embedding', 'browser-embedding');
             await createCustomRoute(page, 'rerank', 'mock-rerank', 'browser-rerank');
             await createCustomRoute(page, 'asr', 'mock-asr', 'browser-asr');
+            await createModelGroup(page);
             await page.reload({{ waitUntil: 'domcontentloaded' }});
             await expect(page.locator('#app-view')).toBeVisible();
             await expect(page.locator('#page-title')).toContainText(/Dashboard|Models/);

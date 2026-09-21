@@ -111,6 +111,49 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(page.locator('#content')).toContainText(publicName, {{ timeout: 15000 }});
         }}
 
+        async function createModelGroupRoute(page) {{
+          const modal = await openAddModel(page);
+          const selects = modal.locator('select');
+          await selects.nth(0).selectOption('chat');
+          await selects.nth(1).selectOption('custom-llm');
+          await selects.nth(2).selectOption('group');
+          await expect(modal).toContainText('Model Group endpoints');
+          await expect(selects.nth(0)).toBeDisabled();
+          const inputs = modal.locator('input');
+
+          await inputs.nth(0).fill(mockURL);
+          await modal.getByRole('button', {{ name: /Load models/i }}).click();
+          await choosePickerModel(page, 'mock-model');
+          await inputs.nth(3).fill('audit-model-group');
+          await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
+          await expect(modal.locator('.connection-status')).toContainText('add this endpoint', {{ timeout: 15000 }});
+          await modal.getByRole('button', {{ name: /^Add tested endpoint$/ }}).click();
+          await expect(modal.locator('.group-endpoint-card')).toHaveCount(1);
+          await expect(modal.getByRole('button', {{ name: /^Save enabled$/ }})).toBeDisabled();
+
+          await inputs.nth(0).fill(mockURL + '/');
+          await inputs.nth(4).fill('2');
+          await selects.nth(3).selectOption('weighted_round_robin');
+          await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
+          await expect(modal.locator('.connection-status')).toContainText('add this endpoint', {{ timeout: 15000 }});
+          await modal.getByRole('button', {{ name: /^Add tested endpoint$/ }}).click();
+          await expect(modal.locator('.group-endpoint-card')).toHaveCount(2);
+          await expect(modal.getByRole('button', {{ name: /^Save enabled$/ }})).toBeEnabled();
+          await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+
+          const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'audit-model-group' }}).first();
+          await expect(row).toContainText('Model Group');
+          await expect(row).toContainText('weighted_round_robin');
+          await expect(row).toContainText('2 endpoints');
+          await row.getByRole('button', {{ name: /^Edit$/ }}).click();
+          const editModal = page.locator('#modal-overlay .modal').last();
+          await expect(editModal).toContainText('Existing Model Group loaded');
+          await expect(editModal.locator('.group-endpoint-card')).toHaveCount(2);
+          await editModal.getByRole('button', {{ name: /^Cancel$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+        }}
+
         async function auditProviderTaskChoices(page) {{
           const modal = await openAddModel(page);
           const selects = modal.locator('select');
@@ -187,11 +230,12 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await createCustomRoute(page, 'embedding', 'mock-embedding', 'audit-embedding');
           await createCustomRoute(page, 'rerank', 'mock-rerank', 'audit-rerank');
           await createCustomRoute(page, 'asr', 'mock-asr', 'audit-asr');
+          await createModelGroupRoute(page);
 
           await page.reload({{ waitUntil: 'domcontentloaded' }});
           await expect(page.locator('#app-view')).toBeVisible();
           await nav(page, 'models', 'Models');
-          for (const name of ['audit-chat', 'audit-embedding', 'audit-rerank', 'audit-asr']) {{
+          for (const name of ['audit-chat', 'audit-embedding', 'audit-rerank', 'audit-asr', 'audit-model-group']) {{
             await expect(page.locator('#content')).toContainText(name);
           }}
 

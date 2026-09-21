@@ -377,6 +377,16 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .route-modal .model-map .box{min-height:42px;display:flex;align-items:center;gap:9px;padding:8px 10px}
 .route-modal .model-map .k{margin-bottom:0;white-space:nowrap;flex:0 0 auto}
 .route-modal .model-map .v{min-width:0;flex:1 1 auto}
+.model-group-panel{background:#0b1220;border:1px solid rgba(56,189,248,.22);border-radius:15px;padding:13px;margin:4px 0 14px}
+.model-group-panel.hidden{display:none}
+.group-endpoint-list{display:grid;gap:8px;margin-top:10px}
+.group-endpoint-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;background:rgba(15,23,42,.78);border:1px solid var(--border2);border-radius:12px;padding:10px}
+.group-endpoint-main{min-width:0;display:grid;gap:3px}
+.group-endpoint-title{font-weight:850;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.group-endpoint-title code{max-width:100%;overflow-wrap:anywhere}
+.group-endpoint-meta{color:var(--muted);font-size:11.5px;overflow-wrap:anywhere}
+.group-endpoint-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.route-mode-note{color:var(--accent-text);font-size:11.5px;font-weight:760;margin:4px 0 0}
 .advanced-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0b1220;border:1px solid var(--border);border-radius:13px;color:var(--text);padding:12px 14px;margin:4px 0 12px;cursor:pointer;text-align:left}
 .advanced-toggle b{display:block;font-size:13px}
 .advanced-toggle span{display:block;color:var(--muted);font-size:12px;margin-top:2px;font-weight:500}
@@ -526,6 +536,9 @@ body.nav-open{overflow:hidden}
   .route-modal .model-picker-row{display:grid!important;grid-template-columns:1fr!important;align-items:stretch;gap:7px!important}
   .route-modal .model-picker-row input{flex:initial!important;min-width:0;width:100%}
   .route-modal .model-picker-row .btn{width:100%;min-width:0;padding-left:8px;padding-right:8px}
+  .group-endpoint-card{grid-template-columns:1fr}
+  .group-endpoint-actions{justify-content:flex-start}
+  .model-group-panel{padding:9px;border-radius:12px;margin-bottom:8px}
   .hamburger{display:inline-flex}
   .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s;box-shadow:24px 0 70px rgba(0,0,0,.45)}
   .sidebar.open{transform:none}
@@ -1373,7 +1386,10 @@ function renderModels(c){
       var mnw=nameNode("span","cell-main mono",r.model_name,1000);
       mrow.appendChild(mnw); mrow.appendChild(copyIconBtn(r.model_name));
       mns.appendChild(mrow);
-      mns.appendChild(el("div","cell-sub","Public route name"));
+      var isGroupRoute=!!(r.endpoints&&r.endpoints.length);
+      var routeKind=el("div","cell-sub",isGroupRoute?("Model Group · "+(r.routing_policy||"least_loaded_weighted")):"Public route name");
+      mns.appendChild(routeKind);
+      if(isGroupRoute) mns.appendChild(pill((r.endpoints||[]).length+" endpoints","info"));
       mn.appendChild(mns); tr.appendChild(mn);
       var st=el("td");
       var statusTxt, statusKind;
@@ -1384,11 +1400,14 @@ function renderModels(c){
       tr.appendChild(st);
       var providerName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?providerDisplayName(b.name):"#"+id;}).join(", ");
       var providerRawName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ");
-      var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=displayNameNode("div","cell-main compact-line",providerName||"—",providerRawName||providerName||"—"); pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s"))); pv.appendChild(pvs); tr.appendChild(pv);
-      var pm=el("td"); var pms=el("div","stack-cell"); var pmw=nameNode("div","cell-main mono compact-line",r.provider_model_name||"—",30); pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
+      var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=displayNameNode("div","cell-main compact-line",providerName||"—",providerRawName||providerName||"—"); pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s")+(isGroupRoute?" · "+(r.routing_policy||"round_robin"):""))); pv.appendChild(pvs); tr.appendChild(pv);
+      var pm=el("td"); var pms=el("div","stack-cell");
+      var endpointModels=isGroupRoute?(r.endpoints||[]).map(function(e){return e.provider_model_name;}).filter(Boolean):[];
+      var pmw=nameNode("div","cell-main mono compact-line",isGroupRoute?(endpointModels.join(", ")||"—"):(r.provider_model_name||"—"),42);
+      pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",isGroupRoute?"OpenAI Chat Model Group":protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
       var meta=el("td");
       var mg=el("div","model-meta-grid");
-      [["Auth",r.auth_mode||"—"],["Context",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Max output",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["Input $/1M",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["Output $/1M",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){
+      [["Auth",isGroupRoute?"per endpoint":(r.auth_mode||"—")],["Policy",isGroupRoute?(r.routing_policy||"—"):"—"],["Context",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Max output",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["Input $/1M",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["Output $/1M",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){
         var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,String(x[1]))); mg.appendChild(item);
       });
       meta.appendChild(mg); tr.appendChild(meta);
@@ -1421,6 +1440,9 @@ function openRouteModal(route){
   var steps=el("div","wizard-steps");
   [["1","Connect","Provider, URL, and API key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]].forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
   m.appendChild(steps);
+  var routeMode=(route.endpoints&&route.endpoints.length)?"group":"single";
+  var groupEndpoints=[];
+  var groupEndpointSeq=1;
 
   m.appendChild(el("div","section-title","Provider endpoint"));
   var providerGrid=el("div","form-grid provider-connect-grid");
@@ -1443,6 +1465,12 @@ function openRouteModal(route){
   var ps=el("select");
   var pHint=el("p","hint");
   f0.appendChild(ps); f0.appendChild(pHint); providerGrid.appendChild(f0);
+
+  var fmMode=el("div","field"); fmMode.appendChild(el("label",null,"Route mode"));
+  var routeModeSel=el("select");
+  [["single","Single endpoint"],["group","Model Group / Load balance"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; routeModeSel.appendChild(o); });
+  routeModeSel.value=routeMode;
+  fmMode.appendChild(routeModeSel); fmMode.appendChild(el("p","route-mode-note","Model Group keeps one public model name and balances OpenAI-compatible chat calls across endpoints.")); providerGrid.appendChild(fmMode);
 
   function providerSupportsTask(e,task){
     var k=(e.key||"").toLowerCase();
@@ -1475,7 +1503,7 @@ function openRouteModal(route){
   function refreshProviderOptions(keepValue){
     var cur=keepValue||ps.value;
     ps.innerHTML="";
-    var list=(catalog||[]).filter(function(e){return providerSupportsTask(e,ts.value);});
+    var list=(catalog||[]).filter(function(e){return providerSupportsTask(e,ts.value) && !(routeMode==="group" && e.dialect==="anthropic");});
     if(!list.length){ list=[{key:"custom-llm",label:"Custom LLM",base_url:"",dialect:"openai",key_env:"",key_set:false,enabled:true}]; }
     list.forEach(function(e){ var o=el("option",null,e.enabled===false ? e.label+" (coming soon)" : e.label); o.value=e.key; if(e.enabled===false) o.disabled=true; ps.appendChild(o); });
     if(cur && list.some(function(e){return e.key===cur && e.enabled!==false;})) ps.value=cur;
@@ -1499,6 +1527,8 @@ function openRouteModal(route){
   var keyHint=el("p","hint");
   fk.appendChild(keyRow); fk.appendChild(keyHint); providerGrid.appendChild(fk);
   m.appendChild(providerGrid);
+  var testState={ok:false};
+  var endpointTest={ok:false,candidate:null};
 
   function applyCat(resetUrl){
     var e=catEntry(ps.value);
@@ -1545,7 +1575,7 @@ function openRouteModal(route){
     if(typeof updateModelMap==="function" && typeof ms!=="undefined" && ms && typeof mi!=="undefined" && mi) updateModelMap();
   }
   function setConnectionStatus(kind,msg){ stat.className="connection-status"+(kind?" "+kind:""); stat.textContent=msg; }
-  function clearTest(msg){ testState.ok=false; save.disabled=true; save.title="Run Test connection before saving an enabled route"; setConnectionStatus("",msg||"Run Test connection before saving an enabled route."); }
+  function clearTest(msg){ testState.ok=false; endpointTest={ok:false,candidate:null}; if(typeof addEndpointBtn!=="undefined"&&addEndpointBtn) addEndpointBtn.disabled=true; updateSaveEnabled(); setConnectionStatus("",msg||"Run Test connection before saving an enabled route."); }
   function markModelReset(){
     if(typeof ms!=="undefined" && ms) applyCat.oldProviderModel=ms.value||"";
     if(typeof mi!=="undefined" && mi) applyCat.oldPublicModel=mi.value||"";
@@ -1553,6 +1583,7 @@ function openRouteModal(route){
   }
   ps.onchange=function(){ markModelReset(); applyCat(true); clearTest("Provider changed — test connection again before saving enabled."); };
   ts.onchange=function(){ markModelReset(); refreshProviderOptions(); applyCat(true); clearTest("Task changed — test connection again before saving enabled."); };
+  routeModeSel.onchange=function(){ routeMode=routeModeSel.value; updateRouteModeUi(); refreshProviderOptions(); applyCat(true); clearTest(routeMode==="group"?"Model Group mode — test each endpoint, add at least two, then save.":"Single endpoint mode — test connection before saving enabled."); };
   applyCat();
   url.oninput=function(){ clearTest(""); };
   pk.oninput=function(){ clearTest(""); };
@@ -1601,7 +1632,59 @@ function openRouteModal(route){
 	  updateModelMap();
 	  applyCat();
 
-  var testState={ok:false};
+
+  var groupPanel=el("div","model-group-panel hidden");
+  groupPanel.appendChild(el("div","section-title","Model Group endpoints"));
+  groupPanel.appendChild(el("p","hint","Add two or more tested OpenAI-compatible chat endpoints. Clients keep calling the public model name; BrighTO balances behind it."));
+  var groupGrid=el("div","form-grid");
+  var fp=el("div","field"); fp.appendChild(el("label",null,"Routing policy"));
+  var policySel=el("select"); [["round_robin","Round-robin"],["weighted_round_robin","Weighted round-robin"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; policySel.appendChild(o); });
+  policySel.value=(route.routing_policy&&route.routing_policy!=="least_loaded_weighted")?route.routing_policy:"round_robin"; fp.appendChild(policySel); fp.appendChild(el("p","hint","Round-robin ignores weights. Weighted round-robin uses each endpoint weight.")); groupGrid.appendChild(fp);
+  var fw=el("div","field"); fw.appendChild(el("label",null,"Endpoint weight")); var ew=el("input"); ew.type="number"; ew.min="1"; ew.value="1"; fw.appendChild(ew); fw.appendChild(el("p","hint","Used only by weighted round-robin.")); groupGrid.appendChild(fw);
+  var fmi=el("div","field"); fmi.appendChild(el("label",null,"Endpoint simultaneous calls")); var em=el("input"); em.type="number"; em.min="0"; em.value="0"; fmi.appendChild(em); fmi.appendChild(el("p","hint","0 means unlimited for this endpoint.")); groupGrid.appendChild(fmi);
+  groupPanel.appendChild(groupGrid);
+  var groupActions=el("div","row"); var addEndpointBtn=el("button","btn sm primary","Add tested endpoint"); addEndpointBtn.disabled=true; addEndpointBtn.type="button"; groupActions.appendChild(addEndpointBtn); groupActions.appendChild(el("span","hint","Test the current provider/model, then add it to the group.")); groupPanel.appendChild(groupActions);
+  var endpointList=el("div","group-endpoint-list"); groupPanel.appendChild(endpointList);
+  m.appendChild(groupPanel);
+
+  function endpointFromSaved(ept){
+    var b=backends.find(function(b){return Number(b.id)===Number(ept.backend_id);});
+    return {local_id:"saved-"+(groupEndpointSeq++),backend_id:ept.backend_id,provider_label:b?providerDisplayName(b.name):("#"+ept.backend_id),provider_key:"",provider_key_ref:ept.provider_key_ref||"",base_url:b?b.base_url:"",dialect:b?b.format:"openai",auth:ept.auth_mode||"bearer",protocol:ept.protocol||"openai_chat",provider_model_name:ept.provider_model_name||"",weight:Number(ept.weight)||1,max_inflight:Number(ept.max_inflight)||0,enabled:ept.enabled!==false,tested:true};
+  }
+  groupEndpoints=(route.endpoints||[]).map(endpointFromSaved);
+  function currentEndpointCandidate(){
+    var da=dialAuth(); var e=catEntry(ps.value); var kp=keyPayload();
+    return {local_id:"new-"+(groupEndpointSeq++),backend_id:null,provider_label:e.label||"Custom LLM",provider_key:kp.provider_key||"",provider_key_ref:kp.provider_key_ref||"",base_url:url.value.trim(),dialect:da.dialect,auth:da.auth,protocol:da.protocol,provider_model_name:ms.value.trim(),weight:Math.max(1,Number(ew.value)||1),max_inflight:Math.max(0,Number(em.value)||0),enabled:true,tested:true};
+  }
+  function renderGroupEndpoints(){
+    endpointList.innerHTML="";
+    if(!groupEndpoints.length){ endpointList.appendChild(el("div","empty","No endpoints in this group yet. Test an endpoint, then add it.")); updateSaveEnabled(); return; }
+    groupEndpoints.forEach(function(ep,idx){
+      var card=el("div","group-endpoint-card");
+      var main=el("div","group-endpoint-main");
+      var title=el("div","group-endpoint-title"); title.appendChild(el("span",null,(idx+1)+". "+ep.provider_label)); title.appendChild(el("code",null,ep.provider_model_name||"provider model")); title.appendChild(pill(ep.auth==="none"?"no key":"key",ep.auth==="none"?"info":"on")); main.appendChild(title);
+      main.appendChild(el("div","group-endpoint-meta",ep.base_url+" · "+protoLabel(ep.protocol)+" · weight "+ep.weight+" · max inflight "+(ep.max_inflight||"∞")));
+      card.appendChild(main);
+      var acts=el("div","group-endpoint-actions"); var rm=el("button","btn sm danger","Remove"); rm.type="button"; rm.onclick=function(){ groupEndpoints=groupEndpoints.filter(function(x){return x.local_id!==ep.local_id;}); renderGroupEndpoints(); }; acts.appendChild(rm); card.appendChild(acts);
+      endpointList.appendChild(card);
+    });
+    updateSaveEnabled();
+  }
+  function updateSaveEnabled(){
+    if(typeof save==="undefined"||!save) return;
+    if(routeMode==="group"){
+      var ready=groupEndpoints.filter(function(e){return e.enabled!==false;}).length>=2;
+      save.disabled=!ready; save.title=ready?"Save enabled Model Group":"Add at least two tested endpoints before saving an enabled Model Group";
+    } else { save.disabled=!testState.ok; save.title=testState.ok?"Save enabled route":"Run Test connection before saving an enabled route"; }
+  }
+  addEndpointBtn.onclick=function(){
+    if(!endpointTest.ok||!endpointTest.candidate){ toast("Test this endpoint first","err"); return; }
+    var candidate=Object.assign({},endpointTest.candidate);
+    var replaced=false;
+    groupEndpoints=groupEndpoints.map(function(ep){ if(ep.base_url===candidate.base_url){ replaced=true; candidate.local_id=ep.local_id; return candidate; } return ep; });
+    if(!replaced) groupEndpoints.push(candidate);
+    endpointTest={ok:false,candidate:null}; addEndpointBtn.disabled=true; setConnectionStatus("ok","Endpoint added. Add another endpoint or save the group."); renderGroupEndpoints();
+  };
 
 	  var optionalOpen=!!(route.context_tokens||route.max_output_tokens||route.price_input_per_mtok_usd||route.price_output_per_mtok_usd||route.fallback_backend_id||(route.first_byte_timeout&&route.first_byte_timeout!==180));
 	  var advBtn=el("button","advanced-toggle");
@@ -1627,6 +1710,22 @@ function openRouteModal(route){
 	    advIcon.textContent=optionalOpen?"Hide":"Show";
 	    scrollAdvancedIntoView(optionalOpen,advPanel);
 	  };
+
+  function updateRouteModeUi(){
+    routeMode=routeModeSel.value;
+    var group=routeMode==="group";
+    groupPanel.classList.toggle("hidden",!group);
+    ts.disabled=group;
+    fb.disabled=group;
+    if(group){
+      ts.value="chat";
+      taskHint.textContent="Model Group balances OpenAI-compatible chat endpoints behind one public model name. Embedding, rerank, ASR, and Anthropic stay as single routes.";
+      fb.value="";
+      if(catEntry(ps.value).dialect==="anthropic"){ refreshProviderOptions("custom-llm"); ps.value="custom-llm"; applyCat(true); }
+    }
+    renderGroupEndpoints();
+    updateSaveEnabled();
+  }
 
   var act=el("div","actions");
   var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
@@ -1666,9 +1765,7 @@ function openRouteModal(route){
   function applyPickedModel(chosen){
     ms.value=chosen;
     if(!mi.value) mi.value=chosen;
-    testState.ok=false;
-    save.disabled=true;
-    setConnectionStatus("","Model chosen — run Test connection before saving enabled.");
+    clearTest("Model chosen — run Test connection before saving enabled.");
     updateModelMap();
   }
   loadBtn.onclick=async function(){
@@ -1695,46 +1792,87 @@ function openRouteModal(route){
       var payload=Object.assign({base_url:url.value.trim(), dialect:da.dialect, auth_mode:da.auth, provider_model_name:ms.value.trim(), protocol:da.protocol}, keyPayload());
       var r=await api("/admin/test-connection","POST",payload);
       if(r.ok){
-        setConnectionStatus("ok","Connected ("+r.latency_ms+" ms)"+(r.detail?" · "+r.detail:(r.model_ok===true?" · model OK":(r.model_ok===false?" · model rejected":"")))); testState.ok=true; save.disabled=false;
+        var okMsg="Connected ("+r.latency_ms+" ms)"+(r.detail?" · "+r.detail:(r.model_ok===true?" · model OK":(r.model_ok===false?" · model rejected":"")));
+        if(routeMode==="group"){
+          endpointTest={ok:true,candidate:currentEndpointCandidate()};
+          addEndpointBtn.disabled=false;
+          setConnectionStatus("ok",okMsg+" · add this endpoint to the group");
+        }else{
+          setConnectionStatus("ok",okMsg);
+          testState.ok=true;
+          updateSaveEnabled();
+        }
       }else{
-        setConnectionStatus("bad",(r.error||("HTTP "+r.status))); testState.ok=false; save.disabled=true;
+        setConnectionStatus("bad",(r.error||("HTTP "+r.status))); testState.ok=false; endpointTest={ok:false,candidate:null}; addEndpointBtn.disabled=true; updateSaveEnabled();
       }
-    }catch(e){ setConnectionStatus("bad",e.message); testState.ok=false; save.disabled=true; }
+    }catch(e){ setConnectionStatus("bad",e.message); testState.ok=false; endpointTest={ok:false,candidate:null}; addEndpointBtn.disabled=true; updateSaveEnabled(); }
     finally{ testBtn.disabled=false; testBtn.textContent="Test connection"; }
   };
 
   async function doSave(enabledFlag){
     var name=mi.value.trim(); if(!name){toast("Public model name is required","err");return;}
-    var modelSel=ms.value.trim(); if(!modelSel){toast("Provider model is required","err");return;}
-    if(enabledFlag && !testState.ok){toast("Test connection must pass before saving enabled","err");return;}
+    var isGroup=routeMode==="group";
+    var modelSel=ms.value.trim();
+    if(!isGroup && !modelSel){toast("Provider model is required","err");return;}
+    if(enabledFlag && !isGroup && !testState.ok){toast("Test connection must pass before saving enabled","err");return;}
+    if(isGroup){
+      var activeEndpoints=groupEndpoints.filter(function(e){return e.enabled!==false;});
+      if(activeEndpoints.length<2){toast("Add at least two tested endpoints before saving a Model Group","err");return;}
+      if(activeEndpoints.some(function(e){return !e.base_url||!e.provider_model_name;})){toast("Every Model Group endpoint needs a URL and provider model","err");return;}
+    }
     var da=dialAuth(); var e=catEntry(ps.value);
     save.disabled=true; saveDisabled.disabled=true;
     try{
-      var backend=backends.find(function(b){ return b.base_url===url.value.trim(); });
-      var backendId;
-      if(backend){ backendId=backend.id; }
-      else{
-        var created=await api("/admin/backends","POST",{name:e.label||"Custom LLM",base_url:url.value.trim(),api_key_ref:"env:NONE",weight:1,max_inflight:0,format:da.dialect,enabled:true});
-        backendId=created.id;
-      }
       var isEdit=!!route.model_name;
-      var payload={model_name:name,backend_ids:[backendId],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel,enabled:enabledFlag};
-      payload.auth_mode=da.auth; payload.protocol=da.protocol;
-      // On edit the provider key is write-only (the input is blank); only send a key when the
-      // admin actually typed a new one. Otherwise the backend preserves the stored credential.
-      if(isEdit){ if(pk.value.trim()) payload.provider_key=pk.value.trim(); }
-      else { Object.assign(payload, keyPayload()); }
+      var payload;
+      if(isGroup){
+        var backendIds=[];
+        var endpointPayload=[];
+        for(var gi=0; gi<groupEndpoints.length; gi++){
+          var ge=groupEndpoints[gi];
+          var backendId=ge.backend_id;
+          if(!backendId){
+            var existing=backends.find(function(b){ return b.base_url===ge.base_url; });
+            if(existing){ backendId=existing.id; }
+            else{
+              var created=await api("/admin/backends","POST",{name:ge.provider_label||"Model Group endpoint",base_url:ge.base_url,api_key_ref:"env:NONE",weight:1,max_inflight:0,format:ge.dialect||"openai",enabled:true});
+              backendId=created.id;
+              backends.push(Object.assign({id:backendId},created));
+            }
+          }
+          backendIds.push(backendId);
+          var ep={backend_id:backendId,provider_model_name:ge.provider_model_name,auth_mode:ge.auth||"bearer",protocol:ge.protocol||"openai_chat",weight:Math.max(1,Number(ge.weight)||1),max_inflight:Math.max(0,Number(ge.max_inflight)||0),enabled:ge.enabled!==false};
+          if(ge.provider_key) ep.provider_key=ge.provider_key;
+          else if(ge.provider_key_ref) ep.provider_key_ref=ge.provider_key_ref;
+          endpointPayload.push(ep);
+        }
+        payload={model_name:name,backend_ids:backendIds,chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:name,enabled:enabledFlag,auth_mode:"bearer",protocol:"openai_chat",routing_policy:policySel.value,endpoints:endpointPayload};
+      }else{
+        var backend=backends.find(function(b){ return b.base_url===url.value.trim(); });
+        var singleBackendId;
+        if(backend){ singleBackendId=backend.id; }
+        else{
+          var createdSingle=await api("/admin/backends","POST",{name:e.label||"Custom LLM",base_url:url.value.trim(),api_key_ref:"env:NONE",weight:1,max_inflight:0,format:da.dialect,enabled:true});
+          singleBackendId=createdSingle.id;
+        }
+        payload={model_name:name,backend_ids:[singleBackendId],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel,enabled:enabledFlag};
+        payload.auth_mode=da.auth; payload.protocol=da.protocol;
+        // On edit the provider key is write-only (the input is blank); only send a key when the
+        // admin actually typed a new one. Otherwise the backend preserves the stored credential.
+        if(isEdit){ if(pk.value.trim()) payload.provider_key=pk.value.trim(); }
+        else { Object.assign(payload, keyPayload()); }
+        if(fb.value) payload.fallback_backend_id=Number(fb.value);
+      }
       if(ct.value) payload.context_tokens=Number(ct.value);
       if(mo.value) payload.max_output_tokens=Number(mo.value);
       if(pi.value!=="") payload.price_input_per_mtok_usd=Number(pi.value);
       if(po.value!=="") payload.price_output_per_mtok_usd=Number(po.value);
-      if(fb.value) payload.fallback_backend_id=Number(fb.value);
       var path=isEdit?"/admin/routes/"+encodeURIComponent(route.model_name):"/admin/routes";
       var method=isEdit?"PATCH":"POST";
       await api(path,method,payload);
       closeModal(); toast(enabledFlag?"Model saved (enabled)":"Model saved (disabled)");
       routes=await api("/admin/routes","GET"); backends=await api("/admin/backends","GET"); rerender();
-    }catch(err){ toast("Save failed: "+err.message,"err"); save.disabled=false; saveDisabled.disabled=false; }
+    }catch(err){ toast("Save failed: "+err.message,"err"); save.disabled=false; saveDisabled.disabled=false; updateSaveEnabled(); }
   }
   save.onclick=function(){ doSave(true); };
   saveDisabled.onclick=function(){ doSave(false); };
@@ -1746,9 +1884,20 @@ function openRouteModal(route){
       var ck=(catalog||[]).find(function(e){return rb.name===e.label || rb.name.toLowerCase().indexOf(e.key)>=0;});
       if(ck){ ps.value=ck.key; applyCat(false); }
     }
-    setConnectionStatus("","Run Test connection again before saving this route as enabled.");
+    if(routeMode==="group" && groupEndpoints.length){
+      var firstEp=groupEndpoints[0];
+      if(firstEp.base_url) url.value=firstEp.base_url;
+      if(firstEp.provider_model_name) ms.value=firstEp.provider_model_name;
+      ew.value=String(firstEp.weight||1);
+      em.value=String(firstEp.max_inflight||0);
+      updateModelMap();
+      setConnectionStatus("","Existing Model Group loaded. Test a changed endpoint before adding it; save is enabled when at least two endpoints remain.");
+    } else {
+      setConnectionStatus("","Run Test connection again before saving this route as enabled.");
+    }
   }
 
+  updateRouteModeUi();
   ov.appendChild(m); ov.classList.remove("hidden");
 }
 
