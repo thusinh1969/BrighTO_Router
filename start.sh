@@ -207,6 +207,26 @@ validate_runtime_env() {
   if [[ -z "${ADMIN_MASTER_KEY:-}" ]]; then
     fail "ADMIN_MASTER_KEY must be set in .env"
   fi
+  validate_tls_files
+}
+
+validate_tls_files() {
+  local cert_path key_path host_cert host_key
+  cert_path="$(get_env_var TLS_CERT_PATH "")"
+  key_path="$(get_env_var TLS_KEY_PATH "")"
+  if [[ -z "$cert_path" && -z "$key_path" ]]; then
+    return 0
+  fi
+  if [[ -z "$cert_path" || -z "$key_path" ]]; then
+    fail "TLS_CERT_PATH and TLS_KEY_PATH must be set together, or both left empty"
+  fi
+  host_cert="$cert_path"
+  host_key="$key_path"
+  case "$cert_path" in /certs/*) host_cert="$ROOT/ssl/${cert_path#/certs/}" ;; esac
+  case "$key_path" in /certs/*) host_key="$ROOT/ssl/${key_path#/certs/}" ;; esac
+  if [[ ! -f "$host_cert" || ! -f "$host_key" ]]; then
+    fail "TLS is enabled but cert/key files are missing. Expected: $host_cert and $host_key. Create them with: ./start.sh make-self-signed-cert HOST && ./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host HOST"
+  fi
 }
 
 start_stack() {
