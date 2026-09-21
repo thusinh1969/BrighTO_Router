@@ -2,7 +2,7 @@
 
 **Million-token AI traffic, simple Rust fast path, one Docker install.**
 
-BrighTO-Router preview-2 gives your team one clean endpoint for OpenAI-compatible chat/completions/embeddings, Anthropic Messages, provider-specific rerank adapters for search ranking, OpenAI-compatible ASR/transcription, cloud models, and local models. It is built in Rust for low-overhead pass-through, uses PostgreSQL as the single durable store, and scales by running stateless router replicas behind a load balancer.
+Think NGINX-style reverse proxy for AI traffic, with model routing, team budgets, usage analytics, provider-key isolation, and a clean admin Portal built in. **BrighTO-Router preview-2** gives your team one endpoint for OpenAI-compatible chat/completions/embeddings, Anthropic Messages, provider-specific rerank adapters for search ranking, OpenAI-compatible ASR/transcription, cloud models, and local models. It is built in Rust for low-overhead pass-through, uses PostgreSQL as the single durable store, and scales by running stateless router replicas behind a load balancer.
 
 | Preview-2 benchmark proof point | Result |
 |---|---:|
@@ -33,6 +33,8 @@ This is the preview-2 adapter release that will become the main line once final 
 Broad AI gateways are useful when you need a huge provider catalog, hosted accounts, prompt tooling, agent tooling, and enterprise workflow in one platform. BrighTO-Router is for teams with a sharper requirement: run a very fast gateway they control, with a clean Portal, transparent usage, and a production stack small enough to understand.
 
 For the preview line, the product promise is deliberately narrow and strong: Rust on the request path, PostgreSQL for durable state, stateless router replicas for horizontal scale, one Docker image, one install script, and benchmark artifacts that compare router latency against a direct backend on the same machine.
+
+Pass-through means the router forwards supported request JSON and provider responses as-is, including streaming responses. It only reads the small fields needed for authentication, route selection, policy, budgets, usage metadata, and adapter-specific protocol mapping. For OpenAI-style streaming chat, BrighTO-Router forwards provider chunks back to the client as they arrive instead of waiting for the full response.
 
 | If you need... | BrighTO-Router gives you... |
 |---|---|
@@ -90,7 +92,25 @@ Both full runs had `0` router non-200 responses, `0` ledger drops, and passed th
 
 ## Quick start
 
-Prerequisites: Linux, Docker, Docker Compose plugin, and `curl`.
+Prerequisites: Linux, Docker, Docker Compose plugin, Git, and `curl`.
+
+One-line install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thusinh1969/BrighTO_Router/main/install.sh | bash
+```
+
+The installer clones or updates the repo at `$HOME/brighto-router`, creates `.env` when missing, pulls the official Docker image, starts PostgreSQL, runs migrations, seeds defaults, and starts the router.
+
+If you prefer to inspect the script first:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/thusinh1969/BrighTO_Router/main/install.sh
+less install.sh
+bash install.sh
+```
+
+Manual install is still simple:
 
 ```bash
 git clone https://github.com/thusinh1969/BrighTO_Router.git

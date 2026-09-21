@@ -4,6 +4,28 @@ This file is the operational install guide. The short version is in [README.md](
 
 ## Local first run
 
+One-line install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/thusinh1969/BrighTO_Router/main/install.sh | bash
+```
+
+This clones or updates the repo in `$HOME/brighto-router` and runs `./start.sh install`. To choose another directory:
+
+```bash
+BRIGHTO_INSTALL_DIR=/opt/brighto-router curl -fsSL https://raw.githubusercontent.com/thusinh1969/BrighTO_Router/main/install.sh | bash
+```
+
+If you want to inspect the installer before running it:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/thusinh1969/BrighTO_Router/main/install.sh
+less install.sh
+bash install.sh
+```
+
+Manual install:
+
 ```bash
 git clone https://github.com/thusinh1969/BrighTO_Router.git
 cd BrighTO_Router
