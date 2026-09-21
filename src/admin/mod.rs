@@ -921,7 +921,7 @@ async fn put_backend_key(
     if !exists {
         return Err(ApiError::not_found("backend not found"));
     }
-    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/llm-router".to_string());
+    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
     let dir = std::path::Path::new(&data_dir).join("provider_keys");
     std::fs::create_dir_all(&dir)
         .map_err(|e| ApiError::internal(format!("create provider_keys dir: {e}")))?;
@@ -1885,7 +1885,7 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
                 ));
             }
             let data_dir =
-                std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/llm-router".to_string());
+                std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
             let dir = std::path::Path::new(&data_dir).join("provider_keys");
             std::fs::create_dir_all(&dir)
                 .map_err(|e| ApiError::internal(format!("create provider_keys dir: {e}")))?;

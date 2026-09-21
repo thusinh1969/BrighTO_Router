@@ -36,12 +36,13 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 --home /nonexistent --shell /usr/sbin/nologin router \
- && mkdir -p /var/lib/brighto-router && chown router:router /var/lib/brighto-router
+ && mkdir -p /var/lib/brighto-router/provider_keys && chown -R router:router /var/lib/brighto-router
 COPY --from=builder /app/target/release/brighto-router /usr/local/bin/brighto-router
 COPY --from=builder /app/migrations /app/migrations
 USER router
 ENV LISTEN_ADDR=0.0.0.0:8080 \
     LEDGER_FALLBACK_FILE=/var/lib/brighto-router/ledger-fallback.jsonl \
+    DATA_DIR=/var/lib/brighto-router \
     RUST_LOG=brighto_router=info
 VOLUME ["/var/lib/brighto-router"]
 EXPOSE 8080

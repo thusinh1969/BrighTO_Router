@@ -98,6 +98,9 @@ ensure_env_defaults() {
   if ! grep -q "^BRIGHTO_MODEL=" "$ENV_FILE"; then
     set_env_var BRIGHTO_MODEL ""
   fi
+  if ! grep -q "^DATA_DIR=" "$ENV_FILE"; then
+    set_env_var DATA_DIR "/var/lib/brighto-router"
+  fi
   if ! grep -q "^BRIGHTO_ROUTER_IMAGE=" "$ENV_FILE"; then
     set_env_var BRIGHTO_ROUTER_IMAGE "$DEFAULT_ROUTER_IMAGE"
   elif grep -q "^BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1$" "$ENV_FILE"; then
