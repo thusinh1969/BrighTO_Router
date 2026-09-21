@@ -237,6 +237,15 @@ Anthropic Messages live smoke is separate so teams can run it only when `ANTHROP
 python3 scripts/anthropic_smoke.py
 ```
 
+Preview-3 Model Group smoke examples:
+
+```bash
+./smoke/model_group/run_mock.sh
+./smoke/model_group/run_live_openai_chat.sh
+```
+
+The mock smoke always runs locally and verifies weighted round-robin across three OpenAI-compatible chat endpoints. The live smoke creates one public OpenAI chat model group, `coding-fast-live`, backed by DeepSeek V4 Pro and local llama.cpp `qwen3.8-flash-next`. It requires `DEEPSEEK_API_KEY` and a reachable local llama.cpp OpenAI-compatible endpoint, defaulting to `http://127.0.0.1:8088/v1`.
+
 Image input through an OpenAI-style multimodal chat route:
 
 ```bash

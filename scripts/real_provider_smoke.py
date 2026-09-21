@@ -4,8 +4,8 @@
 Self-contained: spins up its own temporary Postgres + router instance on free ports,
 so it never touches the dev DB and never collides with a running router.
 
-Run: DEEPSEEK_KEY=sk-... python3 scripts/real_provider_smoke.py
-Never prints the DeepSeek key. Sanitized output only.
+Run: DEEPSEEK_API_KEY=sk-... python3 scripts/real_provider_smoke.py
+Also reads DEEPSEEK_API_KEY or DEEPSEEK_KEY from .env. Never prints the DeepSeek key. Sanitized output only.
 """
 import os
 import pathlib
@@ -61,12 +61,36 @@ def sh(*a, **kw):
     return subprocess.run(a, check=True, capture_output=True, text=True, **kw)
 
 
+def parse_env_file(path):
+    vals = {}
+    if not path.exists():
+        return vals
+    for raw in path.read_text(errors="ignore").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+            v = v[1:-1]
+        vals[k.strip()] = v
+    return vals
+
+
+def merged_env():
+    env = dict(os.environ)
+    for k, v in parse_env_file(REPO / ".env").items():
+        env.setdefault(k, v)
+    return env
+
+
 def main():
     ensure_binary()
-    if "DEEPSEEK_KEY" not in os.environ:
-        print("Set DEEPSEEK_KEY=sk-... to run this smoke.", file=sys.stderr)
+    env = merged_env()
+    ds_key = (env.get("DEEPSEEK_API_KEY") or env.get("DEEPSEEK_KEY") or "").strip()
+    if not ds_key:
+        print("Set DEEPSEEK_API_KEY=sk-... or DEEPSEEK_KEY=sk-... to run this smoke.", file=sys.stderr)
         sys.exit(2)
-    ds_key = os.environ["DEEPSEEK_KEY"]
 
     pg = "brighto_real_smoke_%d" % os.getpid()
     pg_port = free_port()
