@@ -663,6 +663,28 @@ fn join_provider_url(base_url: &str, route: &str) -> String {
     }
 }
 
+/// Ghi provider key plaintext với quyền hạn chế (dir 0700, file 0600) để không lộ secret cho
+/// user khác trên host. Dùng `create_dir_all` rồi `set_permissions` để khoá thư mục.
+fn write_provider_key_file(path: &std::path::Path, key: &str) -> Result<(), ApiError> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| ApiError::internal(format!("create provider_keys dir: {e}")))?;
+        let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(|e| ApiError::internal(format!("write provider key: {e}")))?;
+    f.write_all(key.as_bytes())
+        .map_err(|e| ApiError::internal(format!("write provider key: {e}")))?;
+    Ok(())
+}
+
 fn parse_backend_ids(value: &str) -> Result<Vec<i64>, ApiError> {
     serde_json::from_str::<Vec<i64>>(value).map_err(|_| {
         ApiError::internal(format!("invalid backend_ids JSON in model_routes: {value}"))
@@ -923,11 +945,8 @@ async fn put_backend_key(
     }
     let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
     let dir = std::path::Path::new(&data_dir).join("provider_keys");
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| ApiError::internal(format!("create provider_keys dir: {e}")))?;
     let path = dir.join(format!("{id}.key"));
-    std::fs::write(&path, key)
-        .map_err(|e| ApiError::internal(format!("write provider key: {e}")))?;
+    write_provider_key_file(&path, &key)?;
     let file_ref = format!("file:{}", path.display());
     sqlx::query::<sqlx::Postgres>("UPDATE backends SET api_key_ref = $1 WHERE id = $2")
         .bind(&file_ref)
@@ -1887,15 +1906,12 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
             let data_dir =
                 std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
             let dir = std::path::Path::new(&data_dir).join("provider_keys");
-            std::fs::create_dir_all(&dir)
-                .map_err(|e| ApiError::internal(format!("create provider_keys dir: {e}")))?;
             let file = format!(
                 "route_{}.key",
                 hex_encode(&Sha256::digest(model_name.as_bytes()))
             );
             let path = dir.join(&file);
-            std::fs::write(&path, key)
-                .map_err(|e| ApiError::internal(format!("write provider key: {e}")))?;
+            write_provider_key_file(&path, key)?;
             Some(format!("file:{}", path.display()))
         }
         None => match payload
@@ -1958,6 +1974,23 @@ fn route_response(v: ValidatedRoute) -> RouteResponse {
     }
 }
 
+/// Kích hoạt provider endpoints được route tham chiếu khi route được lưu/toggle sang enabled.
+/// Seed templates ship disabled; một model route đã test "sử dụng" chúng, nên lưu route enabled
+/// phải bật provider endpoint tương ứng (đúng intent trong scripts/seed_defaults.sql).
+async fn enable_referenced_backends(
+    pool: &sqlx::PgPool,
+    backend_ids: &[i64],
+    fallback_backend_id: Option<i64>,
+) -> Result<(), ApiError> {
+    for id in backend_ids.iter().chain(fallback_backend_id.iter()) {
+        sqlx::query::<sqlx::Postgres>("UPDATE backends SET enabled = true WHERE id = $1")
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
 async fn upsert_route(
     Extension(state): Extension<Arc<AdminState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -1979,7 +2012,8 @@ async fn upsert_route(
          max_output_tokens = EXCLUDED.max_output_tokens, \
          price_input_per_mtok_usd = EXCLUDED.price_input_per_mtok_usd, \
          price_output_per_mtok_usd = EXCLUDED.price_output_per_mtok_usd, enabled = EXCLUDED.enabled, \
-         provider_key_ref = EXCLUDED.provider_key_ref, auth_mode = EXCLUDED.auth_mode, \
+         provider_key_ref = COALESCE(EXCLUDED.provider_key_ref, model_routes.provider_key_ref), \
+         auth_mode = EXCLUDED.auth_mode, \
          protocol = EXCLUDED.protocol",
     )
     .bind(&v.model_name)
@@ -1998,6 +2032,10 @@ async fn upsert_route(
     .bind(&v.protocol)
     .execute(pool)
     .await?;
+    // Provider templates ship disabled; a tested route saved as enabled must activate them.
+    if v.enabled {
+        enable_referenced_backends(pool, &v.backend_ids, v.fallback_backend_id).await?;
+    }
     state.reload_now().await?;
     Ok(Json(route_response(v)))
 }
@@ -2046,7 +2084,8 @@ async fn patch_route(
         "UPDATE model_routes SET model_name = $1, backend_ids = $2, fallback_backend_id = $3, \
          chars_per_token = $4, first_byte_timeout = $5, provider_model_name = $6, \
          context_tokens = $7, max_output_tokens = $8, price_input_per_mtok_usd = $9, \
-         price_output_per_mtok_usd = $10, enabled = $11, provider_key_ref = $12, auth_mode = $13, \
+         price_output_per_mtok_usd = $10, enabled = $11, \
+         provider_key_ref = COALESCE($12, provider_key_ref), auth_mode = $13, \
          protocol = $14 WHERE model_name = $15",
     )
     .bind(&v.model_name)
@@ -2068,6 +2107,10 @@ async fn patch_route(
     .await?;
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("route not found"));
+    }
+    // Kích hoạt provider endpoints khi lưu route enabled (giống upsert_route).
+    if v.enabled {
+        enable_referenced_backends(pool, &v.backend_ids, v.fallback_backend_id).await?;
     }
     state.reload_now().await?;
     Ok(Json(route_response(v)))
@@ -2102,6 +2145,15 @@ async fn delete_route(
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("route not found"));
     }
+    // Xoá file provider key của route (tránh orphan plaintext secret).
+    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
+    let key_path = std::path::Path::new(&data_dir)
+        .join("provider_keys")
+        .join(format!(
+            "route_{}.key",
+            hex_encode(&Sha256::digest(model_name.as_bytes()))
+        ));
+    let _ = std::fs::remove_file(&key_path);
     state.reload_now().await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2129,6 +2181,20 @@ async fn toggle_route_enabled(
             .await?;
     if result.rows_affected() == 0 {
         return Err(ApiError::not_found("route not found"));
+    }
+    // Kích hoạt provider endpoints khi route được bật (không cần gửi lại toàn bộ payload).
+    if payload.enabled {
+        let row = sqlx::query::<sqlx::Postgres>(
+            "SELECT backend_ids, fallback_backend_id FROM model_routes WHERE model_name = $1",
+        )
+        .bind(&model_name)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| ApiError::not_found("route not found"))?;
+        let backend_ids_json: String = row.try_get("backend_ids")?;
+        let backend_ids = parse_backend_ids(&backend_ids_json)?;
+        let fallback: Option<i64> = row.try_get("fallback_backend_id")?;
+        enable_referenced_backends(pool, &backend_ids, fallback).await?;
     }
     state.reload_now().await?;
     Ok(Json(

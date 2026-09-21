@@ -1262,12 +1262,12 @@ function openProviderModal(b){
   var nameIn=el("input"); nameIn.value=b.name||""; fname.appendChild(nameIn); m.appendChild(fname);
   var fu=el("div","field"); fu.appendChild(el("label",null,"Base URL"));
   var urlIn=el("input"); urlIn.value=b.base_url||""; fu.appendChild(urlIn); m.appendChild(fu);
-  function applyCat(){
+  function applyCat(resetUrl){
     var e=catEntry(psel.value);
     if(!nameIn.value.trim()) nameIn.value=e.label;
-    if(e.base_url) urlIn.value=e.base_url;
+    if(e.base_url && (resetUrl || !urlIn.value.trim())) urlIn.value=e.base_url;
   }
-  psel.onchange=applyCat; applyCat();
+  psel.onchange=function(){ applyCat(true); }; applyCat(false);
   var hasLoadControl=!!(b.id&&((b.weight&&b.weight!==1)||(b.max_inflight&&b.max_inflight>0)));
   var loadOpen=hasLoadControl;
   var loadWrap=el("div","advanced-wrap");
@@ -1382,8 +1382,8 @@ function renderModels(c){
       else { statusTxt="Disabled manually"; statusKind="off"; }
       st.appendChild(pill(statusTxt, statusKind));
       tr.appendChild(st);
-      var providerName=r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?providerDisplayName(b.name):"#"+id;}).join(", ");
-      var providerRawName=r.backend_ids.map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ");
+      var providerName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?providerDisplayName(b.name):"#"+id;}).join(", ");
+      var providerRawName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ");
       var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=displayNameNode("div","cell-main compact-line",providerName||"—",providerRawName||providerName||"—"); pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s"))); pv.appendChild(pvs); tr.appendChild(pv);
       var pm=el("td"); var pms=el("div","stack-cell"); var pmw=nameNode("div","cell-main mono compact-line",r.provider_model_name||"—",30); pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
       var meta=el("td");
@@ -1500,7 +1500,7 @@ function openRouteModal(route){
   fk.appendChild(keyRow); fk.appendChild(keyHint); providerGrid.appendChild(fk);
   m.appendChild(providerGrid);
 
-  function applyCat(){
+  function applyCat(resetUrl){
     var e=catEntry(ps.value);
     var task=ts.value;
     var providerKey=(e.key||"").toLowerCase();
@@ -1508,10 +1508,13 @@ function openRouteModal(route){
     if(qwenRerank){
       var qwenDefault=e.base_url||"";
       var qwenRerankBase="https://dashscope-intl.aliyuncs.com";
-      if(!route.model_name && (!url.value || url.value===qwenDefault)) url.value=qwenRerankBase;
+      if(!route.model_name && (resetUrl || !url.value || url.value===qwenDefault)) url.value=qwenRerankBase;
       url.placeholder="https://dashscope-intl.aliyuncs.com or https://<workspace>.<region>.maas.aliyuncs.com";
-    } else if(e.base_url){ url.value=e.base_url; url.placeholder=e.base_url; }
-    else { url.value=""; url.placeholder="https://…"; }
+    } else if(e.base_url){
+      if(resetUrl || !url.value) url.value=e.base_url;
+      url.placeholder=e.base_url;
+    }
+    else { if(resetUrl) url.value=""; url.placeholder="https://…"; }
     var taskName={chat:"chat",embedding:"embedding",rerank:"rerank",asr:"ASR"}[task]||task;
     pHint.textContent = (e.dialect==="anthropic" ? "Anthropic Messages API" : "OpenAI-compatible API") + " · " + taskName + " route";
     var sug=suggestedModels(e,task);
@@ -1548,8 +1551,8 @@ function openRouteModal(route){
     if(typeof mi!=="undefined" && mi) applyCat.oldPublicModel=mi.value||"";
     applyCat.resetModel=true;
   }
-  ps.onchange=function(){ markModelReset(); applyCat(); clearTest("Provider changed — test connection again before saving enabled."); };
-  ts.onchange=function(){ markModelReset(); refreshProviderOptions(); applyCat(); clearTest("Task changed — test connection again before saving enabled."); };
+  ps.onchange=function(){ markModelReset(); applyCat(true); clearTest("Provider changed — test connection again before saving enabled."); };
+  ts.onchange=function(){ markModelReset(); refreshProviderOptions(); applyCat(true); clearTest("Task changed — test connection again before saving enabled."); };
   applyCat();
   url.oninput=function(){ clearTest(""); };
   pk.oninput=function(){ clearTest(""); };
@@ -1609,8 +1612,8 @@ function openRouteModal(route){
 	  var limits=el("div","form-grid");
   var f5=el("div","field"); f5.appendChild(el("label",null,"Context window (tokens, optional)")); var ct=el("input"); ct.type="number"; ct.value=route.context_tokens||""; f5.appendChild(ct); limits.appendChild(f5);
   var f6=el("div","field"); f6.appendChild(el("label",null,"Max output tokens (optional)")); var mo=el("input"); mo.type="number"; mo.value=route.max_output_tokens||""; f6.appendChild(mo); limits.appendChild(f6);
-  var f7=el("div","field"); f7.appendChild(el("label",null,"Price per 1M input tokens (USD, optional)")); var pi=el("input"); pi.type="number"; pi.step="0.01"; pi.value=route.price_input_per_mtok_usd||""; f7.appendChild(pi); limits.appendChild(f7);
-  var f8=el("div","field"); f8.appendChild(el("label",null,"Price per 1M output tokens (USD, optional)")); var po=el("input"); po.type="number"; po.step="0.01"; po.value=route.price_output_per_mtok_usd||""; f8.appendChild(po); limits.appendChild(f8);
+  var f7=el("div","field"); f7.appendChild(el("label",null,"Price per 1M input tokens (USD, optional)")); var pi=el("input"); pi.type="number"; pi.step="0.01"; pi.value=route.price_input_per_mtok_usd!=null?route.price_input_per_mtok_usd:""; f7.appendChild(pi); limits.appendChild(f7);
+  var f8=el("div","field"); f8.appendChild(el("label",null,"Price per 1M output tokens (USD, optional)")); var po=el("input"); po.type="number"; po.step="0.01"; po.value=route.price_output_per_mtok_usd!=null?route.price_output_per_mtok_usd:""; f8.appendChild(po); limits.appendChild(f8);
   var f3=el("div","field"); f3.appendChild(el("label",null,"Fallback provider (optional)"));
   var fb=el("select"); var none=el("option",null,"None"); none.value=""; fb.appendChild(none);
   (backends||[]).forEach(function(b){ var o=el("option",null,providerDisplayName(b.name)+" · "+b.base_url.replace("https://","").replace("http://","")); o.title=b.name; o.value=String(b.id); fb.appendChild(o); });
@@ -1714,15 +1717,18 @@ function openRouteModal(route){
         var created=await api("/admin/backends","POST",{name:e.label||"Custom LLM",base_url:url.value.trim(),api_key_ref:"env:NONE",weight:1,max_inflight:0,format:da.dialect,enabled:true});
         backendId=created.id;
       }
+      var isEdit=!!route.model_name;
       var payload={model_name:name,backend_ids:[backendId],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel,enabled:enabledFlag};
       payload.auth_mode=da.auth; payload.protocol=da.protocol;
-      Object.assign(payload, keyPayload());
+      // On edit the provider key is write-only (the input is blank); only send a key when the
+      // admin actually typed a new one. Otherwise the backend preserves the stored credential.
+      if(isEdit){ if(pk.value.trim()) payload.provider_key=pk.value.trim(); }
+      else { Object.assign(payload, keyPayload()); }
       if(ct.value) payload.context_tokens=Number(ct.value);
       if(mo.value) payload.max_output_tokens=Number(mo.value);
       if(pi.value!=="") payload.price_input_per_mtok_usd=Number(pi.value);
       if(po.value!=="") payload.price_output_per_mtok_usd=Number(po.value);
       if(fb.value) payload.fallback_backend_id=Number(fb.value);
-      var isEdit=!!route.model_name;
       var path=isEdit?"/admin/routes/"+encodeURIComponent(route.model_name):"/admin/routes";
       var method=isEdit?"PATCH":"POST";
       await api(path,method,payload);
@@ -1734,8 +1740,12 @@ function openRouteModal(route){
   saveDisabled.onclick=function(){ doSave(false); };
 
   if(route.model_name){
-    var rb=backends.find(function(x){return x.id===route.backend_ids[0];});
-    if(rb){ url.value=rb.base_url; var ck=(catalog||[]).find(function(e){return rb.name===e.label;}); if(ck) ps.value=ck.key; }
+    var rb=backends.find(function(x){return x.id===(route.backend_ids&&route.backend_ids[0]);});
+    if(rb){
+      url.value=rb.base_url;
+      var ck=(catalog||[]).find(function(e){return rb.name===e.label || rb.name.toLowerCase().indexOf(e.key)>=0;});
+      if(ck){ ps.value=ck.key; applyCat(false); }
+    }
     setConnectionStatus("","Run Test connection again before saving this route as enabled.");
   }
 
@@ -1890,9 +1900,24 @@ function openTeamModal(tm){
   var save=el("button","btn primary",tm.id?"Save":"Create");
   save.onclick=async function(){
     var payload={name:ni.value.trim(),enabled:cb.checked};
-    if(bt.value==="unlimited"){ payload.budget=null; } // Unlimited -> clear (ignore hidden Advanced JSON)
-    else if(bi.style.display!=="none" && bi.value.trim()){ try{payload.budget=JSON.parse(bi.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
-    else if(bt.value==="token"){ var amt=Number(ba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;} payload.budget={period:bp.value,max_tokens:amt,per_model:{}}; }
+    var prev=tm.budget||null;
+    if(bi.style.display!=="none"){
+      // Advanced editor open: its content is authoritative (empty => clear budget).
+      var aj=bi.value.trim();
+      if(aj){ try{payload.budget=JSON.parse(aj);}catch(e){toast("Invalid budget JSON","err");return;} }
+      else { payload.budget=null; }
+    }
+    else if(bt.value==="token"){
+      var amt=Number(ba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;}
+      var b={period:bp.value,max_tokens:amt,per_model:{}};
+      if(prev){ if(prev.max_usd_cents) b.max_usd_cents=prev.max_usd_cents; if(prev.per_model) b.per_model=prev.per_model; }
+      payload.budget=b;
+    }
+    else {
+      // Unlimited + editor closed: keep money/per-model caps the simple UI can't display.
+      if(prev && (prev.max_usd_cents>0 || (prev.per_model && Object.keys(prev.per_model).length>0))) payload.budget=prev;
+      else payload.budget=null;
+    }
     try{ if(tm.id){await api("/admin/teams/"+tm.id,"PATCH",payload);} else {await api("/admin/teams","POST",payload);}
       closeModal(); toast("Team saved"); teams=await api("/admin/teams","GET"); rerender(); }
     catch(e){ toast("Save failed: "+e.message,"err"); }
@@ -2022,7 +2047,7 @@ function openKeyModal(k){
   selectedScope.onclick=function(){ scopeMode="selected"; drawScopePicker(); };
   scopeSeg.appendChild(allScope); scopeSeg.appendChild(selectedScope); f3.appendChild(scopeSeg); f3.appendChild(scopePicker); m.appendChild(f3);
   drawScopePicker();
-  var hasKeyLimits=!!(k.expires_at||k.rpm_limit||k.concurrency_limit||(k.budget&&k.budget.max_tokens>0));
+  var hasKeyLimits=!!(k.expires_at||k.rpm_limit||k.concurrency_limit||(k.budget&&(k.budget.max_tokens>0||k.budget.max_usd_cents>0||(k.budget.per_model&&Object.keys(k.budget.per_model).length))));
   var keyLimitsOpen=isEdit && hasKeyLimits;
   var limitsWrap=el("div","advanced-wrap");
   var limitsHead=el("button","advanced-toggle");
@@ -2063,13 +2088,26 @@ function openKeyModal(k){
     var allowedModels=scopeMode==="all"?[]:chosenModels();
     if(scopeMode==="selected" && !allowedModels.length){ toast("Choose at least one model, or use All models.","err"); return; }
     var payload={team_id:Number(ts.value),owner:oi.value.trim(),allowed_models:allowedModels};
+    if(!teams.length || ts.value===""){ toast("Choose a team first","err"); return; }
     if(ex.value) payload.expires_at=Math.floor(new Date(ex.value+"T23:59:59").getTime()/1000);
     if(rpm.value) payload.rpm_limit=Number(rpm.value);
     if(conc.value) payload.concurrency_limit=Number(conc.value);
-    if(kbm.value==="inherit"){ payload.budget=null; }
-    else if(bud.style.display!=="none" && bud.value.trim()){ try{payload.budget=JSON.parse(bud.value.trim());}catch(e){toast("Invalid budget JSON","err");return;} }
-    else if(kbm.value==="token"){ var amt=Number(kba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;} payload.budget={period:kbp.value,max_tokens:amt,per_model:{}}; }
-    else { payload.budget=null; }
+    var prev=k.budget||null;
+    if(bud.style.display!=="none"){
+      var aj=bud.value.trim();
+      if(aj){ try{payload.budget=JSON.parse(aj);}catch(e){toast("Invalid budget JSON","err");return;} }
+      else { payload.budget=null; }
+    }
+    else if(kbm.value==="token"){
+      var amt=Number(kba.value); if(!amt||amt<=0){toast("Token amount is required","err");return;}
+      var b={period:kbp.value,max_tokens:amt,per_model:{}};
+      if(prev){ if(prev.max_usd_cents) b.max_usd_cents=prev.max_usd_cents; if(prev.per_model) b.per_model=prev.per_model; }
+      payload.budget=b;
+    }
+    else {
+      if(prev && (prev.max_usd_cents>0 || (prev.per_model && Object.keys(prev.per_model).length>0))) payload.budget=prev;
+      else payload.budget=null;
+    }
     if(isEdit) payload.enabled=ecb.checked;
     try{
       if(isEdit){
@@ -2110,7 +2148,7 @@ async function revealKey(k){
 async function toggleKey(k){
   if(k.enabled){
     if(!confirm("Disable key "+k.prefix+" for "+k.owner+"?")) return;
-    try{ await api("/admin/keys/"+k.id,"DELETE"); toast("Key disabled"); keys=await api("/admin/keys","GET"); rerender(); }
+    try{ await api("/admin/keys/"+k.id,"PATCH",{enabled:false}); toast("Key disabled"); keys=await api("/admin/keys","GET"); rerender(); }
     catch(e){ toast(e.message,"err"); }
   }else{
     try{ await api("/admin/keys/"+k.id,"PATCH",{enabled:true}); toast("Key enabled"); keys=await api("/admin/keys","GET"); rerender(); }

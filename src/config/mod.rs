@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -29,7 +28,7 @@ impl DbConfigLoader {
         for b in self.load_backends().await? {
             snapshot.backends.insert(b.id, b);
         }
-        for r in self.load_routes(&snapshot.backends).await? {
+        for r in self.load_routes().await? {
             snapshot.routes.insert(r.model_name.clone(), r);
         }
         for t in self.load_teams().await? {
@@ -108,7 +107,7 @@ impl DbConfigLoader {
         Ok(out)
     }
 
-    async fn load_routes(&self, backends: &HashMap<i64, Backend>) -> Result<Vec<ModelRoute>> {
+    async fn load_routes(&self) -> Result<Vec<ModelRoute>> {
         let rows = fetch_rows(
             &self.pool,
             "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
@@ -140,17 +139,15 @@ impl DbConfigLoader {
             let auth_mode = g_str(&row, 12)?;
             let protocol_raw = g_str(&row, 13)?;
             let protocol = ProviderProtocol::parse(&protocol_raw).as_str().to_string();
-            // Resolve route-level credential; fallback to backend key khi route chưa có credential riêng
-            // (backward compat cho route tạo trước migration 0005).
+            // Resolve route-level credential (nếu có). Khi route không có credential riêng, để
+            // provider_key = None; proxy sẽ dùng backend.api_key của backend được chọn tại thời điểm
+            // forward (mỗi backend có key riêng, kể cả fallback/secondary).
             let provider_key = if auth_mode == "none" {
                 None
             } else if let Some(kr) = &provider_key_ref {
                 resolve_backend_key(kr)
             } else {
-                backend_ids
-                    .first()
-                    .and_then(|id| backends.get(id))
-                    .and_then(|b| b.api_key.clone())
+                None
             };
             out.push(ModelRoute {
                 model_name,

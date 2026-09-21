@@ -15,6 +15,20 @@ make test
 
 Integration tests use PostgreSQL through `sqlx::test`. Run `make test` for the safest local path; it starts a temporary PostgreSQL container unless you explicitly set a non-default `DATABASE_URL` or `TEST_DATABASE_URL`.
 
+Portal, Admin API, provider-key, team, API-key, Docker/runtime, or install-flow changes must also run the real browser audit:
+
+```bash
+python3 scripts/portal_full_audit.py
+```
+
+For quick iteration after release binaries already exist, use:
+
+```bash
+BRIGHTO_SKIP_RELEASE_BUILD=1 python3 scripts/portal_full_audit.py
+```
+
+The audit starts temporary PostgreSQL, a local router, the Rust mock upstream, and headless Chromium. It clicks the main Portal sections and tests model-route, provider-key, team, and API-key flows end to end.
+
 ## Benchmark changes
 
 The benchmark contract lives in `benchmarks/BENCHMARK.md`; thresholds live in `benchmarks/thresholds.toml`.

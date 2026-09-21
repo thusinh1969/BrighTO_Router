@@ -907,7 +907,14 @@ pub async fn proxy_forward(
         };
 
         let url = build_target_url(&backend.base_url, &uri);
-        let auth_key = ctx.route.provider_key.as_deref().unwrap_or("");
+        // Ưu tiên route-level credential; nếu route không có key riêng thì dùng key của backend
+        // được chọn (mỗi backend có key riêng, kể cả fallback/secondary).
+        let auth_key = ctx
+            .route
+            .provider_key
+            .as_deref()
+            .or(backend.api_key.as_deref())
+            .unwrap_or("");
         let built = build_reqwest_request(
             &state.client,
             &method,

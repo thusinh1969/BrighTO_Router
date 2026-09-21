@@ -487,6 +487,15 @@ fn is_local_host(base_url: &str) -> bool {
         .split_once("://")
         .map(|(_, rest)| rest.split('/').next().unwrap_or(""))
         .unwrap_or("");
+    // Strip port and IPv6 brackets so "127.0.0.1:8088" and "[::1]:8088" match the checks below.
+    let host = host.trim_start_matches('[');
+    let host = match host.split_once(']') {
+        Some((inside, _)) => inside, // bracketed IPv6 [::1]:port
+        None => match host.rsplit_once(':') {
+            Some((h, port)) if !port.is_empty() && !h.contains(':') => h, // IPv4/hostname:port
+            _ => host, // bare hostname/IPv4, or bare IPv6
+        },
+    };
     host == "127.0.0.1"
         || host == "localhost"
         || host.starts_with("10.")

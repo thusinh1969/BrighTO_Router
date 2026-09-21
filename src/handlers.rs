@@ -937,9 +937,10 @@ fn rewrite_json_proxy_body(
             {
                 obj.insert("top_k".to_string(), top_n);
             }
-            if obj.remove("top_n").is_some() {
-                changed = true;
-            }
+            let _ = obj.remove("top_n");
+            // Voyage is fully handled: return the (possibly unchanged) normalized body so the
+            // caller never reports a false "could not rewrite adapter request body" 400.
+            return serde_json::to_vec(&serde_json::Value::Object(obj.clone())).ok();
         }
     }
     if changed {
