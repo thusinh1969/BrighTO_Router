@@ -166,6 +166,8 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await page.unroute('**/admin/routes');
 
           const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'audit-model-group' }}).first();
+          await expect(page.locator('#content')).toContainText('Model Groups');
+          await expect(page.locator('#content')).toContainText('Single model routes');
           await expect(row).toContainText('Model Group');
           await expect(row).toContainText('weighted round robin');
           await expect(row).toContainText('weighted RR');
@@ -341,6 +343,8 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             m = await assertResponsiveLayout(page, cfg.name + '-models');
             if (m.sidebarPointerEvents !== 'none') throw new Error(cfg.name + ' closed sidebar can still intercept clicks');
             await page.screenshot({{ path: outDir + '/' + cfg.name + '-models.png', fullPage: true }});
+            await expect(page.locator('#content')).toContainText('Model Groups');
+            await expect(page.locator('#content')).toContainText('Single model routes');
             await page.getByRole('button', {{ name: /^Create model group$/ }}).last().click();
             const modal = page.locator('#modal-overlay .modal').last();
             await expect(modal).toBeVisible();

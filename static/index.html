@@ -200,6 +200,12 @@ textarea{resize:vertical;min-height:72px}
 .summary-card .v{display:block;color:var(--text);font-size:22px;line-height:1.1;font-weight:900;letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .summary-card .s{display:block;color:var(--muted);font-size:11.5px;margin-top:4px;overflow-wrap:anywhere;line-height:1.35}
 .summary-card.ok{border-color:rgba(34,197,94,.32)} .summary-card.warn{border-color:rgba(245,158,11,.35)} .summary-card.bad{border-color:rgba(248,113,113,.35)} .summary-card.info{border-color:rgba(56,189,248,.28)}
+.model-section{margin-top:18px}
+.model-section:first-of-type{margin-top:14px}
+.model-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:0 0 10px;flex-wrap:wrap}
+.model-section-head h4{margin:0;font-size:15px;font-weight:900;letter-spacing:-.01em}
+.model-section-head .hint{margin:3px 0 0}
+.model-section-count{color:var(--muted);font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.06em;background:#0b1220;border:1px solid var(--border);border-radius:999px;padding:5px 10px;white-space:nowrap}
 
 /* ---------- Tables ---------- */
 .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:#0b1220;contain:layout}
@@ -1413,59 +1419,63 @@ function renderModels(c){
   actionCards.appendChild(singleCard); actionCards.appendChild(groupCard); p.appendChild(actionCards);
   var fv=(window.modelFilter||"all");
   var shown=routes.filter(function(r){ return fv==="all" || (fv==="enabled"?r.effective_enabled:!r.effective_enabled); });
-  if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
-  else if(!shown.length){ p.appendChild(emptyBox("No models match this filter.")); }
-  else{
+  function routeRow(r){
+    var tr=el("tr");
+    var group=isGroupRoute(r);
+    var mn=el("td");
+    var mns=el("div","stack-cell");
+    var mrow=el("div","model-name-row");
+    var mnw=nameNode("span","cell-main mono",r.model_name,1000);
+    mrow.appendChild(mnw); mrow.appendChild(copyIconBtn(r.model_name));
+    mns.appendChild(mrow);
+    mns.appendChild(el("div","cell-sub",group?("Model Group · "+routingPolicyLabel(r.routing_policy)):"Public route name"));
+    if(group) mns.appendChild(pill((r.endpoints||[]).length+" endpoints","info"));
+    mn.appendChild(mns); tr.appendChild(mn);
+    var st=el("td");
+    var statusTxt, statusKind;
+    if(r.effective_enabled){ statusTxt="Enabled"; statusKind="on"; }
+    else if(r.disabled_reason==="provider disabled"){ statusTxt="Disabled by provider"; statusKind="off"; }
+    else { statusTxt="Disabled manually"; statusKind="off"; }
+    st.appendChild(pill(statusTxt,statusKind)); tr.appendChild(st);
+    var providerName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?providerDisplayName(b.name):"#"+id;}).join(", ");
+    var providerRawName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ");
+    var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=displayNameNode("div","cell-main compact-line",providerName||"—",providerRawName||providerName||"—"); pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s")+(group?" · "+routingPolicyLabel(r.routing_policy,true):""))); pv.appendChild(pvs); tr.appendChild(pv);
+    var pm=el("td"); var pms=el("div","stack-cell");
+    var endpointModels=group?(r.endpoints||[]).map(function(e){return e.provider_model_name;}).filter(Boolean):[];
+    var pmw=nameNode("div","cell-main mono compact-line",group?(endpointModels.join(", ")||"—"):(r.provider_model_name||"—"),42);
+    pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",group?(groupTypeLabel(routeTask(r.protocol))+" Model Group"):protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
+    var meta=el("td"); var mg=el("div","model-meta-grid");
+    [["Auth",group?"per endpoint":(r.auth_mode||"—")],["Policy",group?routingPolicyLabel(r.routing_policy,true):"—"],["Context",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Max output",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["Input $/1M",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["Output $/1M",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){
+      var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,String(x[1]))); mg.appendChild(item);
+    });
+    meta.appendChild(mg); tr.appendChild(meta);
+    var td=el("td","actions"); var row=el("div","action-row");
+    var tg2=el("button","btn sm ghost",r.enabled?"Disable":"Enable"); tg2.onclick=function(){ toggleRoute(r); };
+    var b=el("button","btn sm primary","Edit"); b.onclick=function(){ group ? openGroupModal(r) : openRouteModal(r); };
+    var d=el("button","btn sm danger","Delete");
+    if(!r.can_delete){ d.disabled=true; d.title="Has "+r.usage_count+" logged request(s) — disable instead"; }
+    else { d.onclick=function(){ deleteRoute(r); }; }
+    row.appendChild(tg2); row.appendChild(b); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
+    return tr;
+  }
+  function appendRouteSection(title,subtitle,list,emptyText){
+    var sec=el("div","model-section");
+    var sh=el("div","model-section-head");
+    var st=el("div"); st.appendChild(el("h4",null,title)); st.appendChild(el("p","hint",subtitle)); sh.appendChild(st); sh.appendChild(el("span","model-section-count",fmt(list.length)+" shown")); sec.appendChild(sh);
+    if(!list.length){ sec.appendChild(emptyBox(emptyText)); p.appendChild(sec); return; }
     var w=el("div","table-wrap pro-table route-list-wrap"); var t=el("table","models-table route-list-table");
     var colg=document.createElement("colgroup");
     ["27%","10%","21%","16%","14%","12%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
-    t.appendChild(colg);
-    t.appendChild(thead(["API model","Status","Provider","Provider model","Route settings",""]));
-    var tb=el("tbody");
-    shown.forEach(function(r){
-      var tr=el("tr");
-      var mn=el("td");
-      var mns=el("div","stack-cell");
-      var mrow=el("div","model-name-row");
-      var mnw=nameNode("span","cell-main mono",r.model_name,1000);
-      mrow.appendChild(mnw); mrow.appendChild(copyIconBtn(r.model_name));
-      mns.appendChild(mrow);
-      var isGroupRoute=!!(r.endpoints&&r.endpoints.length);
-      var routeKind=el("div","cell-sub",isGroupRoute?("Model Group · "+routingPolicyLabel(r.routing_policy)):"Public route name");
-      mns.appendChild(routeKind);
-      if(isGroupRoute) mns.appendChild(pill((r.endpoints||[]).length+" endpoints","info"));
-      mn.appendChild(mns); tr.appendChild(mn);
-      var st=el("td");
-      var statusTxt, statusKind;
-      if(r.effective_enabled){ statusTxt="Enabled"; statusKind="on"; }
-      else if(r.disabled_reason==="provider disabled"){ statusTxt="Disabled by provider"; statusKind="off"; }
-      else { statusTxt="Disabled manually"; statusKind="off"; }
-      st.appendChild(pill(statusTxt, statusKind));
-      tr.appendChild(st);
-      var providerName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?providerDisplayName(b.name):"#"+id;}).join(", ");
-      var providerRawName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ");
-      var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=displayNameNode("div","cell-main compact-line",providerName||"—",providerRawName||providerName||"—"); pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s")+(isGroupRoute?" · "+routingPolicyLabel(r.routing_policy,true):""))); pv.appendChild(pvs); tr.appendChild(pv);
-      var pm=el("td"); var pms=el("div","stack-cell");
-      var endpointModels=isGroupRoute?(r.endpoints||[]).map(function(e){return e.provider_model_name;}).filter(Boolean):[];
-      var pmw=nameNode("div","cell-main mono compact-line",isGroupRoute?(endpointModels.join(", ")||"—"):(r.provider_model_name||"—"),42);
-      pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",isGroupRoute?(groupTypeLabel(routeTask(r.protocol))+" Model Group"):protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
-      var meta=el("td");
-      var mg=el("div","model-meta-grid");
-      [["Auth",isGroupRoute?"per endpoint":(r.auth_mode||"—")],["Policy",isGroupRoute?routingPolicyLabel(r.routing_policy,true):"—"],["Context",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Max output",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["Input $/1M",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["Output $/1M",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){
-        var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,String(x[1]))); mg.appendChild(item);
-      });
-      meta.appendChild(mg); tr.appendChild(meta);
-      var td=el("td","actions"); var row=el("div","action-row");
-      var tg2=el("button","btn sm ghost", r.enabled?"Disable":"Enable"); tg2.onclick=function(){ toggleRoute(r); };
-      var b=el("button","btn sm primary","Edit"); b.onclick=function(){ isGroupRoute ? openGroupModal(r) : openRouteModal(r); };
-      var d=el("button","btn sm danger","Delete");
-      if(!r.can_delete){ d.disabled=true; d.title="Has "+r.usage_count+" logged request(s) — disable instead"; }
-      else { d.onclick=function(){deleteRoute(r);}; }
-      row.appendChild(tg2); row.appendChild(b); row.appendChild(d); td.appendChild(row); tr.appendChild(td);
-      tb.appendChild(tr);
-    });
-    t.appendChild(tb); w.appendChild(t); p.appendChild(w);
+    t.appendChild(colg); t.appendChild(thead(["API model","Status","Provider","Provider model","Route settings",""]));
+    var tb=el("tbody"); list.forEach(function(r){ tb.appendChild(routeRow(r)); });
+    t.appendChild(tb); w.appendChild(t); sec.appendChild(w); p.appendChild(sec);
   }
+  var groupRoutes=shown.filter(function(r){return isGroupRoute(r);});
+  var singleRoutes=shown.filter(function(r){return !isGroupRoute(r);});
+  var noGroupCopy=routes.length?"No Model Groups match this filter. Click Create model group when you need load balancing.":"No Model Groups yet. Create tested model routes first, then click Create model group.";
+  var noSingleCopy=routes.length?"No single model routes match this filter.":"No single model routes yet. Click Add model route to connect your first provider model.";
+  appendRouteSection("Model Groups","Client-facing group names that load-balance across existing tested routes.",groupRoutes,noGroupCopy);
+  appendRouteSection("Single model routes","Direct public model names backed by one provider endpoint.",singleRoutes,noSingleCopy);
   c.appendChild(p);
 }
 
