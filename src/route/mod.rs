@@ -410,16 +410,30 @@ impl RamBackendPool {
         excluded: &BackendExclusions,
     ) -> Result<Option<Candidate>, AcquireError> {
         let now = tokio::time::Instant::now();
-        let candidates: Vec<Candidate> = backend_ids
+        let candidate_count = backend_ids
             .iter()
-            .filter_map(|id| self.candidate_for_backend(route, *id, excluded, now))
-            .collect();
-        if candidates.is_empty() {
+            .filter(|id| {
+                self.candidate_for_backend(route, **id, excluded, now)
+                    .is_some()
+            })
+            .count();
+        if candidate_count == 0 {
             return Ok(None);
         }
-        let counter = self.next_persistent_counter(&route.model_name).await?;
-        let idx = counter as usize % candidates.len();
-        Ok(candidates.get(idx).copied())
+        let selected =
+            self.next_persistent_counter(&route.model_name).await? as usize % candidate_count;
+        let mut seen = 0usize;
+        for &backend_id in backend_ids {
+            let Some(candidate) = self.candidate_for_backend(route, backend_id, excluded, now)
+            else {
+                continue;
+            };
+            if seen == selected {
+                return Ok(Some(candidate));
+            }
+            seen += 1;
+        }
+        Ok(None)
     }
 
     async fn choose_weighted_round_robin_candidate(
@@ -429,20 +443,26 @@ impl RamBackendPool {
         excluded: &BackendExclusions,
     ) -> Result<Option<Candidate>, AcquireError> {
         let now = tokio::time::Instant::now();
-        let candidates: Vec<(Candidate, u32)> = backend_ids
-            .iter()
-            .filter_map(|id| {
-                let candidate = self.candidate_for_backend(route, *id, excluded, now)?;
-                Some((candidate, route.endpoint_weight(*id).max(1)))
-            })
-            .collect();
-        let total_weight: u64 = candidates.iter().map(|(_, w)| u64::from(*w)).sum();
+        let total_weight = backend_ids.iter().fold(0u64, |sum, id| {
+            if self
+                .candidate_for_backend(route, *id, excluded, now)
+                .is_some()
+            {
+                sum.saturating_add(u64::from(route.endpoint_weight(*id).max(1)))
+            } else {
+                sum
+            }
+        });
         if total_weight == 0 {
             return Ok(None);
         }
         let mut slot = self.next_persistent_counter(&route.model_name).await? % total_weight;
-        for (candidate, weight) in candidates {
-            let weight = u64::from(weight);
+        for &backend_id in backend_ids {
+            let Some(candidate) = self.candidate_for_backend(route, backend_id, excluded, now)
+            else {
+                continue;
+            };
+            let weight = u64::from(route.endpoint_weight(backend_id).max(1));
             if slot < weight {
                 return Ok(Some(candidate));
             }
