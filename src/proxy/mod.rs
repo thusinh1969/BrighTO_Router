@@ -39,17 +39,144 @@ pub fn splice_include_usage(body: &[u8]) -> Option<Vec<u8>> {
     Some(new_body)
 }
 
+#[cfg(test)]
 fn rewrite_top_level_model(body: &[u8], provider_model_name: &str) -> Option<Bytes> {
-    let mut value: Value = serde_json::from_slice(body).ok()?;
-    let obj = value.as_object_mut()?;
-    if obj.get("model").and_then(|v| v.as_str()) == Some(provider_model_name) {
-        return Some(Bytes::copy_from_slice(body));
+    materialize_chunks(rewrite_top_level_model_chunks(
+        &Bytes::copy_from_slice(body),
+        provider_model_name,
+    )?)
+    .map(Bytes::from)
+}
+
+fn rewrite_top_level_model_chunks(body: &Bytes, provider_model_name: &str) -> Option<Vec<Bytes>> {
+    let (value_start, value_end) = find_top_level_model_string_span(body)?;
+    if body[value_start..value_end] == *provider_model_name.as_bytes() {
+        return Some(vec![body.clone()]);
     }
-    obj.insert(
-        "model".to_string(),
-        Value::String(provider_model_name.to_string()),
-    );
-    serde_json::to_vec(&value).ok().map(Bytes::from)
+    let quoted = serde_json::to_vec(&Value::String(provider_model_name.to_string())).ok()?;
+    if quoted.len() < 2 {
+        return None;
+    }
+    let escaped_value = &quoted[1..quoted.len() - 1];
+    Some(vec![
+        body.slice(..value_start),
+        Bytes::copy_from_slice(escaped_value),
+        body.slice(value_end..),
+    ])
+}
+
+fn materialize_chunks(chunks: Vec<Bytes>) -> Option<Vec<u8>> {
+    let total = chunks.iter().map(Bytes::len).sum();
+    let mut out = Vec::with_capacity(total);
+    for chunk in chunks {
+        out.extend_from_slice(&chunk);
+    }
+    Some(out)
+}
+
+fn reqwest_body_from_chunks(chunks: Vec<Bytes>) -> reqwest::Body {
+    if chunks.len() == 1 {
+        return reqwest::Body::from(chunks.into_iter().next().unwrap());
+    }
+    let stream = futures::stream::iter(chunks.into_iter().map(Ok::<Bytes, std::io::Error>));
+    reqwest::Body::wrap_stream(stream)
+}
+
+fn find_top_level_model_string_span(body: &[u8]) -> Option<(usize, usize)> {
+    let mut i = skip_ws(body, 0);
+    if body.get(i) != Some(&b'{') {
+        return None;
+    }
+    i += 1;
+    loop {
+        i = skip_ws(body, i);
+        match body.get(i)? {
+            b'}' => return None,
+            b'"' => {}
+            _ => return None,
+        }
+        let key_start = i + 1;
+        let key_end = scan_json_string_end(body, i)?;
+        let is_model_key = body[key_start..key_end] == *b"model";
+        i = skip_ws(body, key_end + 1);
+        if body.get(i) != Some(&b':') {
+            return None;
+        }
+        i = skip_ws(body, i + 1);
+        if is_model_key {
+            if body.get(i) != Some(&b'"') {
+                return None;
+            }
+            let value_start = i + 1;
+            let value_end = scan_json_string_end(body, i)?;
+            return Some((value_start, value_end));
+        }
+        i = skip_json_value(body, i)?;
+        i = skip_ws(body, i);
+        match body.get(i)? {
+            b',' => i += 1,
+            b'}' => return None,
+            _ => return None,
+        }
+    }
+}
+
+fn skip_ws(body: &[u8], mut i: usize) -> usize {
+    while matches!(body.get(i), Some(b' ' | b'\n' | b'\r' | b'\t')) {
+        i += 1;
+    }
+    i
+}
+
+fn scan_json_string_end(body: &[u8], quote_pos: usize) -> Option<usize> {
+    if body.get(quote_pos) != Some(&b'"') {
+        return None;
+    }
+    let mut i = quote_pos + 1;
+    while i < body.len() {
+        match body[i] {
+            b'\\' => i += 2,
+            b'"' => return Some(i),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+fn skip_json_value(body: &[u8], mut i: usize) -> Option<usize> {
+    i = skip_ws(body, i);
+    match *body.get(i)? {
+        b'"' => scan_json_string_end(body, i).map(|end| end + 1),
+        b'{' | b'[' => {
+            let mut depth = 0usize;
+            while i < body.len() {
+                match body[i] {
+                    b'"' => i = scan_json_string_end(body, i)? + 1,
+                    b'{' | b'[' => {
+                        depth += 1;
+                        i += 1;
+                    }
+                    b'}' | b']' => {
+                        depth = depth.checked_sub(1)?;
+                        i += 1;
+                        if depth == 0 {
+                            return Some(i);
+                        }
+                    }
+                    _ => i += 1,
+                }
+            }
+            None
+        }
+        _ => {
+            while i < body.len()
+                && !matches!(body[i], b',' | b'}' | b']' | b' ' | b'\n' | b'\r' | b'\t')
+            {
+                i += 1;
+            }
+            Some(i)
+        }
+    }
 }
 
 /// Heuristic nhẹ: body có yêu cầu stream hay không (không parse full JSON).
@@ -905,11 +1032,12 @@ pub async fn proxy_forward(
 
         let request_body = match body_for_attempt {
             ProxyRequestBody::Buffered(body) => {
-                let mut bytes = if ctx.rewrite_model_in_proxy
+                let original_body = body.clone();
+                let mut model_rewrite_chunks = if ctx.rewrite_model_in_proxy
                     && endpoint.provider_model_name != ctx.model_name
                 {
-                    match rewrite_top_level_model(&body, &endpoint.provider_model_name) {
-                        Some(b) => b,
+                    match rewrite_top_level_model_chunks(&body, &endpoint.provider_model_name) {
+                        Some(chunks) => Some(chunks),
                         None => {
                             request_total_for(&ctx, &backend.name, 400);
                             return tag_router_headers(
@@ -925,18 +1053,28 @@ pub async fn proxy_forward(
                         }
                     }
                 } else {
-                    body.clone()
+                    None
                 };
                 if backend.format == BackendFormat::OpenAi
                     && stream_request
                     && !ctx.stream_options_present
                 {
-                    bytes = splice_include_usage(&bytes)
-                        .map(Bytes::from)
-                        .unwrap_or(bytes);
+                    let bytes = if let Some(chunks) = model_rewrite_chunks.take() {
+                        materialize_chunks(chunks).map(Bytes::from)
+                    } else {
+                        Some(body.clone())
+                    }
+                    .and_then(|b| splice_include_usage(&b).map(Bytes::from))
+                    .unwrap_or_else(|| body.clone());
+                    upload_body = Some(ProxyRequestBody::Buffered(body));
+                    reqwest::Body::from(bytes)
+                } else {
+                    upload_body = Some(ProxyRequestBody::Buffered(body));
+                    match model_rewrite_chunks {
+                        Some(chunks) => reqwest_body_from_chunks(chunks),
+                        None => reqwest::Body::from(original_body),
+                    }
                 }
-                upload_body = Some(ProxyRequestBody::Buffered(body));
-                reqwest::Body::from(bytes)
             }
             ProxyRequestBody::Streaming { .. }
                 if backend.format == BackendFormat::OpenAi
@@ -1271,6 +1409,47 @@ mod tests {
         assert!(spliced.windows(needle.len()).any(|w| w == needle));
         assert!(splice_include_usage(b"").is_none());
         assert!(splice_include_usage(b"no brace").is_none());
+    }
+
+    #[test]
+    fn model_rewrite_splices_only_top_level_model_value() {
+        let filler = "x".repeat(200_000);
+        let body = format!(
+            "{{\"metadata\":{{\"model\":\"nested\",\"items\":[1,{{\"model\":\"nested-2\"}}]}},\"model\":\"public-group\",\"messages\":[{{\"role\":\"user\",\"content\":\"{filler}\"}}],\"temperature\":0.2}}"
+        );
+        let expected = body.replacen(
+            "\"model\":\"public-group\"",
+            "\"model\":\"provider-model\"",
+            1,
+        );
+
+        let rewritten = rewrite_top_level_model(body.as_bytes(), "provider-model").unwrap();
+
+        assert_eq!(rewritten.as_ref(), expected.as_bytes());
+        assert!(
+            rewritten
+                .windows(br#""metadata":{"model":"nested""#.len())
+                .any(|w| w == br#""metadata":{"model":"nested""#),
+            "nested model key must not be rewritten"
+        );
+    }
+
+    #[test]
+    fn model_rewrite_preserves_body_when_provider_model_already_matches() {
+        let body =
+            br#"{"stream":true,"messages":[{"role":"user","content":"hello"}],"model":"same"}"#;
+        let rewritten = rewrite_top_level_model(body, "same").unwrap();
+        assert_eq!(rewritten.as_ref(), body);
+    }
+
+    #[test]
+    fn model_rewrite_escapes_provider_model_name_without_reencoding_body() {
+        let body = br#"{"model":"public","messages":[{"role":"user","content":"hello"}]}"#;
+        let rewritten = rewrite_top_level_model(body, "provider \"quoted\"").unwrap();
+        assert_eq!(
+            rewritten.as_ref(),
+            br#"{"model":"provider \"quoted\"","messages":[{"role":"user","content":"hello"}]}"#
+        );
     }
 
     #[test]

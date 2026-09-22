@@ -33,7 +33,7 @@ cd BrighTO_Router
 ./start.sh status
 ```
 
-A failed Model Group backend is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; change it in `.env`, then run `./start.sh restart`.
+A failed Model Group backend is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; change it in `.env`, then run `./start.sh restart`. `ROUTER_WORKER_THREADS` is blank by default, which means the router uses all available CPU threads; set it only when you want to cap CPU use.
 
 BrighTO-Router 1.0 uses `thusinh1969/brighto_airouter:v1` by default. Existing local `.env` files from older installs should include:
 

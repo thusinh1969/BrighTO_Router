@@ -24,10 +24,30 @@ const DEFAULT_MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
 const CONFIG_POLL_SECS: u64 = 5;
 const HEALTH_INTERVAL_SECS: u64 = 5;
 
-#[tokio::main(worker_threads = 4)]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
+    let worker_threads = router_worker_threads();
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(worker_threads)
+        .enable_all()
+        .build()
+        .context("build tokio runtime")?
+        .block_on(async_main(worker_threads))
+}
 
+fn router_worker_threads() -> usize {
+    std::env::var("ROUTER_WORKER_THREADS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|v| v.get())
+                .unwrap_or(4)
+        })
+}
+
+async fn async_main(worker_threads: usize) -> anyhow::Result<()> {
     if std::env::args().nth(1).as_deref() == Some("healthcheck") {
         return healthcheck().await;
     }
@@ -39,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(filter)
         .try_init()
         .map_err(|e| anyhow::anyhow!("init tracing subscriber: {e}"))?;
+    tracing::info!(worker_threads, "tokio runtime initialized");
 
     let db_url = std::env::var("DATABASE_URL").context("DATABASE_URL is required")?;
     let listen_addr = std::env::var("LISTEN_ADDR").unwrap_or_else(|_| DEFAULT_LISTEN.to_string());

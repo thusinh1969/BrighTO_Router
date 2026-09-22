@@ -16,6 +16,7 @@ Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Mod
 |---|---|
 | **Ultra-fast large-context routing** | Same-machine mock benchmarks show million-token pass-through overhead in low single-digit milliseconds over HTTP. |
 | **Dead-simple production stack** | One Rust binary, one Docker image, PostgreSQL as the durable store. No Redis required for 1.0. |
+| **Multi-core by default** | The router uses all available CPU threads by default; set `ROUTER_WORKER_THREADS` only when you need to cap CPU use. |
 | **Load balancing built in** | Model Groups let one API model name spread traffic across compatible routes using round-robin or weighted round-robin. |
 | **Easy to run and maintain** | `./start.sh install`, `start`, `stop`, `status`, `logs`, `restart`; Portal for routes, teams, keys, budgets, and usage. |
 | **Private by design** | The router records metadata for usage analytics, not prompt text, uploaded media, tool payloads, or model answers. |
@@ -288,6 +289,15 @@ https://<SERVER_IP_OR_HOSTNAME>:18443/
 Browsers will warn on a self-signed certificate. Use a real certificate for shared or production use. Full guide: [HTTPS.md](HTTPS.md).
 
 ## Daily operation
+
+Useful environment knobs:
+
+| Variable | Default | Meaning |
+|---|---:|---|
+| `CONFIG_POLL_SECS` | `5` | How often router replicas reload PostgreSQL config snapshots. |
+| `BACKEND_CIRCUIT_OPEN_SECONDS` | `30` | How long a failed backend stays out before a half-open retry. |
+| `MAX_BODY_BYTES` | `67108864` | Maximum accepted request body size. |
+| `ROUTER_WORKER_THREADS` | all available CPU threads | Optional cap for Tokio worker threads. Leave blank for production throughput. |
 
 ```bash
 ./start.sh start       # start PostgreSQL when local, migrate, seed, start router
