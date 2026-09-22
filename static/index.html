@@ -505,8 +505,8 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 body.nav-open{overflow:hidden}
 @media(max-width:1100px){
   .hamburger{display:inline-flex}
-  .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s;box-shadow:24px 0 70px rgba(0,0,0,.45)}
-  .sidebar.open{transform:none}
+  .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s;box-shadow:24px 0 70px rgba(0,0,0,.45);pointer-events:none}
+  .sidebar.open{transform:none;pointer-events:auto}
   .sidebar-backdrop{display:block;position:fixed;top:0;right:0;bottom:0;left:240px;z-index:35;background:rgba(2,6,18,.62);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .18s}
   .sidebar-backdrop.active{opacity:1;pointer-events:auto}
   .main{padding:24px;max-width:none;width:100%}
@@ -559,8 +559,8 @@ body.nav-open{overflow:hidden}
   .model-action-cards{grid-template-columns:1fr;margin:10px 0 14px}
   .model-action-card{min-height:auto;padding:12px}
   .hamburger{display:inline-flex}
-  .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s;box-shadow:24px 0 70px rgba(0,0,0,.45)}
-  .sidebar.open{transform:none}
+  .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s;box-shadow:24px 0 70px rgba(0,0,0,.45);pointer-events:none}
+  .sidebar.open{transform:none;pointer-events:auto}
   .sidebar-backdrop{display:block;position:fixed;top:0;right:0;bottom:0;left:240px;z-index:35;background:rgba(2,6,18,.62);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .18s}
   .sidebar-backdrop.active{opacity:1;pointer-events:auto}
   .main{padding:18px 16px;max-width:none;width:100%}
@@ -1431,7 +1431,7 @@ function renderModels(c){
       mrow.appendChild(mnw); mrow.appendChild(copyIconBtn(r.model_name));
       mns.appendChild(mrow);
       var isGroupRoute=!!(r.endpoints&&r.endpoints.length);
-      var routeKind=el("div","cell-sub",isGroupRoute?("Model Group · "+(r.routing_policy||"least_loaded_weighted")):"Public route name");
+      var routeKind=el("div","cell-sub",isGroupRoute?("Model Group · "+routingPolicyLabel(r.routing_policy)):"Public route name");
       mns.appendChild(routeKind);
       if(isGroupRoute) mns.appendChild(pill((r.endpoints||[]).length+" endpoints","info"));
       mn.appendChild(mns); tr.appendChild(mn);
@@ -1444,14 +1444,14 @@ function renderModels(c){
       tr.appendChild(st);
       var providerName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?providerDisplayName(b.name):"#"+id;}).join(", ");
       var providerRawName=(r.backend_ids||[]).map(function(id){var b=backends.find(function(x){return x.id===id});return b?b.name:"#"+id;}).join(", ");
-      var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=displayNameNode("div","cell-main compact-line",providerName||"—",providerRawName||providerName||"—"); pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s")+(isGroupRoute?" · "+(r.routing_policy||"round_robin"):""))); pv.appendChild(pvs); tr.appendChild(pv);
+      var pv=el("td"); var pvs=el("div","stack-cell"); var pvw=displayNameNode("div","cell-main compact-line",providerName||"—",providerRawName||providerName||"—"); pvs.appendChild(pvw); pvs.appendChild(el("div","cell-sub",(r.backend_ids||[]).length+" endpoint"+((r.backend_ids||[]).length===1?"":"s")+(isGroupRoute?" · "+routingPolicyLabel(r.routing_policy,true):""))); pv.appendChild(pvs); tr.appendChild(pv);
       var pm=el("td"); var pms=el("div","stack-cell");
       var endpointModels=isGroupRoute?(r.endpoints||[]).map(function(e){return e.provider_model_name;}).filter(Boolean):[];
       var pmw=nameNode("div","cell-main mono compact-line",isGroupRoute?(endpointModels.join(", ")||"—"):(r.provider_model_name||"—"),42);
       pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",isGroupRoute?(groupTypeLabel(routeTask(r.protocol))+" Model Group"):protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
       var meta=el("td");
       var mg=el("div","model-meta-grid");
-      [["Auth",isGroupRoute?"per endpoint":(r.auth_mode||"—")],["Policy",isGroupRoute?(r.routing_policy||"—"):"—"],["Context",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Max output",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["Input $/1M",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["Output $/1M",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){
+      [["Auth",isGroupRoute?"per endpoint":(r.auth_mode||"—")],["Policy",isGroupRoute?routingPolicyLabel(r.routing_policy,true):"—"],["Context",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Max output",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["Input $/1M",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["Output $/1M",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){
         var item=el("span"); item.appendChild(document.createTextNode(x[0]+": ")); item.appendChild(el("b",null,String(x[1]))); mg.appendChild(item);
       });
       meta.appendChild(mg); tr.appendChild(meta);
@@ -1488,6 +1488,13 @@ function routeTask(protocol){
 }
 function groupTypeLabel(task){ return ({chat:"Chat / LLM",embedding:"Embedding",rerank:"Rerank",asr:"ASR / transcription",messages:"Anthropic Messages",completion:"Completions"})[task]||task; }
 function groupProtocolForTask(task){ return ({chat:"openai_chat",embedding:"openai_embeddings",rerank:"openai_rerank",asr:"openai_audio_transcriptions"})[task]||"openai_chat"; }
+function routingPolicyLabel(policy,short){
+  var p=(policy||"round_robin").toLowerCase();
+  if(p==="weighted_round_robin") return short?"weighted RR":"weighted round robin";
+  if(p==="round_robin") return short?"round robin":"round robin";
+  if(p==="least_loaded_weighted") return short?"least loaded":"least loaded weighted";
+  return p.replace(/_/g," ");
+}
 function isGroupRoute(r){ return !!(r&&r.endpoints&&r.endpoints.length); }
 function publicModelNameExists(name,currentName){
   var n=(name||"").trim();
@@ -1517,7 +1524,7 @@ function openGroupModal(route){
   var isEdit=!!route.model_name;
   m.appendChild(modalHeader(isEdit?"Edit model group":"Create model group"));
   var steps=el("div","wizard-steps");
-  [["1","Define group","Type, public name, policy"],["2","Add routes","Choose existing tested routes"],["3","Save","No provider keys here"]].forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
+  [["1","Define group","Type, group name, policy"],["2","Add routes","Choose existing tested routes"],["3","Save","No provider keys here"]].forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
   m.appendChild(steps);
   var banner=el("div","route-kind-banner group"); banner.appendChild(el("b",null,"Model Group")); banner.appendChild(el("span",null,"A group balances across existing tested model routes. Create provider URLs and API keys in Add model route first.")); m.appendChild(banner);
 

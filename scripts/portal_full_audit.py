@@ -167,7 +167,8 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
 
           const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'audit-model-group' }}).first();
           await expect(row).toContainText('Model Group');
-          await expect(row).toContainText('weighted_round_robin');
+          await expect(row).toContainText('weighted round robin');
+          await expect(row).toContainText('weighted RR');
           await expect(row).toContainText('2 endpoints');
           await row.getByRole('button', {{ name: /^Edit$/ }}).click();
           const editModal = page.locator('#modal-overlay .modal').last();
@@ -296,6 +297,61 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await adminFetch('/admin/routes/' + encodeURIComponent(routeName), 'DELETE');
         }}
 
+
+        async function assertResponsiveLayout(page, label) {{
+          const metrics = await page.evaluate(() => {{
+            const modal = document.querySelector('#modal-overlay .modal');
+            const sidebar = document.querySelector('#sidebar');
+            const hamburger = document.querySelector('.hamburger');
+            return {{
+              width: window.innerWidth,
+              bodyScrollWidth: document.body.scrollWidth,
+              docScrollWidth: document.documentElement.scrollWidth,
+              modalWidth: modal ? modal.getBoundingClientRect().width : 0,
+              sidebarOpen: sidebar ? sidebar.classList.contains('open') : false,
+              sidebarPointerEvents: sidebar ? getComputedStyle(sidebar).pointerEvents : '',
+              hamburgerVisible: hamburger ? (getComputedStyle(hamburger).display !== 'none' && hamburger.getBoundingClientRect().width > 0) : false,
+            }};
+          }});
+          const maxScroll = Math.max(metrics.bodyScrollWidth, metrics.docScrollWidth);
+          if (maxScroll > metrics.width + 2) throw new Error(label + ' horizontal overflow: ' + maxScroll + ' > ' + metrics.width);
+          if (metrics.modalWidth && metrics.modalWidth > metrics.width + 2) throw new Error(label + ' modal overflow: ' + metrics.modalWidth + ' > ' + metrics.width);
+          return metrics;
+        }}
+
+        async function auditResponsivePortal(browser) {{
+          const outDir = '/tmp/brighto-portal-responsive-audit';
+          require('fs').mkdirSync(outDir, {{ recursive: true }});
+          for (const cfg of [
+            {{ name: 'mobile', width: 390, height: 844 }},
+            {{ name: 'tablet', width: 768, height: 1024 }},
+          ]) {{
+            const page = await browser.newPage({{ viewport: {{ width: cfg.width, height: cfg.height }} }});
+            attachPageDiagnostics(page);
+            await login(page);
+            let m = await assertResponsiveLayout(page, cfg.name + '-dashboard');
+            if (!m.hamburgerVisible) throw new Error(cfg.name + ' hamburger is not visible');
+            await page.screenshot({{ path: outDir + '/' + cfg.name + '-dashboard.png', fullPage: true }});
+            await page.locator('.hamburger').click();
+            await expect(page.locator('#sidebar')).toHaveClass(/open/);
+            await page.locator('.nav[data-view="models"]').click();
+            await expect(page.locator('#page-title')).toContainText('Models', {{ timeout: 15000 }});
+            await expect(page.locator('#sidebar')).not.toHaveClass(/open/);
+            await page.waitForTimeout(250);
+            m = await assertResponsiveLayout(page, cfg.name + '-models');
+            if (m.sidebarPointerEvents !== 'none') throw new Error(cfg.name + ' closed sidebar can still intercept clicks');
+            await page.screenshot({{ path: outDir + '/' + cfg.name + '-models.png', fullPage: true }});
+            await page.getByRole('button', {{ name: /^Create model group$/ }}).last().click();
+            const modal = page.locator('#modal-overlay .modal').last();
+            await expect(modal).toBeVisible();
+            await expect(modal).toContainText('API model group name');
+            await assertResponsiveLayout(page, cfg.name + '-model-group-modal');
+            await page.screenshot({{ path: outDir + '/' + cfg.name + '-model-group-modal.png', fullPage: true }});
+            await modal.getByRole('button', {{ name: /^Cancel$/ }}).click();
+            await page.close();
+          }}
+        }}
+
         async function run() {{
           const browser = await chromium.launch({{ executablePath: process.env.PLAYWRIGHT_CHROME_EXECUTABLE, headless: true, args: ['--no-sandbox'] }});
           const page = await browser.newPage({{ viewport: {{ width: 1440, height: 1000 }} }});
@@ -311,6 +367,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await auditProviderKeyFilePath();
             await nav(page, 'usage', 'Usage');
             await nav(page, 'settings', 'Settings');
+            await auditResponsivePortal(browser);
           }} finally {{
             await browser.close();
           }}
