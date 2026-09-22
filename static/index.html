@@ -391,6 +391,14 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .route-kind-banner b{font-size:13px;color:var(--text);white-space:nowrap}
 .route-kind-banner span{color:var(--muted);font-size:12px;line-height:1.35}
 .route-kind-banner.group{border-color:rgba(56,189,248,.35);background:rgba(8,47,73,.34)}
+.model-action-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0 18px}
+.model-action-card{display:grid;gap:8px;align-content:start;background:rgba(15,23,42,.74);border:1px solid var(--border2);border-radius:16px;padding:14px;min-height:134px}
+.model-action-card.primary-card{border-color:rgba(37,99,235,.45);background:linear-gradient(135deg,rgba(37,99,235,.22),rgba(15,23,42,.78))}
+.model-action-card.group-card{border-color:rgba(56,189,248,.42);background:linear-gradient(135deg,rgba(8,47,73,.38),rgba(15,23,42,.78))}
+.model-action-card strong{font-size:15px;color:var(--text)}
+.model-action-card span{color:var(--muted);font-size:12.5px;line-height:1.45}
+.model-action-card .btn{justify-self:start;margin-top:4px}
+
 .advanced-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0b1220;border:1px solid var(--border);border-radius:13px;color:var(--text);padding:12px 14px;margin:4px 0 12px;cursor:pointer;text-align:left}
 .advanced-toggle b{display:block;font-size:13px}
 .advanced-toggle span{display:block;color:var(--muted);font-size:12px;margin-top:2px;font-weight:500}
@@ -543,6 +551,8 @@ body.nav-open{overflow:hidden}
   .group-endpoint-card{grid-template-columns:1fr}
   .group-endpoint-actions{justify-content:flex-start}
   .model-group-panel{padding:9px;border-radius:12px;margin-bottom:8px}
+  .model-action-cards{grid-template-columns:1fr;margin:10px 0 14px}
+  .model-action-card{min-height:auto;padding:12px}
   .hamburger{display:inline-flex}
   .sidebar{position:fixed;z-index:40;transform:translateX(-100%);transition:.2s;box-shadow:24px 0 70px rgba(0,0,0,.45)}
   .sidebar.open{transform:none}
@@ -1362,8 +1372,7 @@ function renderModels(c){
   var h=el("div","panel-head"); h.appendChild(el("h3",null,"Models"));
   var hActions=el("div","panel-head-actions models-actions");
   var add=el("button","btn primary sm","Add model route"); add.onclick=function(){openRouteModal(null,{mode:"single"});};
-  var addGroup=el("button","btn sm","Create model group"); addGroup.onclick=function(){openRouteModal(null,{mode:"group"});};
-  hActions.appendChild(add); hActions.appendChild(addGroup);
+  hActions.appendChild(add);
   var filt=el("select"); filt.style.maxWidth="160px";
   [["all","All"],["enabled","Enabled only"],["disabled","Disabled only"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; filt.appendChild(o); });
   filt.value=(window.modelFilter||"all");
@@ -1371,7 +1380,17 @@ function renderModels(c){
   hActions.appendChild(filt);
   h.appendChild(hActions);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Add model route creates one tested endpoint. Create model group load-balances two or more tested OpenAI-compatible chat endpoints behind one public model name."));
+  p.appendChild(el("p","hint","Choose one route for one provider endpoint, or create a Model Group when you want one public chat model name balanced across multiple compatible endpoints."));
+  var actionCards=el("div","model-action-cards");
+  var singleCard=el("div","model-action-card primary-card");
+  singleCard.appendChild(el("strong",null,"Add model route"));
+  singleCard.appendChild(el("span",null,"One tested provider model behind one public route. Use this for chat, embeddings, rerank, ASR, Anthropic, and most team setups."));
+  var singleBtn=el("button","btn primary","Add model route"); singleBtn.onclick=function(){openRouteModal(null,{mode:"single"});}; singleCard.appendChild(singleBtn);
+  var groupCard=el("div","model-action-card group-card");
+  groupCard.appendChild(el("strong",null,"Create Model Group"));
+  groupCard.appendChild(el("span",null,"Load-balance one public OpenAI-compatible chat model across two or more tested endpoints. Use round-robin or weighted round-robin."));
+  var groupBtn=el("button","btn","Create model group"); groupBtn.onclick=function(){openRouteModal(null,{mode:"group"});}; groupCard.appendChild(groupBtn);
+  actionCards.appendChild(singleCard); actionCards.appendChild(groupCard); p.appendChild(actionCards);
   var fv=(window.modelFilter||"all");
   var shown=routes.filter(function(r){ return fv==="all" || (fv==="enabled"?r.effective_enabled:!r.effective_enabled); });
   if(!routes.length){ p.appendChild(emptyBox("No routes yet.")); }
