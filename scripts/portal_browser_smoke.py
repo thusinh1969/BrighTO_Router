@@ -115,6 +115,23 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(page.locator('#page-title')).toContainText('Dashboard');
         }}
 
+        async function assertTransientRefreshRetry(page) {{
+          let abortedRoutesRefresh = false;
+          await page.route('**/admin/routes', async route => {{
+            if (!abortedRoutesRefresh && route.request().method() === 'GET') {{
+              abortedRoutesRefresh = true;
+              await route.abort('internetdisconnected');
+              return;
+            }}
+            await route.continue();
+          }});
+          await login(page);
+          await expect(page.locator('#content')).toContainText(/Gateway|Ready|set up/i, {{ timeout: 15000 }});
+          await expect(page.locator('.toast.err')).toHaveCount(0);
+          expect(abortedRoutesRefresh).toBeTruthy();
+          await page.unroute('**/admin/routes');
+        }}
+
         async function openAddModel(page) {{
           await page.click('#nav-models');
           await expect(page.locator('#page-title')).toContainText('Models');
@@ -150,7 +167,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(picker).toHaveCount(0);
         }}
 
-        async function createCustomRoute(page, task, providerModel, publicName) {{
+        async function createCustomRoute(page, task, providerModel, publicName, baseUrl = mockURL) {{
           const modal = await openAddModel(page);
           const selects = modal.locator('select');
           const taskSelect = selects.nth(0);
@@ -158,7 +175,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await taskSelect.selectOption(task);
           await providerSelect.selectOption('custom-llm');
           const inputs = modal.locator('input');
-          await inputs.nth(0).fill(mockURL);
+          await inputs.nth(0).fill(baseUrl);
           await modal.getByRole('button', {{ name: /Load models/i }}).click();
           await choosePickerModel(page, providerModel);
           await inputs.nth(3).fill(publicName);
@@ -169,34 +186,120 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(page.locator('#content')).toContainText(publicName, {{ timeout: 15000 }});
         }}
 
-        async function createModelGroup(page) {{
-          const modal = await openCreateModelGroup(page);
+        async function assertDuplicateModelRouteNameBlocked(page) {{
+          let duplicatePost = false;
+          await page.route('**/admin/routes', async route => {{
+            if (route.request().method() === 'POST') {{
+              const body = route.request().postDataJSON();
+              if (body.model_name === 'browser-chat-a') duplicatePost = true;
+            }}
+            await route.continue();
+          }});
+          const modal = await openAddModel(page);
           const selects = modal.locator('select');
-          await expect(selects.nth(0)).toBeDisabled();
+          await selects.nth(0).selectOption('chat');
           await selects.nth(1).selectOption('custom-llm');
-          await expect(modal).toContainText('Model Group endpoints');
           const inputs = modal.locator('input');
           await inputs.nth(0).fill(mockURL);
           await modal.getByRole('button', {{ name: /Load models/i }}).click();
           await choosePickerModel(page, 'mock-model');
-          await inputs.nth(3).fill('browser-model-group');
+          await inputs.nth(3).fill('browser-chat-a');
           await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
-          await expect(modal.locator('.connection-status')).toContainText('add this endpoint', {{ timeout: 15000 }});
-          await modal.getByRole('button', {{ name: /^Add tested endpoint$/ }}).click();
-          await expect(modal.locator('.group-endpoint-card')).toHaveCount(1);
+          await expect(modal.locator('.connection-status')).toContainText('Connected', {{ timeout: 15000 }});
+          await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
+          await expect(page.locator('.toast.err').last()).toContainText('already exists');
+          expect(duplicatePost).toBeFalsy();
+          await modal.getByRole('button', {{ name: /^Cancel$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+          await page.unroute('**/admin/routes');
+        }}
 
-          await inputs.nth(0).fill(mockURL + '/');
-          await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
-          await expect(modal.locator('.connection-status')).toContainText('add this endpoint', {{ timeout: 15000 }});
-          await modal.getByRole('button', {{ name: /^Add tested endpoint$/ }}).click();
-          await expect(modal.locator('.group-endpoint-card')).toHaveCount(2);
+        async function createModelGroup(page) {{
+          let groupPayload = null;
+          let duplicatePost = false;
+          await page.route('**/admin/routes', async route => {{
+            if (route.request().method() === 'POST') {{
+              const body = route.request().postDataJSON();
+              if (body.model_name === 'browser-chat-a') duplicatePost = true;
+              if (body.model_name === 'browser-model-group') {{
+                groupPayload = body;
+                expect(body.protocol).toBe('openai_chat');
+                expect(body.routing_policy).toBe('round_robin');
+                expect(body.endpoints).toHaveLength(2);
+                for (const ep of body.endpoints) {{
+                  expect(ep.weight).toBe(1);
+                  expect(ep.provider_key).toBeUndefined();
+                }}
+              }}
+            }}
+            await route.continue();
+          }});
+          const modal = await openCreateModelGroup(page);
+          await expect(modal).toContainText('Add existing tested route');
+          await expect(modal).toContainText('No provider keys here');
+          await expect(modal).not.toContainText('Provider API key');
+          const selects = modal.locator('select');
+          await selects.nth(0).selectOption('chat');
+          await selects.nth(1).selectOption('round_robin');
+          const inputs = modal.locator('input');
+          await inputs.nth(0).fill('browser-model-group');
+          await selects.nth(2).selectOption('browser-chat-a');
+          await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
+          await expect(modal.locator('.route-picker-row')).toHaveCount(1);
+          await selects.nth(2).selectOption('browser-chat-b');
+          await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
+          await expect(modal.locator('.route-picker-row')).toHaveCount(2);
+          await expect(modal.locator('.group-weight-input')).toHaveCount(0);
           await expect(modal.getByRole('button', {{ name: /^Save enabled$/ }})).toBeEnabled();
+          await inputs.nth(0).fill('browser-chat-a');
+          await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
+          await expect(page.locator('.toast.err').last()).toContainText('already exists');
+          expect(duplicatePost).toBeFalsy();
+          await inputs.nth(0).fill('browser-model-group');
           await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
           await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+          expect(groupPayload).toBeTruthy();
+          await page.unroute('**/admin/routes');
           await expect(page.locator('#content')).toContainText('browser-model-group', {{ timeout: 15000 }});
           const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'browser-model-group' }}).first();
           await expect(row).toContainText('Model Group');
           await expect(row).toContainText('2 endpoints');
+        }}
+
+        async function createWeightedModelGroup(page) {{
+          let weightedPayload = null;
+          await page.route('**/admin/routes', async route => {{
+            if (route.request().method() === 'POST') {{
+              const body = route.request().postDataJSON();
+              if (body.model_name === 'browser-weighted-group') {{
+                weightedPayload = body;
+                expect(body.routing_policy).toBe('weighted_round_robin');
+                expect(body.endpoints).toHaveLength(2);
+                expect(body.endpoints[0].weight).toBe(3);
+                expect(body.endpoints[1].weight).toBe(1);
+                for (const ep of body.endpoints) expect(ep.provider_key).toBeUndefined();
+              }}
+            }}
+            await route.continue();
+          }});
+          const modal = await openCreateModelGroup(page);
+          const selects = modal.locator('select');
+          await selects.nth(0).selectOption('chat');
+          await selects.nth(1).selectOption('weighted_round_robin');
+          const inputs = modal.locator('input');
+          await inputs.nth(0).fill('browser-weighted-group');
+          await selects.nth(2).selectOption('browser-chat-a');
+          await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
+          await selects.nth(2).selectOption('browser-chat-b');
+          await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
+          await expect(modal.locator('.group-weight-input')).toHaveCount(2);
+          await modal.locator('.group-weight-input').nth(0).fill('3');
+          await modal.locator('.group-weight-input').nth(1).fill('1');
+          await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+          expect(weightedPayload).toBeTruthy();
+          await page.unroute('**/admin/routes');
+          await expect(page.locator('#content')).toContainText('browser-weighted-group', {{ timeout: 15000 }});
         }}
 
 
@@ -210,6 +313,8 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             if (body.base_url === 'http://rtx3090:8088/v1') {{
               previewSeen = true;
               expect(body.auth_mode).toBe('none');
+              expect(body.provider_key).toBeUndefined();
+              expect(body.provider_key_ref).toBeUndefined();
               await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{ models: ['qwen3.8-flash-next'] }}) }});
               return;
             }}
@@ -220,21 +325,23 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             if (body.base_url === 'http://rtx3090:8088/v1') {{
               testSeen = true;
               expect(body.auth_mode).toBe('none');
+              expect(body.provider_key).toBeUndefined();
+              expect(body.provider_key_ref).toBeUndefined();
               await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{ ok: true, latency_ms: 1, detail: 'mock no-auth hostname', model_ok: true }}) }});
               return;
             }}
             await route.continue();
           }});
-          const modal = await openCreateModelGroup(page);
-          await expect(modal).toContainText('optional');
+          const modal = await openAddModel(page);
           const selects = modal.locator('select');
+          await selects.nth(0).selectOption('chat');
           await selects.nth(1).selectOption('custom-llm');
           const inputs = modal.locator('input');
           await inputs.nth(0).fill('http://rtx3090:8088/v1');
           await modal.getByRole('button', {{ name: /Load models/i }}).click();
           await choosePickerModel(page, 'qwen3.8-flash-next');
           await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
-          await expect(modal.locator('.connection-status')).toContainText('add this endpoint', {{ timeout: 15000 }});
+          await expect(modal.locator('.connection-status')).toContainText('Connected', {{ timeout: 15000 }});
           expect(previewSeen).toBeTruthy();
           expect(testSeen).toBeTruthy();
           await page.unroute('**/admin/routes/preview-models');
@@ -248,11 +355,15 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           const page = await browser.newPage({{ viewport: {{ width: 1440, height: 1000 }} }});
           attachPageDiagnostics(page);
           try {{
-            await login(page);
+            await assertTransientRefreshRetry(page);
             await createCustomRoute(page, 'embedding', 'mock-embedding', 'browser-embedding');
             await createCustomRoute(page, 'rerank', 'mock-rerank', 'browser-rerank');
             await createCustomRoute(page, 'asr', 'mock-asr', 'browser-asr');
+            await createCustomRoute(page, 'chat', 'mock-model', 'browser-chat-a');
+            await createCustomRoute(page, 'chat', 'mock-model', 'browser-chat-b', mockURL + '/');
+            await assertDuplicateModelRouteNameBlocked(page);
             await createModelGroup(page);
+            await createWeightedModelGroup(page);
             await assertCustomHostnameNoAuth(page);
             await page.reload({{ waitUntil: 'domcontentloaded' }});
             await expect(page.locator('#app-view')).toBeVisible();

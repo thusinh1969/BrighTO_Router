@@ -1,12 +1,14 @@
 # Provider setup
 
-BrighTO-Router preview-3, intended to become `main` after final feedback, keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one public OpenAI-compatible chat model across two or more tested endpoints. The single-route flow covers chat, embeddings, rerank, and ASR/transcription.
+BrighTO-Router preview-3, intended to become `main` after final feedback, keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, and ASR/transcription.
 
 A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
 
-A **model route** is what clients use for one endpoint. It maps one public model name to one upstream provider model, with its task type, provider API key/reference, price, limits, and enabled/disabled state.
+A **model route** is what clients use for one endpoint. It maps one API model name to one upstream provider model, with its task type, provider API key/reference, price, limits, and enabled/disabled state.
 
-A **Model Group** is also what clients use, but it points one public OpenAI-compatible chat model name at several compatible backend endpoints. Clients still send one `model` value. The router chooses the endpoint by round robin or weighted round robin and skips unhealthy endpoints.
+The API model name must be unique across all model routes and Model Groups. It is not a decorative display label; it is the exact `model` string clients send.
+
+A **Model Group** is also what clients use, but it points one API model name at several existing tested routes of the same type. Clients still send one `model` value. The router chooses the source route by round robin or weighted round robin and skips unhealthy endpoints.
 
 ## Provider catalog
 
@@ -63,19 +65,19 @@ The Portal automatically creates or reuses the provider endpoint for the Base UR
 
 ## Create a Model Group
 
-Use **Models & Routes → Create Model Group** when several OpenAI-compatible chat endpoints should serve the same public model name. Good examples are:
+Use **Models & Routes → Create Model Group** when several existing tested routes should serve the same API model name. Good examples are:
 
-- two local OpenAI-compatible servers running the same or compatible model;
-- one local model plus one cloud fallback;
-- several cloud endpoints where one has more capacity than the others.
+- two local OpenAI-compatible chat routes running the same or compatible model;
+- one local chat route plus one cloud fallback route;
+- several embedding or rerank routes of the same type where one has more capacity than the others.
 
 Rules in preview-3:
 
-- Group endpoints must be OpenAI-compatible chat endpoints.
-- Do not mix Anthropic Messages, embeddings, rerank, or ASR inside a group.
-- Every endpoint has its own Base URL, provider model name, provider API key/reference, enabled state, and weight.
-- Round robin ignores weight. Weighted round robin uses endpoint weights.
-- Endpoint counters are stored through PostgreSQL so multiple router pods keep consistent rotation.
+- Group members must be existing tested routes.
+- All selected routes must match the selected model type: chat, embedding, rerank, or ASR.
+- Provider Base URL, provider model name, auth mode, and provider key/reference stay on the source route. The group wizard does not ask for provider keys.
+- Round robin rotates evenly and does not use weights. Weighted round robin shows per-route weights.
+- Route counters are stored through PostgreSQL so multiple router pods keep consistent rotation.
 - Repeated endpoint failure opens a circuit temporarily; later traffic can probe recovery and bring the endpoint back into service.
 
 The client request does not change:
@@ -121,7 +123,7 @@ Create client keys in **API Keys**. Admin can view and copy them again later.
 
 ## Preview-3 adapter providers
 
-Embeddings, rerank, and ASR/transcription are first-class preview-3 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models`. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route / Create model group wizard.
+Embeddings, rerank, and ASR/transcription are first-class preview-3 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models`. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route wizard. Model Groups reuse those tested routes and do not ask for provider keys.
 
 Qwen rerank needs special handling: embeddings can use the OpenAI-compatible `/compatible-mode/v1` Base URL, while rerank uses DashScope workspace endpoints. In the Portal, choose **Qwen + Rerank**, then enter `https://dashscope-intl.aliyuncs.com` or your workspace root Base URL such as `https://<workspace>.<region>.maas.aliyuncs.com`. For live smoke tests, set `QWEN_RERANK_BASE_URL` to that same root URL.
 

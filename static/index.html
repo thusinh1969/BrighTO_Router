@@ -387,6 +387,10 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .group-endpoint-title code{max-width:100%;overflow-wrap:anywhere}
 .group-endpoint-meta{color:var(--muted);font-size:11.5px;overflow-wrap:anywhere}
 .group-endpoint-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.route-picker-list{display:grid;gap:8px;margin-top:10px}
+.route-picker-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;background:rgba(15,23,42,.72);border:1px solid var(--border2);border-radius:12px;padding:10px}
+.route-picker-row .cell-sub{margin-top:2px}
+.group-weight-input{max-width:96px}
 .route-mode-note{color:var(--accent-text);font-size:11.5px;font-weight:760;margin:4px 0 0}
 .route-kind-banner{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;background:rgba(15,23,42,.88);border:1px solid var(--border2);border-radius:13px;padding:10px 12px;margin:0 0 12px}
 .route-kind-banner b{font-size:13px;color:var(--text);white-space:nowrap}
@@ -721,8 +725,23 @@ function authHeaders(){
   if(mode==="admin") return {"Content-Type":"application/json","x-admin-key":authKey};
   return {"Content-Type":"application/json","Authorization":"Bearer "+authKey};
 }
+function sleep(ms){ return new Promise(function(resolve){ setTimeout(resolve, ms); }); }
+function isNetworkFetchError(e){ var m=String((e&&e.message)||e||""); return /Failed to fetch|NetworkError|ERR_NETWORK_CHANGED|Load failed/i.test(m); }
 async function api(path, method, body){
-  var res = await fetch(path, {method:method, headers:authHeaders(), body:body?JSON.stringify(body):undefined});
+  method=method||"GET";
+  var opts={method:method, headers:authHeaders(), body:body?JSON.stringify(body):undefined};
+  var res;
+  try{
+    res = await fetch(path, opts);
+  }catch(e){
+    if(method==="GET" && isNetworkFetchError(e)){
+      await sleep(300);
+      try{ res = await fetch(path, opts); }
+      catch(e2){ throw new Error("Network changed while loading data. Please retry."); }
+    }else if(isNetworkFetchError(e)){
+      throw new Error("Network changed before the request completed. Please retry.");
+    }else throw e;
+  }
   if(!res.ok){ var t=await res.text(); var m=t; try{var j=JSON.parse(t); if(j.error)m=j.error.message||j.error;}catch(e){}
     throw new Error(res.status+" "+m); }
   if(res.status===204) return null;
@@ -850,7 +869,7 @@ async function refresh(){
     }
     var cur=document.querySelector(".nav.active");
     if(cur) render(cur.dataset.view); else go("dashboard");
-  }catch(e){ toast("Load failed: "+e.message,"err"); }
+  }catch(e){ toast("Data refresh failed: "+e.message,"err"); }
 }
 function rerender(){ var cur=document.querySelector(".nav.active"); if(cur) render(cur.dataset.view); else go("dashboard"); }
 var renderSerial=0;
@@ -1381,7 +1400,7 @@ function renderModels(c){
   hActions.appendChild(filt);
   h.appendChild(hActions);
   p.appendChild(h);
-  p.appendChild(el("p","hint","Choose one route for one provider endpoint, or create a Model Group when you want one public chat model name balanced across multiple compatible endpoints."));
+  p.appendChild(el("p","hint","Create tested model routes first. A Model Group then balances one API model name across existing compatible routes."));
   var actionCards=el("div","model-action-cards");
   var singleCard=el("div","model-action-card primary-card");
   singleCard.appendChild(el("strong",null,"Add model route"));
@@ -1389,8 +1408,8 @@ function renderModels(c){
   var singleBtn=el("button","btn primary","Add model route"); singleBtn.onclick=function(){openRouteModal(null,{mode:"single"});}; singleCard.appendChild(singleBtn);
   var groupCard=el("div","model-action-card group-card");
   groupCard.appendChild(el("strong",null,"Create Model Group"));
-  groupCard.appendChild(el("span",null,"Load-balance one public OpenAI-compatible chat model across two or more tested endpoints. Use round-robin or weighted round-robin."));
-  var groupBtn=el("button","btn primary","Create model group"); groupBtn.onclick=function(){openRouteModal(null,{mode:"group"});}; groupCard.appendChild(groupBtn);
+  groupCard.appendChild(el("span",null,"Choose a model type and load-balance across existing tested routes. No provider URL or API key is entered here."));
+  var groupBtn=el("button","btn primary","Create model group"); groupBtn.onclick=function(){openGroupModal(null);}; groupCard.appendChild(groupBtn);
   actionCards.appendChild(singleCard); actionCards.appendChild(groupCard); p.appendChild(actionCards);
   var fv=(window.modelFilter||"all");
   var shown=routes.filter(function(r){ return fv==="all" || (fv==="enabled"?r.effective_enabled:!r.effective_enabled); });
@@ -1401,7 +1420,7 @@ function renderModels(c){
     var colg=document.createElement("colgroup");
     ["27%","10%","21%","16%","14%","12%"].forEach(function(wid){ var c=document.createElement("col"); c.style.width=wid; colg.appendChild(c); });
     t.appendChild(colg);
-    t.appendChild(thead(["Public model","Status","Provider","Provider model","Route settings",""]));
+    t.appendChild(thead(["API model","Status","Provider","Provider model","Route settings",""]));
     var tb=el("tbody");
     shown.forEach(function(r){
       var tr=el("tr");
@@ -1429,7 +1448,7 @@ function renderModels(c){
       var pm=el("td"); var pms=el("div","stack-cell");
       var endpointModels=isGroupRoute?(r.endpoints||[]).map(function(e){return e.provider_model_name;}).filter(Boolean):[];
       var pmw=nameNode("div","cell-main mono compact-line",isGroupRoute?(endpointModels.join(", ")||"—"):(r.provider_model_name||"—"),42);
-      pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",isGroupRoute?"OpenAI Chat Model Group":protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
+      pms.appendChild(pmw); pms.appendChild(el("div","cell-sub",isGroupRoute?(groupTypeLabel(routeTask(r.protocol))+" Model Group"):protoLabel(r.protocol))); pm.appendChild(pms); tr.appendChild(pm);
       var meta=el("td");
       var mg=el("div","model-meta-grid");
       [["Auth",isGroupRoute?"per endpoint":(r.auth_mode||"—")],["Policy",isGroupRoute?(r.routing_policy||"—"):"—"],["Context",r.context_tokens!=null?fmt(r.context_tokens):"—"],["Max output",r.max_output_tokens!=null?fmt(r.max_output_tokens):"—"],["Input $/1M",r.price_input_per_mtok_usd!=null?r.price_input_per_mtok_usd:"—"],["Output $/1M",r.price_output_per_mtok_usd!=null?r.price_output_per_mtok_usd:"—"]].forEach(function(x){
@@ -1438,7 +1457,7 @@ function renderModels(c){
       meta.appendChild(mg); tr.appendChild(meta);
       var td=el("td","actions"); var row=el("div","action-row");
       var tg2=el("button","btn sm ghost", r.enabled?"Disable":"Enable"); tg2.onclick=function(){ toggleRoute(r); };
-      var b=el("button","btn sm primary","Edit"); b.onclick=function(){openRouteModal(r);};
+      var b=el("button","btn sm primary","Edit"); b.onclick=function(){ isGroupRoute ? openGroupModal(r) : openRouteModal(r); };
       var d=el("button","btn sm danger","Delete");
       if(!r.can_delete){ d.disabled=true; d.title="Has "+r.usage_count+" logged request(s) — disable instead"; }
       else { d.onclick=function(){deleteRoute(r);}; }
@@ -1457,26 +1476,149 @@ async function toggleRoute(r){
     routes=await api("/admin/routes","GET"); rerender();
   }catch(e){ toast("Toggle failed: "+e.message,"err"); }
 }
+
+function routeTask(protocol){
+  var p=(protocol||"openai_chat").toLowerCase();
+  if(p.indexOf("embedding")>=0) return "embedding";
+  if(p.indexOf("rerank")>=0) return "rerank";
+  if(p.indexOf("audio_transcriptions")>=0 || p.indexOf("asr")>=0) return "asr";
+  if(p.indexOf("messages")>=0 || p.indexOf("anthropic")>=0) return "messages";
+  if(p.indexOf("completion")>=0 && p.indexOf("chat")<0) return "completion";
+  return "chat";
+}
+function groupTypeLabel(task){ return ({chat:"Chat / LLM",embedding:"Embedding",rerank:"Rerank",asr:"ASR / transcription",messages:"Anthropic Messages",completion:"Completions"})[task]||task; }
+function groupProtocolForTask(task){ return ({chat:"openai_chat",embedding:"openai_embeddings",rerank:"openai_rerank",asr:"openai_audio_transcriptions"})[task]||"openai_chat"; }
+function isGroupRoute(r){ return !!(r&&r.endpoints&&r.endpoints.length); }
+function publicModelNameExists(name,currentName){
+  var n=(name||"").trim();
+  if(!n) return false;
+  return (routes||[]).some(function(r){ return r.model_name===n && r.model_name!==currentName; });
+}
+function canUseRouteInGroup(r,task,currentName){
+  if(!r || isGroupRoute(r)) return false;
+  if(currentName && r.model_name===currentName) return false;
+  if(!(r.backend_ids||[]).length) return false;
+  if(r.enabled===false || r.effective_enabled===false) return false;
+  return routeTask(r.protocol)===task;
+}
+function endpointFromRouteForGroup(r){
+  var backendId=(r.backend_ids||[])[0];
+  var b=backends.find(function(x){return Number(x.id)===Number(backendId);});
+  return {local_id:"route-"+r.model_name,source_model_name:r.model_name,backend_id:backendId,provider_label:r.model_name,provider_key_ref:r.provider_key_ref||"",base_url:b?b.base_url:"",dialect:b?b.format:"openai",auth:r.auth_mode||"bearer",protocol:r.protocol||"openai_chat",provider_model_name:r.provider_model_name||r.model_name,weight:1,max_inflight:0,enabled:true};
+}
+function endpointFromSavedForGroup(ept){
+  var b=backends.find(function(x){return Number(x.id)===Number(ept.backend_id);});
+  return {local_id:"saved-"+ept.backend_id+"-"+(ept.provider_model_name||""),source_model_name:"",backend_id:ept.backend_id,provider_label:b?providerDisplayName(b.name):("#"+ept.backend_id),provider_key_ref:ept.provider_key_ref||"",base_url:b?b.base_url:"",dialect:b?b.format:"openai",auth:ept.auth_mode||"bearer",protocol:ept.protocol||"openai_chat",provider_model_name:ept.provider_model_name||"",weight:Number(ept.weight)||1,max_inflight:Number(ept.max_inflight)||0,enabled:ept.enabled!==false};
+}
+function openGroupModal(route){
+  route=route||{};
+  var ov=$("modal-overlay"); ov.innerHTML="";
+  var m=el("div","modal route-modal");
+  var isEdit=!!route.model_name;
+  m.appendChild(modalHeader(isEdit?"Edit model group":"Create model group"));
+  var steps=el("div","wizard-steps");
+  [["1","Define group","Type, public name, policy"],["2","Add routes","Choose existing tested routes"],["3","Save","No provider keys here"]].forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
+  m.appendChild(steps);
+  var banner=el("div","route-kind-banner group"); banner.appendChild(el("b",null,"Model Group")); banner.appendChild(el("span",null,"A group balances across existing tested model routes. Create provider URLs and API keys in Add model route first.")); m.appendChild(banner);
+
+  var task=(route.protocol?routeTask(route.protocol):"chat");
+  if(["messages","completion"].indexOf(task)>=0) task="chat";
+  var selected=(route.endpoints||[]).map(endpointFromSavedForGroup);
+
+  m.appendChild(el("div","section-title","Group definition"));
+  var def=el("div","form-grid");
+  var ft=el("div","field"); ft.appendChild(el("label",null,"Model type")); var ts=el("select"); [["chat","Chat / LLM"],["embedding","Embedding"],["rerank","Rerank"],["asr","ASR / transcription"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; ts.appendChild(o); }); ts.value=task; ft.appendChild(ts); ft.appendChild(el("p","hint","Only existing routes with this type can be added.")); def.appendChild(ft);
+  var fp=el("div","field"); fp.appendChild(el("label",null,"Load balancing")); var policy=el("select"); [["round_robin","Round-robin"],["weighted_round_robin","Weighted round-robin"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; policy.appendChild(o); }); policy.value=(route.routing_policy&&route.routing_policy!=="least_loaded_weighted")?route.routing_policy:"round_robin"; fp.appendChild(policy); var policyHint=el("p","hint"); fp.appendChild(policyHint); def.appendChild(fp);
+  var fn=el("div","field"); fn.appendChild(el("label",null,"API model name")); var name=el("input"); name.placeholder="coding-fast"; name.value=route.model_name||""; fn.appendChild(name); fn.appendChild(el("p","hint","Clients send this single model name. Back-end routes stay private.")); def.appendChild(fn);
+  m.appendChild(def);
+
+  var stat=el("div","connection-status","Choose at least two existing compatible routes."); m.appendChild(stat);
+  m.appendChild(el("div","section-title","Add existing tested route"));
+  var pickGrid=el("div","form-grid"); var fr=el("div","field"); fr.appendChild(el("label",null,"Compatible route")); var routeSel=el("select"); fr.appendChild(routeSel); fr.appendChild(el("p","hint","Routes must already be saved and enabled.")); pickGrid.appendChild(fr); var addWrap=el("div","field"); addWrap.appendChild(el("label",null,"Action")); var addBtn=el("button","btn primary","Add route to group"); addBtn.type="button"; addWrap.appendChild(addBtn); addWrap.appendChild(el("p","hint","No provider key is entered here.")); pickGrid.appendChild(addWrap); m.appendChild(pickGrid);
+
+  var list=el("div","route-picker-list"); m.appendChild(list);
+
+  function candidates(){ return (routes||[]).filter(function(r){return canUseRouteInGroup(r,ts.value,route.model_name);}); }
+  function selectedKeys(){ var out={}; selected.forEach(function(e){ out[e.source_model_name||("backend:"+e.backend_id+":"+e.provider_model_name)]=true; }); return out; }
+  function validateGroup(){
+    var weighted=policy.value==="weighted_round_robin";
+    var weightedBad=weighted && selected.some(function(ep){ return !Number.isFinite(Number(ep.weight)) || Number(ep.weight)<1; });
+    var ready=selected.length>=2 && !weightedBad;
+    stat.className="connection-status"+(ready?" ok":"");
+    if(weightedBad){ stat.textContent="Weighted round-robin requires weight 1 or higher for every selected route."; }
+    else { stat.textContent=ready?("Ready: "+selected.length+" routes in "+groupTypeLabel(ts.value)+" group"):("Add "+(2-selected.length)+" more compatible route"+(2-selected.length===1?"":"s")); }
+    if(save){ save.disabled=!ready; save.title=ready?"Save Model Group":"Add at least two routes and valid weights first"; }
+    return ready;
+  }
+  function refreshChoices(){
+    var keep=routeSel.value; routeSel.innerHTML=""; var used=selectedKeys(); var opts=candidates().filter(function(r){return !used[r.model_name];});
+    if(!opts.length){ var o=el("option",null,"No compatible routes available"); o.value=""; routeSel.appendChild(o); routeSel.disabled=true; addBtn.disabled=true; return; }
+    opts.forEach(function(r){ var b=backends.find(function(x){return Number(x.id)===Number((r.backend_ids||[])[0]);}); var o=el("option",null,r.model_name+" · "+protoLabel(r.protocol)+(b?" · "+providerDisplayName(b.name):"")); o.value=r.model_name; routeSel.appendChild(o); });
+    routeSel.disabled=false; addBtn.disabled=false; if(keep && opts.some(function(r){return r.model_name===keep;})) routeSel.value=keep;
+  }
+  function renderSelected(){
+    list.innerHTML=""; var weighted=policy.value==="weighted_round_robin";
+    policyHint.textContent=weighted?"Weighted round-robin requires a weight for each selected route. Higher weight means more traffic, like NGINX weighted upstreams.":"Round-robin rotates evenly across selected routes. No weights are used.";
+    if(!selected.length){ list.appendChild(el("div","empty","No routes in this group yet. Add at least two compatible tested routes.")); }
+    selected.forEach(function(ep,idx){
+      var card=el("div","route-picker-row"); var main=el("div");
+      var title=el("div","group-endpoint-title"); title.appendChild(el("span",null,(idx+1)+". "+(ep.source_model_name||ep.provider_label||"Route"))); title.appendChild(el("code",null,ep.provider_model_name||"provider model")); title.appendChild(pill(protoLabel(ep.protocol),"info")); main.appendChild(title);
+      main.appendChild(el("div","cell-sub",(ep.base_url||"provider endpoint")+" · auth "+(ep.auth||"bearer")));
+      card.appendChild(main); var acts=el("div","group-endpoint-actions");
+      if(weighted){ var wi=el("input","group-weight-input"); wi.type="number"; wi.min="1"; wi.step="1"; wi.required=true; wi.value=String(ep.weight||1); wi.title="Weight for weighted round-robin"; wi.setAttribute("aria-label","Weight for "+(ep.source_model_name||ep.provider_model_name||"route")); wi.oninput=function(){ ep.weight=Math.max(1,Number(wi.value)||0); validateGroup(); }; acts.appendChild(wi); }
+      var rm=el("button","btn sm danger","Remove"); rm.type="button"; rm.onclick=function(){ selected=selected.filter(function(x){return x.local_id!==ep.local_id;}); redraw(); }; acts.appendChild(rm); card.appendChild(acts); list.appendChild(card);
+    });
+    validateGroup();
+  }
+  function redraw(){ refreshChoices(); renderSelected(); }
+  addBtn.onclick=function(){ var r=(routes||[]).find(function(x){return x.model_name===routeSel.value;}); if(!r){ toast("Choose a compatible route first","err"); return; } var ep=endpointFromRouteForGroup(r); ep.weight=1; selected.push(ep); redraw(); };
+  ts.onchange=function(){ selected=[]; redraw(); };
+  policy.onchange=renderSelected;
+
+  var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal; var saveDraft=el("button","btn","Save draft"); var save=el("button","btn primary","Save enabled"); act.appendChild(cancel); act.appendChild(saveDraft); act.appendChild(save); m.appendChild(act);
+  async function doSave(enabledFlag){
+    var publicName=name.value.trim(); if(!publicName){ toast("API model name is required","err"); return; }
+    if(publicModelNameExists(publicName,route.model_name)){ toast("API model name already exists. Model routes and Model Groups share one client-facing namespace.","err"); return; }
+    if(selected.length<2){ toast("Add at least two compatible routes before saving a Model Group","err"); return; }
+    if(policy.value==="weighted_round_robin" && selected.some(function(ep){ return !Number.isFinite(Number(ep.weight)) || Number(ep.weight)<1; })){ toast("Weighted round-robin requires weight 1 or higher for every selected route","err"); return; }
+    save.disabled=true; saveDraft.disabled=true;
+    try{
+      var endpointPayload=selected.map(function(ep){ var out={backend_id:ep.backend_id,provider_model_name:ep.provider_model_name,auth_mode:ep.auth||"bearer",protocol:ep.protocol||groupProtocolForTask(ts.value),weight:policy.value==="weighted_round_robin"?Math.max(1,Number(ep.weight)||1):1,max_inflight:Math.max(0,Number(ep.max_inflight)||0),enabled:ep.enabled!==false}; if(ep.provider_key_ref) out.provider_key_ref=ep.provider_key_ref; return out; });
+      var payload={model_name:publicName,backend_ids:selected.map(function(ep){return ep.backend_id;}),chars_per_token:4.0,first_byte_timeout:Number(route.first_byte_timeout)||180,provider_model_name:publicName,enabled:enabledFlag,auth_mode:"bearer",protocol:groupProtocolForTask(ts.value),routing_policy:policy.value,endpoints:endpointPayload};
+      if(route.context_tokens) payload.context_tokens=route.context_tokens;
+      if(route.max_output_tokens) payload.max_output_tokens=route.max_output_tokens;
+      if(route.price_input_per_mtok_usd!=null) payload.price_input_per_mtok_usd=route.price_input_per_mtok_usd;
+      if(route.price_output_per_mtok_usd!=null) payload.price_output_per_mtok_usd=route.price_output_per_mtok_usd;
+      await api(isEdit?"/admin/routes/"+encodeURIComponent(route.model_name):"/admin/routes",isEdit?"PATCH":"POST",payload);
+      closeModal(); toast(enabledFlag?"Model Group saved (enabled)":"Model Group saved (disabled)"); routes=await api("/admin/routes","GET"); backends=await api("/admin/backends","GET"); rerender();
+    }catch(e){ toast("Save group failed: "+e.message,"err"); saveDraft.disabled=false; redraw(); }
+  }
+  save.onclick=function(){ doSave(true); };
+  saveDraft.onclick=function(){ doSave(false); };
+  redraw();
+  ov.appendChild(m); ov.classList.remove("hidden");
+}
+
 function openRouteModal(route,opts){
   route=route||{}; opts=opts||{};
-  var initialMode=(route.endpoints&&route.endpoints.length)?"group":(opts.mode==="group"?"group":"single");
+  var initialMode="single";
   var ov=$("modal-overlay"); ov.innerHTML="";
   var m=el("div","modal route-modal");
   var routeMode=initialMode;
-  var modalTitle=route.model_name?(routeMode==="group"?"Edit model group":"Edit model route"):(routeMode==="group"?"Create model group":"Add model route");
+  var modalTitle=route.model_name?"Edit model route":"Add model route";
   m.appendChild(modalHeader(modalTitle));
   var steps=el("div","wizard-steps");
-  var stepCopy=routeMode==="group"?[["1","Connect endpoint","Provider, URL, optional key"],["2","Add to group","Test endpoint, then add it"],["3","Save group","At least two tested endpoints"]]:[["1","Connect","Provider, URL, and optional key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]];
+  var stepCopy=[["1","Connect","Provider, URL, and optional key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]];
   stepCopy.forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
   m.appendChild(steps);
   var modeBanner=el("div","route-kind-banner "+(routeMode==="group"?"group":"single"));
-  modeBanner.appendChild(el("b",null,routeMode==="group"?"Model Group":"Single model route"));
-  modeBanner.appendChild(el("span",null,routeMode==="group"?"Clients call one public model name; BrighTO load-balances across tested chat endpoints.":"Clients call one public model name; BrighTO sends it to one tested provider endpoint."));
+  modeBanner.appendChild(el("b",null,"Single model route"));
+  modeBanner.appendChild(el("span",null,"Clients call one API model name; BrighTO sends it to one tested provider endpoint."));
   m.appendChild(modeBanner);
   var groupEndpoints=[];
   var groupEndpointSeq=1;
 
-  m.appendChild(el("div","section-title",routeMode==="group"?"Endpoint to add":"Provider endpoint"));
+  m.appendChild(el("div","section-title","Provider endpoint"));
   var providerGrid=el("div","form-grid provider-connect-grid");
 
   function inferTaskFromProtocol(proto){
@@ -1499,7 +1641,7 @@ function openRouteModal(route,opts){
   f0.appendChild(ps); f0.appendChild(pHint); providerGrid.appendChild(f0);
 
   var routeModeSel=document.createElement("select");
-  [["single","Single endpoint"],["group","Model Group / Load balance"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; routeModeSel.appendChild(o); });
+  [["single","Single endpoint"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; routeModeSel.appendChild(o); });
   routeModeSel.value=routeMode;
 
   function providerSupportsTask(e,task){
@@ -1636,7 +1778,7 @@ function openRouteModal(route,opts){
   f1.appendChild(el("p","hint","Exact upstream model name returned by the provider."));
   modelGrid.appendChild(f1);
 
-  var f=el("div","field"); f.appendChild(el("label",null,"Public model name (shown to clients)"));
+  var f=el("div","field"); f.appendChild(el("label",null,"API model name (shown to clients)"));
   var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi);
   f.appendChild(el("p","hint","The model name your apps send. Use the same name or a shorter team alias."));
 	  modelGrid.appendChild(f);
@@ -1843,7 +1985,8 @@ function openRouteModal(route,opts){
   };
 
   async function doSave(enabledFlag){
-    var name=mi.value.trim(); if(!name){toast("Public model name is required","err");return;}
+    var name=mi.value.trim(); if(!name){toast("API model name is required","err");return;}
+    if(publicModelNameExists(name,route.model_name)){toast("API model name already exists. Model routes and Model Groups share one client-facing namespace.","err");return;}
     var isGroup=routeMode==="group";
     var modelSel=ms.value.trim();
     if(!isGroup && !modelSel){toast("Provider model is required","err");return;}
@@ -1939,7 +2082,7 @@ function pickModelModal(models, onPick){
   var m=el("div","modal picker-modal");
   var head=el("div","picker-head");
   head.appendChild(modalHeader("Select a model ("+models.length+")", function(){ ov.remove(); }));
-  head.appendChild(el("p","hint","Choose exactly one provider model. The public model name can stay the same or be renamed after selection."));
+  head.appendChild(el("p","hint","Choose exactly one provider model. The API model name can stay the same or be renamed after selection."));
   m.appendChild(head);
   var searchBox=el("div","picker-search");
   searchBox.appendChild(el("label",null,"Search models"));
@@ -2214,7 +2357,7 @@ function openKeyModal(k){
       scopePicker.appendChild(emptyBox("No model routes yet. Create a model route first, or use All models."));
       return;
     }
-    scopePicker.appendChild(el("p","hint","Choose exact public model names this key may call."));
+    scopePicker.appendChild(el("p","hint","Choose exact API model names this key may call."));
     var chips=el("div","chips scope-chips");
     availableModels.forEach(function(name){
       var lab=el("label","chip"+(selectedModels[name]?" selected":""));

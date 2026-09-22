@@ -34,7 +34,7 @@ Preview-3 focuses on practical production routing without making the router hard
 
 | New capability | What it does | Why it matters |
 |---|---|---|
-| Model Groups | One public OpenAI-compatible chat model can balance across two or more tested backend endpoints. | Apps keep using the same model name while the router spreads load and fails over when an endpoint is unhealthy. |
+| Model Groups | One API model name can balance across two or more existing tested routes of the same type. | Apps keep using the same model name while the router spreads load and fails over when an endpoint is unhealthy. |
 | Round-robin and weighted routing | Choose simple rotation or assign more traffic to stronger endpoints. | A local GPU endpoint, DeepSeek, OpenAI-compatible server, or other compatible backend can share traffic predictably. |
 | Task-aware adapters | Embeddings, rerank, and ASR/transcription have explicit task types and Test Connection probes. | Admins stop guessing whether a model should be tested through chat, embeddings, rerank, or multipart ASR. |
 | Cleaner Portal setup | Add model route and Create Model Group are primary actions on the Models page. | A new admin can create one working route or one load-balanced group without touching SQL or YAML. |
@@ -57,7 +57,7 @@ Pass-through means the router forwards supported request JSON and provider respo
 | Provider setup without YAML pain | Portal flow: choose task type, choose provider, paste API key, load or type one model, test connection, save one route. |
 | Honest benchmarking | Same-machine direct-backend versus router-backend tests, from small prompts to very large payloads. |
 | A clean production dependency model | Rust router + PostgreSQL as the required datastore. |
-| Scale beyond one box | Stateless router instances can run as multiple Docker/Kubernetes replicas behind a load balancer. Model Groups can also balance one public OpenAI-compatible chat model across multiple compatible backend endpoints. |
+| Scale beyond one box | Stateless router instances can run as multiple Docker/Kubernetes replicas behind a load balancer. Model Groups can also balance one API model name across multiple existing compatible routes. |
 
 BrighTO-Router is not trying to win by listing hundreds of integrations. It is trying to be the router a serious team can understand, run, audit, and tune.
 
@@ -173,7 +173,7 @@ Open **Models & Routes → Add model route** in the Portal.
 3. Accept the default Base URL or enter your own.
 4. Paste the provider API key when the endpoint requires one. Leave it blank when the matching `.env` key is already set, or when **Custom LLM** points to a local/no-auth endpoint such as llama.cpp.
 5. Click **Load models** when the provider supports it, or use the task-specific suggestions/manual model name.
-6. Select one provider model and set the public model name your apps will call.
+6. Select one provider model and set the API model name your apps will call.
 7. Click **Test connection**.
 8. Save the route only after the test passes.
 
@@ -181,17 +181,18 @@ The provider API key belongs to the model route. Client applications do not rece
 
 ## First Model Group
 
-Use a Model Group when you want one public OpenAI-compatible chat model name to spread traffic across several tested backend endpoints. The client does not change its API call. It still sends `model: "<public-group-name>"` to `/v1/chat/completions`.
+API model names are unique across normal model routes and Model Groups. This is the value clients send in JSON as `model`; a future display label can be decorative, but this API name must not collide.
+
+Use a Model Group when you want one API model name to spread traffic across several existing tested routes of the same type. The client does not change its API call. It still sends `model: "<api-model-group-name>"` to the same endpoint for that type.
 
 Open **Models & Routes → Create Model Group** in the Portal.
 
-1. Choose **OpenAI-compatible chat** as the group type. Preview-3 groups are for chat load balancing only.
-2. Choose **Round robin** for equal rotation, or **Weighted round robin** when some endpoints should receive more traffic.
-3. Add two or more endpoints with Base URL, provider model name, and provider API key/reference. For local/no-auth Custom LLM endpoints, leave the key blank.
-4. Run **Test connection** for each endpoint.
-5. Save the group enabled only after every endpoint you want active has passed.
+1. Choose the **Model type**: Chat / LLM, Embedding, Rerank, or ASR / transcription.
+2. Choose **Round robin** for equal rotation, or **Weighted round robin** when some routes should receive more traffic.
+3. Add two or more existing tested routes. The Portal only lists routes that match the selected type.
+4. Save the group enabled. No provider URL or provider API key is entered in the group wizard; those belong to the source routes.
 
-Round robin ignores endpoint weights and rotates through available endpoints. Weighted round robin uses the configured weights consistently across router replicas through PostgreSQL counters. If one endpoint fails repeatedly, the router temporarily avoids it and uses the remaining healthy endpoints; later requests can probe it again so a recovered endpoint can rejoin service.
+Round robin rotates evenly and does not ask for weights. Weighted round robin shows per-route weights and uses them consistently across router replicas through PostgreSQL counters. If one endpoint fails repeatedly, the router temporarily avoids it and uses the remaining healthy endpoints; later requests can probe it again so a recovered endpoint can rejoin service.
 
 ## Test a route from the command line
 
@@ -270,7 +271,7 @@ Preview-3 Model Group smoke examples:
 ./smoke/model_group/run_live_openai_chat.sh
 ```
 
-The mock smoke always runs locally and verifies weighted round-robin across three OpenAI-compatible chat endpoints. The live smoke creates one public OpenAI chat model group, `coding-fast-live`, backed by DeepSeek V4 Pro and local llama.cpp `qwen3.8-flash-next`. It requires `DEEPSEEK_API_KEY` and a reachable local llama.cpp OpenAI-compatible endpoint, defaulting to `http://127.0.0.1:8088/v1`.
+The mock smoke always runs locally and verifies weighted round-robin across three OpenAI-compatible chat endpoints. In the Portal, create the individual tested routes first, then create a Model Group from those compatible routes.
 
 Image input through an OpenAI-style multimodal chat route:
 

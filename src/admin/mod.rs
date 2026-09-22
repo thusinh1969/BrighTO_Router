@@ -521,6 +521,7 @@ struct RouteResponse {
     price_input_per_mtok_usd: Option<f64>,
     price_output_per_mtok_usd: Option<f64>,
     enabled: bool,
+    provider_key_ref: Option<String>,
     auth_mode: String,
     protocol: String,
     routing_policy: String,
@@ -833,7 +834,7 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
     let rows = sqlx::query::<sqlx::Postgres>(
         "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
-         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, auth_mode, protocol, routing_policy \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol, routing_policy \
          FROM model_routes ORDER BY model_name",
     )
     .fetch_all(pool)
@@ -879,6 +880,7 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
             price_input_per_mtok_usd: row.try_get("price_input_per_mtok_usd")?,
             price_output_per_mtok_usd: row.try_get("price_output_per_mtok_usd")?,
             enabled,
+            provider_key_ref: row.try_get("provider_key_ref")?,
             auth_mode: row.try_get("auth_mode")?,
             protocol: row.try_get("protocol")?,
             routing_policy: row.try_get("routing_policy")?,
@@ -1899,11 +1901,11 @@ fn protocol_family(protocol: &str) -> &'static str {
         | ProviderProtocol::CustomOpenAiChat => "openai_chat",
         ProviderProtocol::OpenAiCompletions => "openai_completions",
         ProviderProtocol::OpenAiEmbeddings => "openai_embeddings",
-        ProviderProtocol::OpenAiRerank => "openai_rerank",
-        ProviderProtocol::QwenRerank => "qwen_rerank",
-        ProviderProtocol::CohereRerank => "cohere_rerank",
-        ProviderProtocol::VoyageRerank => "voyage_rerank",
-        ProviderProtocol::JinaRerank => "jina_rerank",
+        ProviderProtocol::OpenAiRerank
+        | ProviderProtocol::QwenRerank
+        | ProviderProtocol::CohereRerank
+        | ProviderProtocol::VoyageRerank
+        | ProviderProtocol::JinaRerank => "rerank",
         ProviderProtocol::OpenAiAudioTranscriptions => "openai_audio_transcriptions",
         ProviderProtocol::AnthropicMessages => "anthropic_messages",
     }
@@ -2201,6 +2203,7 @@ fn route_response(v: ValidatedRoute) -> RouteResponse {
         price_input_per_mtok_usd: v.price_input_per_mtok_usd,
         price_output_per_mtok_usd: v.price_output_per_mtok_usd,
         enabled: v.enabled,
+        provider_key_ref: v.provider_key_ref,
         auth_mode: v.auth_mode,
         protocol: v.protocol,
         routing_policy: v.routing_policy.as_str().to_string(),
@@ -2283,23 +2286,25 @@ async fn upsert_route(
     Json(payload): Json<UpsertRoute>,
 ) -> Result<Json<RouteResponse>, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
-    let v = validate_route(payload)?;
+    let requested_name = non_empty_trimmed(payload.model_name.clone(), "model_name")?;
     let pool = state.pool().await?;
+    if sqlx::query::<sqlx::Postgres>("SELECT 1 FROM model_routes WHERE model_name = $1")
+        .bind(&requested_name)
+        .fetch_optional(pool)
+        .await?
+        .is_some()
+    {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "API model name already exists; model routes and Model Groups share one client-facing namespace",
+        ));
+    }
+    let v = validate_route(payload)?;
     sqlx::query::<sqlx::Postgres>(
         "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
          price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol, routing_policy) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) \
-         ON CONFLICT (model_name) DO UPDATE SET \
-         backend_ids = EXCLUDED.backend_ids, fallback_backend_id = EXCLUDED.fallback_backend_id, \
-         chars_per_token = EXCLUDED.chars_per_token, first_byte_timeout = EXCLUDED.first_byte_timeout, \
-         provider_model_name = EXCLUDED.provider_model_name, context_tokens = EXCLUDED.context_tokens, \
-         max_output_tokens = EXCLUDED.max_output_tokens, \
-         price_input_per_mtok_usd = EXCLUDED.price_input_per_mtok_usd, \
-         price_output_per_mtok_usd = EXCLUDED.price_output_per_mtok_usd, enabled = EXCLUDED.enabled, \
-         provider_key_ref = COALESCE(EXCLUDED.provider_key_ref, model_routes.provider_key_ref), \
-         auth_mode = EXCLUDED.auth_mode, \
-         protocol = EXCLUDED.protocol, routing_policy = EXCLUDED.routing_policy",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -2349,7 +2354,7 @@ async fn patch_route(
         if exists {
             return Err(ApiError::new(
                 StatusCode::CONFLICT,
-                "model name already exists",
+                "API model name already exists",
             ));
         }
         // Block rename if the public model has usage history (audit identity).
@@ -2405,7 +2410,7 @@ async fn patch_route(
     Ok(Json(route_response(v)))
 }
 
-/// Xoá model route theo public model name, rồi reload ngay.
+/// Xoá model route theo API model name, rồi reload ngay.
 async fn delete_route(
     Extension(state): Extension<Arc<AdminState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -3712,6 +3717,31 @@ mod tests {
         assert_eq!(routes[1].model_name, "z-model");
         assert_eq!(routes[1].backend_ids, vec![2, 3]);
         assert_eq!(routes[1].fallback_backend_id, Some(3));
+        Ok(())
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn model_route_api_names_are_unique(pool: PgPool) -> anyhow::Result<()> {
+        sqlx::query("INSERT INTO model_routes (model_name, backend_ids, chars_per_token, first_byte_timeout) VALUES ($1, $2, $3, $4)")
+            .bind("same-api-model-name")
+            .bind("[1]")
+            .bind(4.0_f64)
+            .bind(180_i64)
+            .execute(&pool)
+            .await?;
+
+        let duplicate = sqlx::query("INSERT INTO model_routes (model_name, backend_ids, chars_per_token, first_byte_timeout) VALUES ($1, $2, $3, $4)")
+            .bind("same-api-model-name")
+            .bind("[2]")
+            .bind(4.0_f64)
+            .bind(180_i64)
+            .execute(&pool)
+            .await;
+
+        assert!(
+            duplicate.is_err(),
+            "model route and Model Group names must share one unique client-facing API namespace"
+        );
         Ok(())
     }
 

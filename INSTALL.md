@@ -92,7 +92,7 @@ Data safety: `docker build`, `docker compose up -d --force-recreate router`, `./
 
 ## Add a model route
 
-The first useful setup is a model route. A route exposes one public model name to your applications and points it to one upstream provider model.
+The first useful setup is a model route. A route exposes one API model name to your applications and points it to one upstream provider model.
 
 Use the portal:
 
@@ -115,20 +115,22 @@ For providers that do not expose a compatible `/models` endpoint, type the provi
 
 ## Add a Model Group
 
-A Model Group exposes one public OpenAI-compatible chat model name backed by two or more compatible endpoints. Use it when you want load balancing or failover behind one stable model name.
+API model names are unique across normal routes and Model Groups because client apps use that single string in requests.
+
+A Model Group exposes one API model name backed by two or more existing tested routes of the same type. Use it when you want load balancing or failover behind one stable model name.
 
 Use the portal:
 
 1. Enter the admin key.
 2. Open **Models & Routes**.
 3. Click **Create Model Group**.
-4. Set the public model name your apps will call.
-5. Choose **Round robin** for equal traffic or **Weighted round robin** for uneven capacity.
-6. Add endpoint cards with Base URL, provider model name, provider API key/reference when required, and optional weight. Leave the key blank for local/no-auth Custom LLM endpoints.
-7. Test each endpoint.
-8. Save enabled only when the endpoint tests pass.
+4. Choose the model type.
+5. Set the API model name your apps will call.
+6. Choose **Round robin** for equal traffic or **Weighted round robin** for uneven capacity.
+7. Add two or more existing tested routes from the compatible-route dropdown.
+8. Save enabled. Provider URLs and provider API keys are not entered in the group wizard; they stay on the source routes.
 
-Preview-3 Model Groups are intentionally limited to OpenAI-compatible chat. Do not mix chat, embeddings, rerank, ASR, or Anthropic Messages inside one group. For embeddings, rerank, ASR, and Anthropic, create normal model routes.
+Preview-3 groups require all selected routes to match the same model type. Do not mix chat, embeddings, rerank, ASR, or Anthropic Messages inside one group.
 
 ## Test from the command line
 
