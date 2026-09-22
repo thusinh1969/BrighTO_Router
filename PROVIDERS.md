@@ -1,6 +1,6 @@
 # Provider setup
 
-BrighTO-Router preview-2, intended to become `main` after final feedback, keeps provider setup simple: choose a task type first, then choose a provider preset, test the exact endpoint, and save one model route. The same Portal flow covers chat, embeddings, rerank, and ASR/transcription.
+BrighTO-Router preview-3, intended to become `main` after final feedback, keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one public OpenAI-compatible chat model across two or more tested endpoints. The single-route flow covers chat, embeddings, rerank, and ASR/transcription.
 
 A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
 
@@ -31,11 +31,11 @@ The catalog is configured by `PROVIDER_CATALOG` in `.env`. The default catalog i
 
 ## Default seeded provider endpoints
 
-`./start.sh seed` inserts missing provider endpoint templates into the database so the Portal **Providers** screen is useful on first run. These endpoints are templates and are inserted disabled; creating an enabled model route still happens in **Models & Routes → Add model** after **Test connection** passes.
+`./start.sh seed` inserts missing provider endpoint templates into the database so the Portal **Providers** screen is useful on first run. These endpoints are templates and are inserted disabled; creating an enabled model route still happens in **Models & Routes → Add model route** after **Test connection** passes.
 
 Seeded adapter endpoint templates include:
 
-| Endpoint template | Base URL | Typical task type in Add model | Notes |
+| Endpoint template | Base URL | Typical task type in Add model route | Notes |
 |---|---|---|---|
 | `qwen` | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | Embedding | Use `qwen3.7-text-embedding` for the current text embedding smoke. |
 | `qwen-rerank` | `https://dashscope-intl.aliyuncs.com` | Rerank | Use `qwen3-rerank`; do not use `/compatible-mode/v1` for rerank. |
@@ -48,7 +48,7 @@ Seeded adapter endpoint templates include:
 In the Portal:
 
 1. Open **Models & Routes**.
-2. Click **Add model**.
+2. Click **Add model route**.
 3. Choose **Task type**: Chat / LLM, Embedding, Rerank, or ASR / transcription.
 4. Pick a provider preset or **Custom LLM**.
 5. Enter the Base URL.
@@ -88,9 +88,9 @@ Provider API keys are different from client API keys.
 
 Create client keys in **API Keys**. Admin can view and copy them again later.
 
-## Preview-2 adapter providers
+## Preview-3 adapter providers
 
-Embeddings, rerank, and ASR/transcription are first-class preview-2 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models`. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add Model wizard.
+Embeddings, rerank, and ASR/transcription are first-class preview-3 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models`. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route / Create model group wizard.
 
 Qwen rerank needs special handling: embeddings can use the OpenAI-compatible `/compatible-mode/v1` Base URL, while rerank uses DashScope workspace endpoints. In the Portal, choose **Qwen + Rerank**, then enter `https://dashscope-intl.aliyuncs.com` or your workspace root Base URL such as `https://<workspace>.<region>.maas.aliyuncs.com`. For live smoke tests, set `QWEN_RERANK_BASE_URL` to that same root URL.
 

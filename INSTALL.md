@@ -33,10 +33,10 @@ cd BrighTO_Router
 ./start.sh status
 ```
 
-This preview-2 line uses `thusinh1969/brighto_airouter:preview-2` by default and is intended to become `main` after final field feedback. Existing local `.env` files from older installs should include:
+This preview-3 line uses `thusinh1969/brighto_airouter:preview-3` by default and is intended to become `main` after final field feedback. Existing local `.env` files from older installs should include:
 
 ```bash
-BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-2
+BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-3
 ```
 
 What happens:
@@ -45,7 +45,7 @@ What happens:
 2. Docker starts PostgreSQL 16.
 3. SQL migrations run.
 4. The default team and local demo client key are seeded.
-5. Docker pulls and starts `thusinh1969/brighto_airouter:preview-2`.
+5. Docker pulls and starts `thusinh1969/brighto_airouter:preview-3`.
 
 Open on the same server:
 
@@ -85,7 +85,7 @@ For shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW
 | `./start.sh logs` | Follow router logs. |
 | `./start.sh migrate` | Run SQL migrations only. |
 | `./start.sh seed` | Seed default team/demo key and missing provider templates only. It does not overwrite edited providers or model routes. |
-| `./start.sh set-key openai sk-...` | Store a cloud provider key in `.env` and recreate router if running. The Add model wizard can also accept a pasted route key. |
+| `./start.sh set-key openai sk-...` | Store a cloud provider key in `.env` and recreate router if running. The Add model route wizard can also accept a pasted route key. |
 | `./start.sh smoke` | Run a short non-release benchmark smoke. |
 
 Data safety: `docker build`, `docker compose up -d --force-recreate router`, `./start.sh start`, `./start.sh stop`, and `./start.sh restart` keep the local PostgreSQL volume. Do not run `docker compose down -v`, `docker volume rm brighto-airouter_pg-data`, or manual reset/truncate SQL unless you want to erase local routes, teams, keys, and usage.
@@ -98,7 +98,7 @@ Use the portal:
 
 1. Enter the admin key.
 2. Open **Models & Routes**.
-3. Click **Add model**.
+3. Click **Add model route**.
 4. Pick a provider preset or **Custom LLM**.
 5. Enter the Base URL and provider API key. You can paste the key in the wizard, or leave it blank to use the matching `.env` key when configured.
 6. Click **Load models**, choose one model, then click **Test connection**.
@@ -146,7 +146,7 @@ python3 test_router.py --model <audio-model-route> --text "Summarize this audio.
 
 `--provider` uses standard public route names. Run `python3 test_router.py --list-presets` to see the mapping, or pass `--model` when your route name is custom. In rerank mode, `--query` and `--text` both work; `--query` is clearer and takes priority.
 
-Preview-2 live provider smoke tests:
+Preview-3 live provider smoke tests:
 
 ```bash
 python3 scripts/adapter_smoke.py --provider qwen --task embedding

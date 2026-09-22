@@ -1,8 +1,8 @@
-# Preview-2 adapters: embeddings, rerank, and ASR
+# Preview-3 adapters: embeddings, rerank, ASR, and Model Groups
 
-This is the latest preview-2 adapter scope: embeddings stay on the OpenAI-compatible route, and rerank plus ASR/transcription are task-specific adapters that do not change the chat/completions hot path.
+This is the latest preview-3 adapter scope: embeddings stay on the OpenAI-compatible route, and rerank plus ASR/transcription are task-specific adapters that do not change the chat/completions hot path.
 
-Implemented and tested in preview-2:
+Implemented and tested in preview-3:
 
 | Task | Public BrighTO endpoint | Route protocol | Request shape | Status |
 |---|---|---|---|---|
@@ -115,7 +115,7 @@ curl -sS http://127.0.0.1:18080/v1/audio/transcriptions \
 
 ## Portal setup: how adapter routes differ from chat
 
-Embedding and rerank routes are not selected by changing only the provider. In **Models & Routes → Add model**, choose the **Task type** first:
+Embedding and rerank routes are not selected by changing only the provider. In **Models & Routes → Add model route**, choose the **Task type** first:
 
 1. **Embedding** creates a route for `/v1/embeddings`. The provider model must be an embedding model such as Qwen `qwen3.7-text-embedding`, Jina embedding models, Voyage embedding models, or OpenAI embedding models.
 2. **Rerank** creates a route for `/v1/rerank`. The provider model must be a reranker such as Qwen `qwen3-rerank`, Jina reranker, Voyage reranker, or Cohere reranker.
@@ -145,7 +145,7 @@ Save enabled only after Test Connection passes. Save draft remains available for
 - ASR currently expects OpenAI-compatible `/v1/audio/transcriptions` multipart behavior.
 - Additional Qwen/Alibaba ASR or media adapters should wait for exact provider API proof before coding.
 
-## Validation already in preview-2
+## Validation already in preview-3
 
 - `cargo fmt --check`
 - `cargo check --locked`
