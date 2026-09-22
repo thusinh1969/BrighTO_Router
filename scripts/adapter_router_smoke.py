@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end preview-2 adapter smoke through BrighTO-Router.
+"""End-to-end preview-3 adapter smoke through BrighTO-Router.
 
 Starts temporary Postgres + router, creates adapter routes through Admin API, runs
 /admin/test-connection, saves enabled routes, and calls the public BrighTO endpoints.

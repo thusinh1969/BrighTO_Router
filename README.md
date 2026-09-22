@@ -15,8 +15,8 @@ Think NGINX-style reverse proxy for AI traffic, with model routing, team budgets
 
 Measured on Intel Xeon Gold 6148 using same-machine mock-backend artifacts:
 
-- HTTP: `benchmarks/artifacts/preview-2-http-1m-coding-context-summary.json`
-- HTTPS: `benchmarks/artifacts/preview-2-https-1m-coding-context-summary.json`
+- HTTP: `benchmarks/artifacts/preview-3-http-1m-coding-context-summary.json`
+- HTTPS: `benchmarks/artifacts/preview-3-https-1m-coding-context-summary.json`
 
 These are pass-through benchmarks against a deterministic local Rust mock backend. They measure router overhead, not model inference speed, and they do not call paid cloud providers.
 
@@ -24,9 +24,21 @@ Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 
 Official Docker image for preview-3: `thusinh1969/brighto_airouter:preview-3`
 
-Release version: `1.0-preview-3` (latest preview; intended to become `main` after final field feedback)
+Release version: `1.0.0-preview.3` (latest preview; intended to become `main` after final field feedback)
 
-This preview-3 line keeps the fast chat/completions/embeddings router path, includes task-aware adapter routes for rerank and ASR, and adds first-class Model Groups for OpenAI-compatible chat load balancing. See [ADAPTERS.md](ADAPTERS.md).
+Preview-3 is the current public preview line. It keeps the million-token Rust fast path, adds first-class Model Groups for OpenAI-compatible chat load balancing, and includes task-aware Portal/API flows for embeddings, rerank, and ASR/transcription. See [ADAPTERS.md](ADAPTERS.md).
+
+## What is new in preview-3
+
+Preview-3 focuses on practical production routing without making the router harder to operate.
+
+| New capability | What it does | Why it matters |
+|---|---|---|
+| Model Groups | One public OpenAI-compatible chat model can balance across two or more tested backend endpoints. | Apps keep using the same model name while the router spreads load and fails over when an endpoint is unhealthy. |
+| Round-robin and weighted routing | Choose simple rotation or assign more traffic to stronger endpoints. | A local GPU endpoint, DeepSeek, OpenAI-compatible server, or other compatible backend can share traffic predictably. |
+| Task-aware adapters | Embeddings, rerank, and ASR/transcription have explicit task types and Test Connection probes. | Admins stop guessing whether a model should be tested through chat, embeddings, rerank, or multipart ASR. |
+| Cleaner Portal setup | Add model route and Create Model Group are primary actions on the Models page. | A new admin can create one working route or one load-balanced group without touching SQL or YAML. |
+| One-line install defaults | The installer pulls the preview-3 Docker image, starts PostgreSQL, runs migrations, seeds provider templates, and opens the Portal. | A team can test locally first, then add HTTPS or Kubernetes only when needed. |
 
 ## Why BrighTO-Router
 
@@ -45,7 +57,7 @@ Pass-through means the router forwards supported request JSON and provider respo
 | Provider setup without YAML pain | Portal flow: choose task type, choose provider, paste API key, load or type one model, test connection, save one route. |
 | Honest benchmarking | Same-machine direct-backend versus router-backend tests, from small prompts to very large payloads. |
 | A clean production dependency model | Rust router + PostgreSQL as the required datastore. |
-| Scale beyond one box | Stateless router instances can run as multiple Docker/Kubernetes replicas behind a load balancer. Preview-3 also supports Model Groups to balance one public chat model across multiple compatible backend endpoints. |
+| Scale beyond one box | Stateless router instances can run as multiple Docker/Kubernetes replicas behind a load balancer. Model Groups can also balance one public OpenAI-compatible chat model across multiple compatible backend endpoints. |
 
 BrighTO-Router is not trying to win by listing hundreds of integrations. It is trying to be the router a serious team can understand, run, audit, and tune.
 
@@ -64,7 +76,7 @@ The verified benchmark artifacts cover `1k`, `50k`, `200k`, `500k`, and `1m` tok
 
 Method: same client, same machine, same mock backend, direct call versus router call. Payloads are generated as coding-agent context: file paths, source snippets, diffs, logs, failing tests, and change instructions. This is closer to real vibe-coding traffic than repeated plain prose.
 
-HTTP artifact: `benchmarks/artifacts/preview-2-http-1m-coding-context-summary.json` on Intel Xeon Gold 6148.
+HTTP artifact: `benchmarks/artifacts/preview-3-http-1m-coding-context-summary.json` on Intel Xeon Gold 6148.
 
 | Payload | Concurrency | p50 router overhead | p99 router overhead | Streaming first-byte delta | Router memory max |
 |---|---:|---:|---:|---:|---:|
@@ -75,7 +87,7 @@ HTTP artifact: `benchmarks/artifacts/preview-2-http-1m-coding-context-summary.js
 | `1m` | 50 | `+2.047 ms` | `+3.415 ms` | `-0.038 ms` | `60.04 MB` |
 | `1m` | 200 | `+2.167 ms` | `+1.664 ms` | `-0.038 ms` | `60.04 MB` |
 
-HTTPS artifact with local self-signed TLS enabled: `benchmarks/artifacts/preview-2-https-1m-coding-context-summary.json`.
+HTTPS artifact with local self-signed TLS enabled: `benchmarks/artifacts/preview-3-https-1m-coding-context-summary.json`.
 
 | Payload | Concurrency | p50 router overhead | p99 router overhead | Streaming first-byte delta | Router memory max |
 |---|---:|---:|---:|---:|---:|
@@ -159,13 +171,27 @@ Open **Models & Routes → Add model route** in the Portal.
 1. Choose **Task type**: Chat / LLM, Embedding, Rerank, or ASR / transcription.
 2. Choose a provider preset such as OpenAI, Anthropic, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Jina AI, Voyage AI, Cohere, or **Custom LLM**.
 3. Accept the default Base URL or enter your own.
-4. Paste the provider API key, or leave it blank when the matching `.env` key is already set.
+4. Paste the provider API key when the endpoint requires one. Leave it blank when the matching `.env` key is already set, or when **Custom LLM** points to a local/no-auth endpoint such as llama.cpp.
 5. Click **Load models** when the provider supports it, or use the task-specific suggestions/manual model name.
 6. Select one provider model and set the public model name your apps will call.
 7. Click **Test connection**.
 8. Save the route only after the test passes.
 
 The provider API key belongs to the model route. Client applications do not receive provider keys. They call BrighTO-Router with a client API key issued from the **API Keys** screen.
+
+## First Model Group
+
+Use a Model Group when you want one public OpenAI-compatible chat model name to spread traffic across several tested backend endpoints. The client does not change its API call. It still sends `model: "<public-group-name>"` to `/v1/chat/completions`.
+
+Open **Models & Routes → Create Model Group** in the Portal.
+
+1. Choose **OpenAI-compatible chat** as the group type. Preview-3 groups are for chat load balancing only.
+2. Choose **Round robin** for equal rotation, or **Weighted round robin** when some endpoints should receive more traffic.
+3. Add two or more endpoints with Base URL, provider model name, and provider API key/reference. For local/no-auth Custom LLM endpoints, leave the key blank.
+4. Run **Test connection** for each endpoint.
+5. Save the group enabled only after every endpoint you want active has passed.
+
+Round robin ignores endpoint weights and rotates through available endpoints. Weighted round robin uses the configured weights consistently across router replicas through PostgreSQL counters. If one endpoint fails repeatedly, the router temporarily avoids it and uses the remaining healthy endpoints; later requests can probe it again so a recovered endpoint can rejoin service.
 
 ## Test a route from the command line
 
@@ -481,7 +507,7 @@ Benchmark matrix:
 
 Current verified public-facing status:
 
-- Preview-3 currently uses the full HTTP and HTTPS same-machine mock artifacts from `1k` through `1m`, at concurrency 1, 50, and 200.
+- The large-context proof artifacts cover the preview-3 fast path from `1k` through `1m`, at concurrency 1, 50, and 200. Model Group logic has separate integration and browser smoke coverage.
 - The headline 1M HTTP result at concurrency 200 is `+2.167 ms p50` and `+1.664 ms p99` router overhead with `0` non-200 responses.
 - The headline 1M HTTPS result at concurrency 200 is `+6.539 ms p50` and `+35.845 ms p99` router overhead with `0` non-200 responses.
 - Hard release thresholds still apply to the calibrated `1k`, `50k`, and `200k` gates. The `500k` and `1m` artifacts are published measurement proof and will become hard gates only after we have more repeated public baselines.

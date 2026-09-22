@@ -278,7 +278,7 @@ def selected(items: str, all_items: list[str]) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run tiny live-provider smoke tests for preview-2 adapters.")
+    parser = argparse.ArgumentParser(description="Run tiny live-provider smoke tests for preview-3 adapters.")
     parser.add_argument("--provider", default="all", help="Provider: openai, qwen, jina, voyage, cohere, or all. Comma-separated is allowed.")
     parser.add_argument("--task", default="all", help="Task: embedding, rerank, asr, or all. Comma-separated is allowed.")
     parser.add_argument("--model", help="Override provider model for a single provider/task run")

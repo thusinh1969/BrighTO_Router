@@ -250,7 +250,7 @@ dependencies = [
 
 [[package]]
 name = "brighto-router"
-version = "1.0.0-preview.2"
+version = "1.0.0-preview.3"
 dependencies = [
  "anyhow",
  "arc-swap",

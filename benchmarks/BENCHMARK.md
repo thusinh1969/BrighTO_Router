@@ -37,7 +37,7 @@ The release gate measures these payloads at concurrency 1, 50, and 200. Hard pas
 | `500k` | 500,000 | 2 MB | pass-through stress proof |
 | `1m` | 1,000,000. The name means 1M. | 4 MB | extreme pass-through and memory proof |
 
-Preview-2 includes full HTTP and HTTPS measurement artifacts for 500k and 1M at concurrency 1, 50, and 200. They record correctness, router overhead, streaming time to first byte, ledger drops, and router memory. Do not add arbitrary pass/fail speed thresholds for these payloads until repeated public baselines justify them.
+Preview-3 includes full HTTP and HTTPS measurement artifacts for 500k and 1M at concurrency 1, 50, and 200. They record correctness, router overhead, streaming time to first byte, ledger drops, and router memory. Do not add arbitrary pass/fail speed thresholds for these payloads until repeated public baselines justify them.
 
 ## Current Layer B release gates
 
@@ -54,7 +54,7 @@ Layer B uses `brighto-router-mock`, a deterministic local backend that returns i
 | `INTERNAL_LEDGER_DROPS` | Internal safety counter from metrics. | all measured traffic | `router_ledger_dropped_total = 0` |
 | `baseline` | Regression against `bench/baseline.json`. | every gate row above | no metric worse than baseline by more than 10% |
 
-The harness records raw data for 500k and 1M in full preview-2 runs, but does not fail those sizes on uncalibrated speed thresholds.
+The harness records raw data for 500k and 1M in full preview-3 runs, but does not fail those sizes on uncalibrated speed thresholds.
 
 ## Commands
 
@@ -77,7 +77,7 @@ BASELINE_BOOTSTRAP=1 make gate
 cp bench/results/<timestamp>/baseline_candidate.json bench/baseline.json
 ```
 
-Full preview-2 HTTP proof through 1M:
+Full large-context HTTP proof through 1M:
 
 ```bash
 TLS_CERT_PATH= TLS_KEY_PATH= \
@@ -88,7 +88,7 @@ REQUIRE_PASS=0 \
 python3 -u scripts/bench_real.py
 ```
 
-Full preview-2 HTTPS proof through 1M:
+Full large-context HTTPS proof through 1M:
 
 ```bash
 BENCH_TLS=1 \

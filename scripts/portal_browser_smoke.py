@@ -132,6 +132,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(page.locator('#page-title')).toContainText('Models');
           const groupButton = page.getByRole('button', {{ name: /^Create model group$/ }}).last();
           await expect(groupButton).toBeVisible({{ timeout: 15000 }});
+          await expect(groupButton).toHaveClass(/primary/);
           await groupButton.click();
           const modal = page.locator('#modal-overlay .modal').last();
           await expect(modal).toBeVisible();
@@ -198,6 +199,50 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(row).toContainText('2 endpoints');
         }}
 
+
+        async function assertCustomHostnameNoAuth(page) {{
+          await page.click('#nav-models');
+          await expect(page.locator('#page-title')).toContainText('Models');
+          let previewSeen = false;
+          let testSeen = false;
+          await page.route('**/admin/routes/preview-models', async route => {{
+            const body = route.request().postDataJSON();
+            if (body.base_url === 'http://rtx3090:8088/v1') {{
+              previewSeen = true;
+              expect(body.auth_mode).toBe('none');
+              await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{ models: ['qwen3.8-flash-next'] }}) }});
+              return;
+            }}
+            await route.continue();
+          }});
+          await page.route('**/admin/test-connection', async route => {{
+            const body = route.request().postDataJSON();
+            if (body.base_url === 'http://rtx3090:8088/v1') {{
+              testSeen = true;
+              expect(body.auth_mode).toBe('none');
+              await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{ ok: true, latency_ms: 1, detail: 'mock no-auth hostname', model_ok: true }}) }});
+              return;
+            }}
+            await route.continue();
+          }});
+          const modal = await openCreateModelGroup(page);
+          await expect(modal).toContainText('optional');
+          const selects = modal.locator('select');
+          await selects.nth(1).selectOption('custom-llm');
+          const inputs = modal.locator('input');
+          await inputs.nth(0).fill('http://rtx3090:8088/v1');
+          await modal.getByRole('button', {{ name: /Load models/i }}).click();
+          await choosePickerModel(page, 'qwen3.8-flash-next');
+          await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
+          await expect(modal.locator('.connection-status')).toContainText('add this endpoint', {{ timeout: 15000 }});
+          expect(previewSeen).toBeTruthy();
+          expect(testSeen).toBeTruthy();
+          await page.unroute('**/admin/routes/preview-models');
+          await page.unroute('**/admin/test-connection');
+          await page.getByRole('button', {{ name: /^Cancel$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+        }}
+
         async function testedAdapterRoutes() {{
           const browser = await chromium.launch({{ executablePath: process.env.PLAYWRIGHT_CHROME_EXECUTABLE, headless: true, args: ['--no-sandbox'] }});
           const page = await browser.newPage({{ viewport: {{ width: 1440, height: 1000 }} }});
@@ -208,6 +253,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await createCustomRoute(page, 'rerank', 'mock-rerank', 'browser-rerank');
             await createCustomRoute(page, 'asr', 'mock-asr', 'browser-asr');
             await createModelGroup(page);
+            await assertCustomHostnameNoAuth(page);
             await page.reload({{ waitUntil: 'domcontentloaded' }});
             await expect(page.locator('#app-view')).toBeVisible();
             await expect(page.locator('#page-title')).toContainText(/Dashboard|Models/);

@@ -29,8 +29,8 @@ This is the benchmark guide to read first. It answers four questions:
 | `1k` | 1,000 tokens | 1, 50, 200 | Median overhead, p99 overhead, streaming TTFB, high-rate throughput, ledger lag | Hard gate at concurrency 50; B6 throughput gate at concurrency 200; B10 ledger gate at 2,000 RPS | Normal app traffic must not pay visible router cost. A 100-person team can send many small prompts through one endpoint without the router becoming the bottleneck. |
 | `50k` | 50,000 tokens | 1, 50, 200 | Median overhead, p99 overhead, streaming TTFB, memory samples | Hard gate at concurrency 50 | Common retrieval and agent prompts must remain pass-through. The router should route, enforce policy, and record usage without copying large bodies more than needed. |
 | `200k` | 200,000 tokens | 1, 50, 200 | Median overhead, p99 overhead, streaming TTFB, flatness versus `1k`, memory samples | Hard gate at concurrency 50 | Large research prompts must not make router overhead grow in proportion to prompt size. If 200k is much worse than 1k, the router is buffering or parsing too much. |
-| `500k` | 500,000 tokens | 1, 50, 200 | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Full preview-2 measurement exists; no hard speed threshold yet | Extreme coding-context pass-through must stay stable without memory growth. |
-| `1m` | 1,000,000 tokens. The name means 1M. | 1, 50, 200 | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Full preview-2 measurement exists; no hard speed threshold yet | This covers large vibe-coding and repository-analysis contexts while keeping router memory visible. |
+| `500k` | 500,000 tokens | 1, 50, 200 | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Full large-context measurement artifact exists; no hard speed threshold yet | Extreme coding-context pass-through must stay stable without memory growth. |
+| `1m` | 1,000,000 tokens. The name means 1M. | 1, 50, 200 | Overhead, streaming TTFB, correctness, RSS memory, ledger drops | Full large-context measurement artifact exists; no hard speed threshold yet | This covers large vibe-coding and repository-analysis contexts while keeping router memory visible. |
 
 ## How to read offered rate
 
@@ -81,9 +81,9 @@ After a run, read `bench/results/<timestamp>/summary.json` first.
 
 ## Current measured status
 
-The preview-2 full benchmark has been run with coding-agent payloads from `1k` through `1m`, at concurrency 1, 50, and 200, over both HTTP and HTTPS. The benchmark uses a deterministic local Rust mock backend so model inference time and cloud network noise do not hide router overhead.
+The preview-3 large-context benchmark has been run with coding-agent payloads from `1k` through `1m`, at concurrency 1, 50, and 200, over both HTTP and HTTPS. The benchmark uses a deterministic local Rust mock backend so model inference time and cloud network noise do not hide router overhead.
 
-HTTP artifact: `benchmarks/artifacts/preview-2-http-1m-coding-context-summary.json`.
+HTTP artifact: `benchmarks/artifacts/preview-3-http-1m-coding-context-summary.json`.
 
 | Payload | c=1 p50 / p99 overhead | c=50 p50 / p99 overhead | c=200 p50 / p99 overhead |
 |---|---:|---:|---:|
@@ -93,7 +93,7 @@ HTTP artifact: `benchmarks/artifacts/preview-2-http-1m-coding-context-summary.js
 | `500k` | `+1.336 / +1.378 ms` | `+1.091 / +0.935 ms` | `+1.325 / +1.174 ms` |
 | `1m` | `+1.894 / +3.088 ms` | `+2.047 / +3.415 ms` | `+2.167 / +1.664 ms` |
 
-HTTPS artifact: `benchmarks/artifacts/preview-2-https-1m-coding-context-summary.json`.
+HTTPS artifact: `benchmarks/artifacts/preview-3-https-1m-coding-context-summary.json`.
 
 | Payload | c=1 p50 / p99 overhead | c=50 p50 / p99 overhead | c=200 p50 / p99 overhead |
 |---|---:|---:|---:|
@@ -132,7 +132,7 @@ BASELINE_BOOTSTRAP=1 ./start.sh gate
 cp bench/results/<timestamp>/baseline_candidate.json bench/baseline.json
 ```
 
-Full preview-2 HTTP proof through 1M:
+Full large-context HTTP proof through 1M:
 
 ```bash
 TLS_CERT_PATH= TLS_KEY_PATH= \
@@ -143,7 +143,7 @@ REQUIRE_PASS=0 \
 python3 -u scripts/bench_real.py
 ```
 
-Full preview-2 HTTPS proof through 1M, using `ssl/fullchain.pem` and `ssl/privkey.pem` by default:
+Full large-context HTTPS proof through 1M, using `ssl/fullchain.pem` and `ssl/privkey.pem` by default:
 
 ```bash
 BENCH_TLS=1 \
@@ -163,12 +163,12 @@ Current supported API paths are:
 | `/v1/chat/completions` | Supported for OpenAI-compatible chat payloads. |
 | `/v1/completions` | Supported for OpenAI-compatible completion payloads. |
 | `/v1/embeddings` | Supported for OpenAI-compatible embedding payloads. |
-| `/v1/rerank` | Preview-2 supported for Qwen/DashScope, Jina, Voyage, Cohere, and OpenAI-compatible/custom rerank adapters. |
-| `/v1/audio/transcriptions` | Preview-2 supported for OpenAI-compatible multipart ASR/transcription providers. |
+| `/v1/rerank` | Preview-3 supported for Qwen/DashScope, Jina, Voyage, Cohere, and OpenAI-compatible/custom rerank adapters. |
+| `/v1/audio/transcriptions` | Preview-3 supported for OpenAI-compatible multipart ASR/transcription providers. |
 | `/v1/models` | Supported. Lists configured model aliases. |
 | `/v1/messages` | Supported for Anthropic-compatible messages payloads. |
 | `/v1/images/*` | Not implemented as a dedicated route. |
 | `/v1/audio/generations`, `/v1/audio/speech` | Not implemented as dedicated TTS/audio-generation routes. |
 | `/v1/video/*` | Not implemented as a dedicated route. |
 
-Chat-style image/audio inputs can pass through `/v1/chat/completions` when the backend accepts the same JSON format and the body stays under `MAX_BODY_BYTES`. Preview-2 adds dedicated rerank and ASR routes. Image generation, TTS/audio generation, video, and realtime media remain future adapter work.
+Chat-style image/audio inputs can pass through `/v1/chat/completions` when the backend accepts the same JSON format and the body stays under `MAX_BODY_BYTES`. Preview-3 adds dedicated rerank and ASR routes. Image generation, TTS/audio generation, video, and realtime media remain future adapter work.

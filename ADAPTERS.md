@@ -1,6 +1,6 @@
 # Preview-3 adapters: embeddings, rerank, ASR, and Model Groups
 
-This is the latest preview-3 adapter scope: embeddings stay on the OpenAI-compatible route, and rerank plus ASR/transcription are task-specific adapters that do not change the chat/completions hot path.
+This is the latest preview-3 adapter and routing scope: embeddings stay on the OpenAI-compatible route, rerank plus ASR/transcription are task-specific adapters, and Model Groups add OpenAI-compatible chat load balancing without changing the client API call.
 
 Implemented and tested in preview-3:
 
@@ -9,6 +9,7 @@ Implemented and tested in preview-3:
 | Embeddings | `/v1/embeddings` | `openai_embeddings` | OpenAI-compatible JSON | Mock/integration tested; live OpenAI, Qwen, Jina, and Voyage smoke passed |
 | Rerank | `/v1/rerank` | `openai_rerank`, `qwen_rerank`, `cohere_rerank`, `voyage_rerank`, `jina_rerank` | JSON with `model`, `query`, `documents`, optional `top_n` | Mock/integration tested; live Qwen, Jina, Voyage, and Cohere smoke passed |
 | ASR / speech-to-text | `/v1/audio/transcriptions` | `openai_audio_transcriptions` | OpenAI-compatible multipart form upload | Mock/integration tested; live OpenAI smoke passed with repo WAV fixtures |
+| Model Groups | `/v1/chat/completions` | `model_group_openai_chat` | Normal OpenAI-compatible chat JSON using the public group model name | Mock/integration tested; Portal browser smoke creates, tests, saves, and lists a group |
 
 The router still does not run models. It forwards to a configured provider or local service, applies client-key auth, route policy, budget/concurrency limits, and usage logging. It does not store vectors, rerank documents, audio files, transcripts, prompts, or provider response bodies.
 
@@ -123,6 +124,19 @@ Embedding and rerank routes are not selected by changing only the provider. In *
 4. **Chat / LLM** remains the normal `/v1/chat/completions` or Anthropic Messages flow.
 
 Provider endpoint templates in **Providers** are only Base URLs. A route becomes usable only after the task-specific **Test connection** passes and the route is saved enabled.
+
+## Portal setup: Model Groups
+
+A Model Group is not a new provider type. It is a public OpenAI-compatible chat route backed by multiple compatible endpoints. Use it for backend load balancing and failover while keeping client code stable.
+
+In **Models & Routes → Create Model Group**:
+
+1. Set the public group model name.
+2. Choose round robin or weighted round robin.
+3. Add endpoint cards. Each card has Base URL, provider model name, provider API key/reference, enabled state, and optional weight.
+4. Test endpoints before saving enabled.
+
+Preview-3 groups intentionally do not cover embeddings, rerank, ASR, or Anthropic Messages. Those request types have different protocol shapes and should remain normal model routes until a dedicated grouped adapter is designed and tested.
 
 ## Route creation status
 

@@ -100,7 +100,7 @@ Use the portal:
 2. Open **Models & Routes**.
 3. Click **Add model route**.
 4. Pick a provider preset or **Custom LLM**.
-5. Enter the Base URL and provider API key. You can paste the key in the wizard, or leave it blank to use the matching `.env` key when configured.
+5. Enter the Base URL and provider API key when required. You can paste the key in the wizard, leave it blank to use the matching `.env` key when configured, or leave it blank for local/no-auth **Custom LLM** endpoints.
 6. Click **Load models**, choose one model, then click **Test connection**.
 7. Click **Save enabled** only after the test passes.
 8. Create or reuse a client API key under **API Keys**.
@@ -112,6 +112,23 @@ openai anthropic gemini deepseek kimi qwen dashscope zai openrouter jina voyage 
 ```
 
 For providers that do not expose a compatible `/models` endpoint, type the provider model name manually and still use **Test connection** before saving enabled.
+
+## Add a Model Group
+
+A Model Group exposes one public OpenAI-compatible chat model name backed by two or more compatible endpoints. Use it when you want load balancing or failover behind one stable model name.
+
+Use the portal:
+
+1. Enter the admin key.
+2. Open **Models & Routes**.
+3. Click **Create Model Group**.
+4. Set the public model name your apps will call.
+5. Choose **Round robin** for equal traffic or **Weighted round robin** for uneven capacity.
+6. Add endpoint cards with Base URL, provider model name, provider API key/reference when required, and optional weight. Leave the key blank for local/no-auth Custom LLM endpoints.
+7. Test each endpoint.
+8. Save enabled only when the endpoint tests pass.
+
+Preview-3 Model Groups are intentionally limited to OpenAI-compatible chat. Do not mix chat, embeddings, rerank, ASR, or Anthropic Messages inside one group. For embeddings, rerank, ASR, and Anthropic, create normal model routes.
 
 ## Test from the command line
 

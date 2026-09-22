@@ -4,7 +4,9 @@ BrighTO-Router preview-3, intended to become `main` after final feedback, keeps 
 
 A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
 
-A **model route** is what clients use. It maps one public model name to one upstream provider model, with its task type, provider API key/reference, price, limits, and enabled/disabled state.
+A **model route** is what clients use for one endpoint. It maps one public model name to one upstream provider model, with its task type, provider API key/reference, price, limits, and enabled/disabled state.
+
+A **Model Group** is also what clients use, but it points one public OpenAI-compatible chat model name at several compatible backend endpoints. Clients still send one `model` value. The router chooses the endpoint by round robin or weighted round robin and skips unhealthy endpoints.
 
 ## Provider catalog
 
@@ -52,12 +54,41 @@ In the Portal:
 3. Choose **Task type**: Chat / LLM, Embedding, Rerank, or ASR / transcription.
 4. Pick a provider preset or **Custom LLM**.
 5. Enter the Base URL.
-6. Paste the provider API key, or leave it blank to use the provider `.env` key when it is configured.
+6. Paste the provider API key when required, leave it blank to use the provider `.env` key when configured, or leave it blank for local/no-auth **Custom LLM** endpoints.
 7. Click **Load models** when available, or use the task-specific suggestion/manual model name.
 8. Click **Test connection**.
 9. Save enabled only after the test passes.
 
 The Portal automatically creates or reuses the provider endpoint for the Base URL. You do not need to create a provider first.
+
+## Create a Model Group
+
+Use **Models & Routes → Create Model Group** when several OpenAI-compatible chat endpoints should serve the same public model name. Good examples are:
+
+- two local OpenAI-compatible servers running the same or compatible model;
+- one local model plus one cloud fallback;
+- several cloud endpoints where one has more capacity than the others.
+
+Rules in preview-3:
+
+- Group endpoints must be OpenAI-compatible chat endpoints.
+- Do not mix Anthropic Messages, embeddings, rerank, or ASR inside a group.
+- Every endpoint has its own Base URL, provider model name, provider API key/reference, enabled state, and weight.
+- Round robin ignores weight. Weighted round robin uses endpoint weights.
+- Endpoint counters are stored through PostgreSQL so multiple router pods keep consistent rotation.
+- Repeated endpoint failure opens a circuit temporarily; later traffic can probe recovery and bring the endpoint back into service.
+
+The client request does not change:
+
+```json
+{
+  "model": "coding-fast",
+  "messages": [{"role": "user", "content": "Reply OK"}],
+  "stream": true
+}
+```
+
+`coding-fast` can be a single model route today and a Model Group tomorrow without client code changes.
 
 ## Local OpenAI-compatible endpoint
 
@@ -67,7 +98,7 @@ For llama.cpp, vLLM, LiteLLM, or another local OpenAI-compatible server, choose 
 http://127.0.0.1:8088/v1
 ```
 
-If the local endpoint does not require auth, leave API key blank. BrighTO saves that route as no-auth local routing.
+If the local endpoint does not require auth, leave API key blank. BrighTO saves that route as no-auth routing. This also works for LAN hostnames such as `http://rtx3090:8088/v1` when you choose **Custom LLM**.
 
 ## URL handling
 

@@ -358,6 +358,7 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .section-title{margin:18px 0 8px;color:var(--accent-text);font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .provider-connect-grid{grid-template-columns:minmax(180px,.85fr) minmax(220px,1.28fr) minmax(220px,1.28fr);align-items:start;margin-bottom:13px}
+.provider-connect-grid .provider-key-field{grid-column:1 / -1;max-width:560px}
 .form-grid .field{margin-bottom:0}
 .route-model-grid{grid-template-columns:minmax(0,1.25fr) minmax(0,.95fr);align-items:start;margin-bottom:13px}
 .model-map{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch;background:#0b1220;border:1px solid var(--border);border-radius:14px;padding:12px;margin:4px 0 16px}
@@ -1389,7 +1390,7 @@ function renderModels(c){
   var groupCard=el("div","model-action-card group-card");
   groupCard.appendChild(el("strong",null,"Create Model Group"));
   groupCard.appendChild(el("span",null,"Load-balance one public OpenAI-compatible chat model across two or more tested endpoints. Use round-robin or weighted round-robin."));
-  var groupBtn=el("button","btn","Create model group"); groupBtn.onclick=function(){openRouteModal(null,{mode:"group"});}; groupCard.appendChild(groupBtn);
+  var groupBtn=el("button","btn primary","Create model group"); groupBtn.onclick=function(){openRouteModal(null,{mode:"group"});}; groupCard.appendChild(groupBtn);
   actionCards.appendChild(singleCard); actionCards.appendChild(groupCard); p.appendChild(actionCards);
   var fv=(window.modelFilter||"all");
   var shown=routes.filter(function(r){ return fv==="all" || (fv==="enabled"?r.effective_enabled:!r.effective_enabled); });
@@ -1465,7 +1466,7 @@ function openRouteModal(route,opts){
   var modalTitle=route.model_name?(routeMode==="group"?"Edit model group":"Edit model route"):(routeMode==="group"?"Create model group":"Add model route");
   m.appendChild(modalHeader(modalTitle));
   var steps=el("div","wizard-steps");
-  var stepCopy=routeMode==="group"?[["1","Connect endpoint","Provider, URL, API key"],["2","Add to group","Test endpoint, then add it"],["3","Save group","At least two tested endpoints"]]:[["1","Connect","Provider, URL, and API key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]];
+  var stepCopy=routeMode==="group"?[["1","Connect endpoint","Provider, URL, optional key"],["2","Add to group","Test endpoint, then add it"],["3","Save group","At least two tested endpoints"]]:[["1","Connect","Provider, URL, and optional key"],["2","Choose model","Load or type one provider model"],["3","Test & save","Only enabled after a real test"]];
   stepCopy.forEach(function(x){ var st=el("div","wizard-step"); st.appendChild(el("b",null,x[0]+". "+x[1])); st.appendChild(document.createTextNode(x[2])); steps.appendChild(st); });
   m.appendChild(steps);
   var modeBanner=el("div","route-kind-banner "+(routeMode==="group"?"group":"single"));
@@ -1542,7 +1543,7 @@ function openRouteModal(route,opts){
   var fu=el("div","field"); fu.appendChild(el("label",null,"Base URL"));
   var url=el("input"); url.placeholder="https://api.openai.com/v1"; fu.appendChild(url); providerGrid.appendChild(fu);
 
-  var fk=el("div","field"); fk.appendChild(el("label",null,"API key"));
+  var fk=el("div","field provider-key-field"); fk.appendChild(el("label",null,"Provider API key"));
   var keyRow=el("div","input-action-row");
   var pk=el("input"); pk.type="password"; pk.placeholder="sk-…"; pk.autocomplete="off";
   var showKey=el("button","btn sm ghost","Show"); showKey.type="button"; showKey.setAttribute("aria-label","Show provider API key");
@@ -1593,9 +1594,10 @@ function openRouteModal(route,opts){
       applyCat.oldProviderModel="";
       applyCat.oldPublicModel="";
     }
-    if(e.key_set){ keyHint.textContent="Using key from .env ("+e.key_env+") — leave blank to use it, or paste to override."; }
+    if(providerKey==="custom-llm" || providerKey==="custom") keyHint.textContent="Custom LLM may be no-auth. Leave blank for local/no-auth endpoints, or paste a provider key if your endpoint requires one.";
+    else if(e.key_set){ keyHint.textContent="Using key from .env ("+e.key_env+") — leave blank to use it, or paste to override."; }
     else if(e.key_env){ keyHint.textContent="No key in .env ("+e.key_env+") — paste the API key (stored per model, write-only)."; }
-    else { keyHint.textContent="Paste the API key (stored per model, write-only)."; }
+    else { keyHint.textContent="Paste a provider key when the endpoint requires one. Leave blank for local or no-auth endpoints."; }
     if(task==="rerank" && qwenRerank) taskHint.textContent="Qwen rerank calls BrighTO /v1/rerank, then adapts to DashScope rerank endpoints. Use https://dashscope-intl.aliyuncs.com or your workspace root; do not use /compatible-mode/v1.";
     else if(task==="rerank") taskHint.textContent="Rerank calls /v1/rerank with a query and candidate documents. Test uses three tiny documents.";
     else if(task==="embedding") taskHint.textContent="Embedding calls /v1/embeddings with one short text. No vectors are stored.";
@@ -1767,7 +1769,8 @@ function openRouteModal(route,opts){
     var e=catEntry(ps.value);
     var task=ts.value;
     var local = isLocalUrl(url.value.trim());
-    var auth=(local && !pk.value.trim())?"none":"bearer";
+    var noAuthCustom = ((e.key||"").toLowerCase()==="custom-llm" || (e.key||"").toLowerCase()==="custom") && !pk.value.trim();
+    var auth=((local || noAuthCustom) && !pk.value.trim())?"none":"bearer";
     if(task==="chat"){
       var anthropic=e.dialect==="anthropic";
       if(anthropic) return { dialect:"anthropic", auth:"anthropic", protocol:"anthropic_messages" };
@@ -1786,8 +1789,9 @@ function openRouteModal(route,opts){
   function keyPayload(){
     var e=catEntry(ps.value);
     if(pk.value.trim()) return {provider_key:pk.value.trim()};
-    // Only auto-apply the .env key to NON-local (cloud) URLs.
-    if(e.key_env && e.key_set && !isLocalUrl(url.value.trim())) return {provider_key_ref:"env:"+e.key_env};
+    // Only auto-apply the .env key to non-local, non-custom cloud URLs.
+    var k=(e.key||"").toLowerCase();
+    if(e.key_env && e.key_set && !isLocalUrl(url.value.trim()) && k!=="custom-llm" && k!=="custom") return {provider_key_ref:"env:"+e.key_env};
     return {};
   }
 
@@ -1801,7 +1805,7 @@ function openRouteModal(route,opts){
     var da=dialAuth(); var e=catEntry(ps.value); var sug=suggestedModels(e,ts.value);
     if(sug.length){ pickModelModal(sug, applyPickedModel); return; }
     if(!url.value.trim()){ toast("Enter a Base URL first","err"); return; }
-    if(da.auth!=="none" && !pk.value.trim() && !catEntry(ps.value).key_set){ toast("Enter an API key first","err"); return; }
+    if(da.auth!=="none" && !pk.value.trim() && !catEntry(ps.value).key_set){ toast("Enter an API key, or choose Custom LLM for a no-auth local endpoint","err"); return; }
     loadBtn.disabled=true; loadBtn.textContent="Loading…";
     try{
       var payload=Object.assign({base_url:url.value.trim(), protocol:da.dialect, auth_mode:da.auth}, keyPayload());
