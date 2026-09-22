@@ -1,4 +1,4 @@
--- Preview-3 Model Group load balancing.
+-- BrighTO-Router 1.0 Model Group load balancing.
 -- model_routes remains the public Model Group table for migration compatibility.
 
 ALTER TABLE model_routes

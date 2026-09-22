@@ -197,8 +197,8 @@ run_sql_file() {
 }
 
 repair_known_migration_checksums() {
-  # Migration 0006 had a comment-only checksum change during the pre-1.0 branch.
-  # The SQL schema is identical. Repair the known old checksum before sqlx validates.
+  # Migrations 0006/0007 had comment-only checksum changes during the pre-1.0 branch.
+  # The SQL schema is identical. Repair known old checksums before sqlx validates.
   local sql="DO \$\$
 BEGIN
   IF to_regclass('_sqlx_migrations') IS NOT NULL THEN
@@ -207,6 +207,11 @@ BEGIN
      WHERE version = 6
        AND description = 'route protocol'
        AND checksum = decode('812ae86b30406b375d0f592d33c128c69bf176808a3eda968040335cad7db0cce61ac4679bb1223de67147102805ad9e', 'hex');
+    UPDATE _sqlx_migrations
+       SET checksum = decode('37e9b85fadbc15632646a291a7912122cb8db1fa2fe37068f1cf1a72ef3f9f0e320f4f5e018fef3b4b82bbe43c914b10', 'hex')
+     WHERE version = 7
+       AND description = 'model group load balancing'
+       AND checksum = decode('0f4e3a144fe42d306c8db44778fb1c1e216bf1ce70b0210647005ae0595ed9998cd85dc47569ffc54191437e6d138f0d', 'hex');
   END IF;
 END
 \$\$;"
