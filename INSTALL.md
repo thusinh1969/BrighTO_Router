@@ -31,12 +31,15 @@ git clone https://github.com/thusinh1969/BrighTO_Router.git
 cd BrighTO_Router
 ./start.sh install
 ./start.sh status
+
+A failed Model Group backend is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; change it in `.env`, then run `./start.sh restart`.
 ```
 
 This preview-3 line uses `thusinh1969/brighto_airouter:preview-3` by default and is intended to become `main` after final field feedback. Existing local `.env` files from older installs should include:
 
 ```bash
 BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-3
+BACKEND_CIRCUIT_OPEN_SECONDS=30
 ```
 
 What happens:

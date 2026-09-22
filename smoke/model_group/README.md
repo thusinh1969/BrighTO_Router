@@ -57,3 +57,7 @@ Useful overrides:
 ```
 
 The live smoke calls the public model twice and checks `x-router-backend`: first DeepSeek V4 Pro, then local llama.cpp, using PostgreSQL-backed round-robin state with `ROUTE_COUNTER_BLOCK_SIZE=1` so the sequence is easy to verify.
+
+## Failed endpoint recovery
+
+A Model Group endpoint that fails before a response is committed opens a circuit after repeated failures. The router checks it again after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds, default `30`. Configure this in `.env` for Docker or the Kubernetes secret for K8s.

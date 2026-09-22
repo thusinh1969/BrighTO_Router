@@ -98,6 +98,9 @@ ensure_env_defaults() {
   if ! grep -q "^BRIGHTO_MODEL=" "$ENV_FILE"; then
     set_env_var BRIGHTO_MODEL ""
   fi
+  if ! grep -q "^BACKEND_CIRCUIT_OPEN_SECONDS=" "$ENV_FILE"; then
+    set_env_var BACKEND_CIRCUIT_OPEN_SECONDS "30"
+  fi
   if ! grep -q "^DATA_DIR=" "$ENV_FILE"; then
     set_env_var DATA_DIR "/var/lib/brighto-router"
   fi

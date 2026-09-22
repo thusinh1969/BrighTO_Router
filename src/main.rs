@@ -90,9 +90,15 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(1024)
         .max(1);
-    let backends = Arc::new(RamBackendPool::new_with_counter_pool(
+    let backend_circuit_open_secs = std::env::var("BACKEND_CIRCUIT_OPEN_SECONDS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(30)
+        .max(1);
+    let backends = Arc::new(RamBackendPool::new_with_counter_pool_and_open_duration(
         cfg_pool.clone(),
         counter_block_size,
+        Duration::from_secs(backend_circuit_open_secs),
     ));
     let client = build_client();
     let metrics = Metrics::install();

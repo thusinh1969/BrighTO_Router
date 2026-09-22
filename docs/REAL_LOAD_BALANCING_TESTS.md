@@ -68,3 +68,7 @@ The important proof is the usage ledger distribution, not the response text:
 - `live-lb-weighted` must record 4 successful requests split 3/1 across DeepSeek and local Qwen.
 
 If a provider is down or rate-limited, the script fails with the exact failing API step and sanitized status text.
+
+## Fail-safe and recovery timing
+
+Model Group fail-safe is circuit-breaker based. After repeated pre-response failures, the backend is removed from selection and a half-open probe is allowed after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`. Set it in `.env` and restart the router to change the recovery probe interval.

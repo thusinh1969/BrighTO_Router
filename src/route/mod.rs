@@ -144,22 +144,38 @@ impl RamBackendPool {
     }
 
     pub fn new_without_counter_pool() -> Self {
+        Self::new_without_counter_pool_with_open_duration(Duration::from_secs(30))
+    }
+
+    pub fn new_without_counter_pool_with_open_duration(open_duration: Duration) -> Self {
         Self {
             states: DashMap::new(),
             rr_counters: DashMap::new(),
             counter_pool: None,
             counter_block_size: 1024,
-            open_duration: Duration::from_secs(30),
+            open_duration,
         }
     }
 
     pub fn new_with_counter_pool(counter_pool: PgPool, counter_block_size: u64) -> Self {
+        Self::new_with_counter_pool_and_open_duration(
+            counter_pool,
+            counter_block_size,
+            Duration::from_secs(30),
+        )
+    }
+
+    pub fn new_with_counter_pool_and_open_duration(
+        counter_pool: PgPool,
+        counter_block_size: u64,
+        open_duration: Duration,
+    ) -> Self {
         Self {
             states: DashMap::new(),
             rr_counters: DashMap::new(),
             counter_pool: Some(counter_pool),
             counter_block_size: counter_block_size.max(1),
-            open_duration: Duration::from_secs(30),
+            open_duration,
         }
     }
 

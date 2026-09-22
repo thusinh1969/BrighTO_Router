@@ -36,6 +36,7 @@ Preview-3 focuses on practical production routing without making the router hard
 |---|---|---|
 | Model Groups | One API model name can balance across two or more existing tested routes of the same type. | Apps keep using the same model name while the router spreads load and fails over when an endpoint is unhealthy. |
 | Round-robin and weighted routing | Choose simple rotation or assign more traffic to stronger endpoints. | A local GPU endpoint, DeepSeek, OpenAI-compatible server, or other compatible backend can share traffic predictably. |
+| Backend fail-safe | A failing endpoint opens a circuit after repeated pre-response failures and is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds; default `30`. | Traffic moves to healthy endpoints, then the recovered endpoint can rejoin automatically. |
 | Task-aware adapters | Embeddings, rerank, and ASR/transcription have explicit task types and Test Connection probes. | Admins stop guessing whether a model should be tested through chat, embeddings, rerank, or multipart ASR. |
 | Cleaner Portal setup | Add model route and Create Model Group are primary actions on the Models page. | A new admin can create one working route or one load-balanced group without touching SQL or YAML. |
 | One-line install defaults | The installer pulls the preview-3 Docker image, starts PostgreSQL, runs migrations, seeds provider templates, and opens the Portal. | A team can test locally first, then add HTTPS or Kubernetes only when needed. |
@@ -184,6 +185,8 @@ The provider API key belongs to the model route. Client applications do not rece
 API model names are unique across normal model routes and Model Groups. This is the value clients send in JSON as `model`; a future display label can be decorative, but this API name must not collide.
 
 Use a Model Group when you want one API model name to spread traffic across several existing tested routes of the same type. The client does not change its API call. It still sends `model: "<api-model-group-name>"` to the same endpoint for that type.
+
+If an endpoint returns a retryable failure before a response is committed, the router tries another healthy endpoint in the group. After three consecutive failures, that backend opens a circuit and is checked again after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; set it in `.env` when you need faster or slower recovery probes.
 
 Open **Models & Routes → Create Model Group** in the Portal.
 
@@ -464,6 +467,7 @@ Runtime state is split deliberately:
 | Provider endpoints, routes, teams, keys | PostgreSQL | Durable control plane. |
 | Usage ledger | PostgreSQL | Durable cost and usage record. |
 | Ledger fallback | Local JSONL file from `LEDGER_FALLBACK_FILE` | Keeps serving during a temporary PostgreSQL outage. |
+| Backend recovery probe | `BACKEND_CIRCUIT_OPEN_SECONDS`, default `30` | How long a failed backend stays out of rotation before a half-open test request can let it rejoin. |
 
 **JSONL** means one JSON record per line.
 
