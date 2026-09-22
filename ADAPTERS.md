@@ -1,8 +1,8 @@
-# Preview-3 adapters: embeddings, rerank, ASR, and Model Groups
+# BrighTO-Router 1.0 adapters: embeddings, rerank, ASR, and Model Groups
 
-This is the latest preview-3 adapter and routing scope: embeddings stay on the OpenAI-compatible route, rerank plus ASR/transcription are task-specific adapters, and Model Groups add same-type route load balancing without changing the client API call.
+This is the BrighTO-Router 1.0 adapter and routing scope: embeddings stay on the OpenAI-compatible route, rerank plus ASR/transcription are task-specific adapters, and Model Groups add same-type route load balancing without changing the client API call.
 
-Implemented and tested in preview-3:
+Implemented and tested in 1.0:
 
 | Task | Public BrighTO endpoint | Route protocol | Request shape | Status |
 |---|---|---|---|---|
@@ -137,7 +137,7 @@ In **Models & Routes → Create Model Group**:
 4. Add existing tested routes from the compatible-route dropdown.
 5. Save enabled after at least two compatible routes are selected.
 
-Provider URL, provider model, auth mode, and provider key/reference stay on the source routes. The group wizard does not ask for provider keys. Preview-3 groups do not mix protocol shapes: chat routes group with chat, embeddings with embeddings, rerank with rerank, and ASR with ASR.
+Provider URL, provider model, auth mode, and provider key/reference stay on the source routes. The group wizard does not ask for provider keys. 1.0 Model Groups do not mix protocol shapes: chat routes group with chat, embeddings with embeddings, rerank with rerank, and ASR with ASR.
 
 ## Route creation status
 
@@ -160,7 +160,7 @@ Save enabled only after Test Connection passes. Save draft remains available for
 - ASR currently expects OpenAI-compatible `/v1/audio/transcriptions` multipart behavior.
 - Additional Qwen/Alibaba ASR or media adapters should wait for exact provider API proof before coding.
 
-## Validation already in preview-3
+## Validation in 1.0
 
 - `cargo fmt --check`
 - `cargo check --locked`

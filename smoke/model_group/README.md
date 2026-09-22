@@ -1,6 +1,6 @@
 # Model Group load-balancing smoke
 
-Preview-3 Model Groups let one public OpenAI-compatible chat model name fan out to multiple compatible chat endpoints. Client applications keep calling `/v1/chat/completions` with the same `model` value; BrighTO-Router chooses the backend.
+BrighTO-Router 1.0 Model Groups let one public OpenAI-compatible chat model name fan out to multiple compatible chat endpoints. Client applications keep calling `/v1/chat/completions` with the same `model` value; BrighTO-Router chooses the backend.
 
 ## Mock smoke
 
@@ -27,7 +27,7 @@ This smoke measures router/load-balancer path latency against mock endpoints. It
 
 ## Live OpenAI chat smoke: DeepSeek V4 Pro + local llama.cpp
 
-This is the real-world example for preview-3. It starts temporary PostgreSQL and a temporary BrighTO-Router, then creates one public model group `coding-fast-live` with two OpenAI-compatible chat endpoints:
+This is the real-world example for 1.0. It starts temporary PostgreSQL and a temporary BrighTO-Router, then creates one public model group `coding-fast-live` with two OpenAI-compatible chat endpoints:
 
 | Backend | Provider model | Auth | Default base URL |
 | --- | --- | --- | --- |

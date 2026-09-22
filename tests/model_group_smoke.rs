@@ -1,4 +1,4 @@
-//! Preview-3 Model Group smoke: three OpenAI-compatible chat endpoints behind one public model.
+//! BrighTO-Router 1.0 Model Group smoke: three OpenAI-compatible chat endpoints behind one public model.
 //! This is a safe mock smoke: it measures router/load-balancer path, not paid model inference.
 
 use std::sync::Arc;

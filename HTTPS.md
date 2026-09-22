@@ -4,7 +4,7 @@ This guide shows the simple direct-HTTPS setup for a self-hosted BrighTO-Router 
 
 Default BrighTO-Router can run behind any existing HTTPS load balancer or reverse proxy. If you want the router itself to serve HTTPS, use custom PEM files and mount them into the Docker container.
 
-The preview-3 Docker image supports direct TLS through `TLS_CERT_PATH` and `TLS_KEY_PATH`. If you already terminate HTTPS in a load balancer or reverse proxy, leave these settings empty and keep the router on HTTP behind that proxy.
+The 1.0 Docker image supports direct TLS through `TLS_CERT_PATH` and `TLS_KEY_PATH`. If you already terminate HTTPS in a load balancer or reverse proxy, leave these settings empty and keep the router on HTTP behind that proxy.
 
 ## What you will create
 

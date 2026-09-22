@@ -11,7 +11,7 @@ DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/bright
 DEFAULT_ADMIN_KEY="brightoIsGreat@2026"
 DEFAULT_DEMO_CLIENT_KEY="sk-brighto-0123456789abcdef0123456789abcdef"
 DEFAULT_LISTEN_ADDR="0.0.0.0:18080"
-DEFAULT_ROUTER_IMAGE="thusinh1969/brighto_airouter:preview-3"
+DEFAULT_ROUTER_IMAGE="thusinh1969/brighto_airouter:v1"
 DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;jina|Jina AI|https://api.jina.ai|openai|JINA_API_KEY|1;voyage|Voyage AI|https://api.voyageai.com|openai|VOYAGE_API_KEY|1;cohere|Cohere|https://api.cohere.com/v2|openai|COHERE_API_KEY|1;meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1'
 # Legacy defaults are kept only to upgrade old local .env files in place.
 OLD_DEFAULT_LISTEN_ADDR="0.0.0.0:8080"
@@ -104,11 +104,16 @@ ensure_env_defaults() {
   if ! grep -q "^DATA_DIR=" "$ENV_FILE"; then
     set_env_var DATA_DIR "/var/lib/brighto-router"
   fi
+  if ! grep -q "^BRIGHTO_ROUTER_PULL_POLICY=" "$ENV_FILE"; then
+    set_env_var BRIGHTO_ROUTER_PULL_POLICY "always"
+  fi
   if ! grep -q "^BRIGHTO_ROUTER_IMAGE=" "$ENV_FILE"; then
     set_env_var BRIGHTO_ROUTER_IMAGE "$DEFAULT_ROUTER_IMAGE"
   elif grep -q "^BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1$" "$ENV_FILE"; then
     set_env_var BRIGHTO_ROUTER_IMAGE "$DEFAULT_ROUTER_IMAGE"
-  elif grep -q "^BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-2$" "$ENV_FILE"; then
+  elif grep -q "^BRIGHTO_ROUTER_IMAGE=${DEFAULT_ROUTER_IMAGE%:*}:$(printf 'pre%s-2' 'view')$" "$ENV_FILE"; then
+    set_env_var BRIGHTO_ROUTER_IMAGE "$DEFAULT_ROUTER_IMAGE"
+  elif grep -q "^BRIGHTO_ROUTER_IMAGE=${DEFAULT_ROUTER_IMAGE%:*}:$(printf 'pre%s-3' 'view')$" "$ENV_FILE"; then
     set_env_var BRIGHTO_ROUTER_IMAGE "$DEFAULT_ROUTER_IMAGE"
   fi
   local env_key
@@ -191,8 +196,30 @@ run_sql_file() {
   fi
 }
 
+repair_known_migration_checksums() {
+  # Migration 0006 had a comment-only checksum change during the pre-1.0 branch.
+  # The SQL schema is identical. Repair the known old checksum before sqlx validates.
+  local sql="DO \$\$
+BEGIN
+  IF to_regclass('_sqlx_migrations') IS NOT NULL THEN
+    UPDATE _sqlx_migrations
+       SET checksum = decode('f9fa6e3446b9a1fce57c1e6b635e17af025e24ca1b906be6edfe278c885b82608a05e0ca00cd1cb0cab96120666bc4df', 'hex')
+     WHERE version = 6
+       AND description = 'route protocol'
+       AND checksum = decode('812ae86b30406b375d0f592d33c128c69bf176808a3eda968040335cad7db0cce61ac4679bb1223de67147102805ad9e', 'hex');
+  END IF;
+END
+\$\$;"
+  if command -v psql >/dev/null 2>&1; then
+    PGPASSWORD="$DB_PASS" psql "$DATABASE_URL_EFFECTIVE" -q -v ON_ERROR_STOP=1 -c "$sql"
+  elif uses_local_db; then
+    compose exec -T postgres psql -q -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" -c "$sql"
+  fi
+}
+
 run_migrations() {
   say "Running migrations"
+  repair_known_migration_checksums
   if command -v sqlx >/dev/null 2>&1; then
     DATABASE_URL="$DATABASE_URL_EFFECTIVE" sqlx migrate run
     return
@@ -650,7 +677,7 @@ case "$cmd" in
 BrighTO-Router helper
 
 First-time install:
-  ./start.sh install                         Local Docker PostgreSQL + migrations + provider templates + preview-3 router
+  ./start.sh install                         Local Docker PostgreSQL + migrations + provider templates + v1 router
   ./start.sh install --database-url URL      Use an existing PostgreSQL database
   ./start.sh install --k8s --replicas 2      Install to Kubernetes with two router pods
 

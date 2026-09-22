@@ -31,14 +31,14 @@ git clone https://github.com/thusinh1969/BrighTO_Router.git
 cd BrighTO_Router
 ./start.sh install
 ./start.sh status
-
-A failed Model Group backend is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; change it in `.env`, then run `./start.sh restart`.
 ```
 
-This preview-3 line uses `thusinh1969/brighto_airouter:preview-3` by default and is intended to become `main` after final field feedback. Existing local `.env` files from older installs should include:
+A failed Model Group backend is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; change it in `.env`, then run `./start.sh restart`.
+
+BrighTO-Router 1.0 uses `thusinh1969/brighto_airouter:v1` by default. Existing local `.env` files from older installs should include:
 
 ```bash
-BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:preview-3
+BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1
 BACKEND_CIRCUIT_OPEN_SECONDS=30
 ```
 
@@ -48,7 +48,7 @@ What happens:
 2. Docker starts PostgreSQL 16.
 3. SQL migrations run.
 4. The default team and local demo client key are seeded.
-5. Docker pulls and starts `thusinh1969/brighto_airouter:preview-3`.
+5. Docker pulls and starts `thusinh1969/brighto_airouter:v1`.
 
 Open on the same server:
 
@@ -93,6 +93,8 @@ For shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW
 
 Data safety: `docker build`, `docker compose up -d --force-recreate router`, `./start.sh start`, `./start.sh stop`, and `./start.sh restart` keep the local PostgreSQL volume. Do not run `docker compose down -v`, `docker volume rm brighto-airouter_pg-data`, or manual reset/truncate SQL unless you want to erase local routes, teams, keys, and usage.
 
+Developer note: the default Compose policy pulls the official Docker image. If you are testing a locally built image with the same tag, set `BRIGHTO_ROUTER_PULL_POLICY=never` in `.env`, then run `docker compose up -d --force-recreate router`.
+
 ## Add a model route
 
 The first useful setup is a model route. A route exposes one API model name to your applications and points it to one upstream provider model.
@@ -133,7 +135,7 @@ Use the portal:
 7. Add two or more existing tested routes from the compatible-route dropdown.
 8. Save enabled. Provider URLs and provider API keys are not entered in the group wizard; they stay on the source routes.
 
-Preview-3 groups require all selected routes to match the same model type. Do not mix chat, embeddings, rerank, ASR, or Anthropic Messages inside one group.
+1.0 Model Groups require all selected routes to match the same model type. Do not mix chat, embeddings, rerank, ASR, or Anthropic Messages inside one group.
 
 ## Test from the command line
 
@@ -168,7 +170,7 @@ python3 test_router.py --model <audio-model-route> --text "Summarize this audio.
 
 `--provider` uses standard public route names. Run `python3 test_router.py --list-presets` to see the mapping, or pass `--model` when your route name is custom. In rerank mode, `--query` and `--text` both work; `--query` is clearer and takes priority.
 
-Preview-3 live provider smoke tests:
+1.0 live provider smoke tests:
 
 ```bash
 python3 scripts/adapter_smoke.py --provider qwen --task embedding

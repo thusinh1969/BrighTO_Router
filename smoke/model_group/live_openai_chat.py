@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Live OpenAI-compatible Model Group smoke: DeepSeek V4 Pro + local llama.cpp.
 
-This is the preview-3 example the repo should show to the world:
+This is the 1.0 example the repo should show to the world:
 one public OpenAI chat model name routes to two compatible backends:
   1. DeepSeek V4 Pro, authenticated with DEEPSEEK_API_KEY
   2. local llama.cpp qwen3.8-flash-next, keyless auth_mode=none

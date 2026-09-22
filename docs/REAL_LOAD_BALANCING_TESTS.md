@@ -51,8 +51,8 @@ python3 scripts/live_lb_real_test.py \
 A passing run prints:
 
 ```text
-PASS local preview includes qwen3.8-flash-next
-PASS DeepSeek preview includes deepseek-v4-pro
+PASS local model list includes qwen3.8-flash-next
+PASS DeepSeek model list includes deepseek-v4-pro
 PASS source routes saved; DeepSeek credential stored as key reference
 PASS Model Groups saved: round_robin and weighted_round_robin 3:1
 PASS call source DeepSeek: live-lb-deepseek-v4-pro
@@ -72,3 +72,7 @@ If a provider is down or rate-limited, the script fails with the exact failing A
 ## Fail-safe and recovery timing
 
 Model Group fail-safe is circuit-breaker based. After repeated pre-response failures, the backend is removed from selection and a half-open probe is allowed after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`. Set it in `.env` and restart the router to change the recovery probe interval.
+
+## Mock performance benchmark
+
+For performance, use mock endpoints instead of paid providers. The 1.0 Model Group smoke benchmark uses two local mock upstreams, tests round-robin and weighted round-robin from `1k` through `500k`, and stores the reviewed summary at `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json`. The smoke completed with `0` non-200 responses across all measured rows.

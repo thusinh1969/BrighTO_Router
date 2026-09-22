@@ -55,7 +55,7 @@ For clean numbers, keep the router, load generator, mock backend, and PostgreSQL
 
 The default release gate measures 1k, 50k, and 200k token-class prompts. These are stable enough to run repeatedly and catch the main router overhead risks.
 
-Stress proof also measures 500k and 1M token-class prompts. Preview-3 has full HTTP and HTTPS artifacts for these sizes at concurrency 1, 50, and 200. These runs prove that the router still behaves like pass-through infrastructure when coding-agent contexts become very large. The first goal for 500k and 1M is not a made-up latency target. The first goal is evidence:
+Stress proof also measures 500k and 1M token-class prompts. BrighTO-Router 1.0 has full HTTP and HTTPS artifacts for these sizes at concurrency 1, 50, and 200. These runs prove that the router still behaves like pass-through infrastructure when coding-agent contexts become very large. The first goal for 500k and 1M is not a made-up latency target. The first goal is evidence:
 
 - No request body corruption.
 - No response corruption.
@@ -141,7 +141,7 @@ The router must not wait on PostgreSQL in the request path. Existing in-memory c
 
 ## Stress proof for 500k and 1M
 
-Preview-3 has a full large-context proof using coding-agent payloads. The payload generator creates repository-style context: file paths, source snippets, diffs, logs, failing tests, and change requests. That shape matches vibe-coding traffic better than repeated prose, while still keeping the router benchmark deterministic.
+BrighTO-Router 1.0 has a full large-context proof using coding-agent payloads. The payload generator creates repository-style context: file paths, source snippets, diffs, logs, failing tests, and change requests. That shape matches vibe-coding traffic better than repeated prose, while still keeping the router benchmark deterministic.
 
 HTTP command:
 
@@ -167,8 +167,8 @@ python3 -u scripts/bench_real.py
 
 Reviewed large-context summary artifacts:
 
-- `benchmarks/artifacts/preview-3-http-1m-coding-context-summary.json`
-- `benchmarks/artifacts/preview-3-https-1m-coding-context-summary.json`
+- `benchmarks/artifacts/v1-http-1m-coding-context-summary.json`
+- `benchmarks/artifacts/v1-https-1m-coding-context-summary.json`
 
 Review these fields in `bench/results/<timestamp>/summary.json` or the committed summary artifacts:
 
@@ -202,3 +202,7 @@ Allowed claim example:
 > On this dual-Xeon Gold machine, with this Git commit, this Docker image, this payload matrix, and this benchmark command, BrighTO-Router added X ms p50 and Y ms p99 overhead versus direct mock backend.
 
 Do not claim “fastest in the world” until there is a public comparison against named routers on the same hardware, same payloads, same backend, same network path, same logging level, and same load shape.
+
+## 1.0 Model Group benchmark
+
+Model Groups are measured separately from the single-route fast path. Use deterministic local mock endpoints and compare direct mock latency against router Model Group latency. Cover round-robin and weighted round-robin, payloads `1k`, `50k`, `200k`, and `500k`, and concurrency 1, 50, and 200. The current public smoke artifact is `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json`.

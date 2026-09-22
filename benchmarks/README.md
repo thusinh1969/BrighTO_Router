@@ -81,9 +81,9 @@ After a run, read `bench/results/<timestamp>/summary.json` first.
 
 ## Current measured status
 
-The preview-3 large-context benchmark has been run with coding-agent payloads from `1k` through `1m`, at concurrency 1, 50, and 200, over both HTTP and HTTPS. The benchmark uses a deterministic local Rust mock backend so model inference time and cloud network noise do not hide router overhead.
+The 1.0 large-context benchmark has been run with coding-agent payloads from `1k` through `1m`, at concurrency 1, 50, and 200, over both HTTP and HTTPS. The benchmark uses a deterministic local Rust mock backend so model inference time and cloud network noise do not hide router overhead.
 
-HTTP artifact: `benchmarks/artifacts/preview-3-http-1m-coding-context-summary.json`.
+HTTP artifact: `benchmarks/artifacts/v1-http-1m-coding-context-summary.json`.
 
 | Payload | c=1 p50 / p99 overhead | c=50 p50 / p99 overhead | c=200 p50 / p99 overhead |
 |---|---:|---:|---:|
@@ -93,7 +93,7 @@ HTTP artifact: `benchmarks/artifacts/preview-3-http-1m-coding-context-summary.js
 | `500k` | `+1.336 / +1.378 ms` | `+1.091 / +0.935 ms` | `+1.325 / +1.174 ms` |
 | `1m` | `+1.894 / +3.088 ms` | `+2.047 / +3.415 ms` | `+2.167 / +1.664 ms` |
 
-HTTPS artifact: `benchmarks/artifacts/preview-3-https-1m-coding-context-summary.json`.
+HTTPS artifact: `benchmarks/artifacts/v1-https-1m-coding-context-summary.json`.
 
 | Payload | c=1 p50 / p99 overhead | c=50 p50 / p99 overhead | c=200 p50 / p99 overhead |
 |---|---:|---:|---:|
@@ -116,6 +116,21 @@ Full-run health results:
 Streaming first-byte delta was near zero on HTTP from `1k` to `1m`. HTTPS first-byte delta was about `19-22 ms` in this benchmark because the sequential `curl` probe opens new local TLS connections with a self-signed certificate. That is useful as a conservative new-connection number; production clients should reuse connections.
 
 The `50k` HTTP run at concurrency 200 had one p99 tail spike in the artifact. It did not produce errors, ledger drops, or RSS growth, and the larger `200k`, `500k`, and `1m` concurrency-200 runs stayed low. Keep the raw artifact when comparing future runs so tail behavior remains visible.
+
+## Model Group load-balancing smoke
+
+BrighTO-Router 1.0 also measures the load-balancing path separately. This smoke uses two local `brighto-router-mock` upstreams and calls the router through Model Groups, so no paid provider is used. Direct baseline is one mock upstream; router path is the same payload through a Model Group.
+
+Artifact: `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json`.
+
+| Payload | Concurrency | Round-robin p50 / p99 overhead | Weighted p50 / p99 overhead | Router throughput | Non-200 |
+|---|---:|---:|---:|---:|---:|
+| `1k` | 200 | `+0.325 / +1.135 ms` | `+0.306 / +4.712 ms` | ~`4,000 RPS` | `0` |
+| `50k` | 200 | `+1.339 / +3.032 ms` | `+1.352 / +8.218 ms` | ~`1,000 RPS` | `0` |
+| `200k` | 200 | `+5.244 / +17.766 ms` | `+5.367 / +9.451 ms` | ~`250 RPS` | `0` |
+| `500k` | 200 | `+11.921 / +16.699 ms` | `+11.292 / +18.961 ms` | ~`100 RPS` | `0` |
+
+Honest read: Model Groups add route choice, endpoint-specific model rewrite, PostgreSQL-backed round-robin counters, and fail-safe behavior. The small-prompt cost stays sub-millisecond at p50. Large 500k payloads pay about 11-13 ms p50 in this smoke because the router rewrites the top-level `model` field for the selected endpoint.
 
 ## Commands
 
@@ -163,12 +178,12 @@ Current supported API paths are:
 | `/v1/chat/completions` | Supported for OpenAI-compatible chat payloads. |
 | `/v1/completions` | Supported for OpenAI-compatible completion payloads. |
 | `/v1/embeddings` | Supported for OpenAI-compatible embedding payloads. |
-| `/v1/rerank` | Preview-3 supported for Qwen/DashScope, Jina, Voyage, Cohere, and OpenAI-compatible/custom rerank adapters. |
-| `/v1/audio/transcriptions` | Preview-3 supported for OpenAI-compatible multipart ASR/transcription providers. |
+| `/v1/rerank` | Supported in 1.0 for Qwen/DashScope, Jina, Voyage, Cohere, and OpenAI-compatible/custom rerank adapters. |
+| `/v1/audio/transcriptions` | Supported in 1.0 for OpenAI-compatible multipart ASR/transcription providers. |
 | `/v1/models` | Supported. Lists configured model aliases. |
 | `/v1/messages` | Supported for Anthropic-compatible messages payloads. |
 | `/v1/images/*` | Not implemented as a dedicated route. |
 | `/v1/audio/generations`, `/v1/audio/speech` | Not implemented as dedicated TTS/audio-generation routes. |
 | `/v1/video/*` | Not implemented as a dedicated route. |
 
-Chat-style image/audio inputs can pass through `/v1/chat/completions` when the backend accepts the same JSON format and the body stays under `MAX_BODY_BYTES`. Preview-3 adds dedicated rerank and ASR routes. Image generation, TTS/audio generation, video, and realtime media remain future adapter work.
+Chat-style image/audio inputs can pass through `/v1/chat/completions` when the backend accepts the same JSON format and the body stays under `MAX_BODY_BYTES`. 1.0 includes dedicated rerank and ASR routes. Image generation, TTS/audio generation, video, and realtime media remain future adapter work.

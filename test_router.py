@@ -34,7 +34,7 @@ from typing import Any
 DEFAULT_ROUTER = "http://127.0.0.1:18080"
 DEFAULT_DEMO_KEY = "sk-brighto-0123456789abcdef0123456789abcdef"
 
-# Public route-name shortcuts used by the preview-3 smoke flow and docs.
+# Public route-name shortcuts used by the 1.0 smoke flow and docs.
 # They are client-side conveniences only. If your Portal route uses a custom public
 # model name, pass --model explicitly and ignore these presets.
 PROVIDER_ROUTE_PRESETS: dict[str, dict[str, str]] = {
@@ -92,7 +92,7 @@ def preset_model_name(provider: str, mode: str) -> str:
 
 
 def print_presets() -> None:
-    print("Preview-3 provider route presets")
+    print("BrighTO-Router 1.0 provider route presets")
     print("These are public route names expected after creating routes with the documented names.")
     print("Use --model when your Portal route has a different public name.\n")
     for provider, modes in sorted(PROVIDER_ROUTE_PRESETS.items()):
@@ -355,8 +355,8 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     parser.add_argument("--router", help="Router base URL, for example http://127.0.0.1:18080")
     parser.add_argument("--api-key", help="BrighTO client API key, usually starts with sk-brighto-")
     parser.add_argument("--model", help="Public model route name in BrighTO-Router")
-    parser.add_argument("--provider", choices=sorted(PROVIDER_ROUTE_PRESETS), help="Use a preview-3 provider route preset, for example qwen + embeddings -> qwen-embedding")
-    parser.add_argument("--list-presets", action="store_true", help="Print preview-3 provider route presets and exit")
+    parser.add_argument("--provider", choices=sorted(PROVIDER_ROUTE_PRESETS), help="Use a provider route preset, for example qwen + embeddings -> qwen-embedding")
+    parser.add_argument("--list-presets", action="store_true", help="Print provider route presets and exit")
     parser.add_argument("--text", default="Reply OK in one short sentence.", help="Text input to send; in rerank mode this is the query unless --query is set")
     parser.add_argument("--query", help="Search query for --mode rerank. Friendly alias; overrides --text for rerank only")
     parser.add_argument("--mode", choices=["chat", "embeddings", "rerank", "asr", "messages"], default="chat", help="Request type")

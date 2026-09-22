@@ -1,6 +1,6 @@
 # Provider setup
 
-BrighTO-Router preview-3, intended to become `main` after final feedback, keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, and ASR/transcription.
+BrighTO-Router 1.0 keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, and ASR/transcription.
 
 A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
 
@@ -71,7 +71,7 @@ Use **Models & Routes → Create Model Group** when several existing tested rout
 - one local chat route plus one cloud fallback route;
 - several embedding or rerank routes of the same type where one has more capacity than the others.
 
-Rules in preview-3:
+Rules in 1.0:
 
 - Group members must be existing tested routes.
 - All selected routes must match the selected model type: chat, embedding, rerank, or ASR.
@@ -121,9 +121,9 @@ Provider API keys are different from client API keys.
 
 Create client keys in **API Keys**. Admin can view and copy them again later.
 
-## Preview-3 adapter providers
+## Adapter providers
 
-Embeddings, rerank, and ASR/transcription are first-class preview-3 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models`. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route wizard. Model Groups reuse those tested routes and do not ask for provider keys.
+Embeddings, rerank, and ASR/transcription are first-class 1.0 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models`. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route wizard. Model Groups reuse those tested routes and do not ask for provider keys.
 
 Qwen rerank needs special handling: embeddings can use the OpenAI-compatible `/compatible-mode/v1` Base URL, while rerank uses DashScope workspace endpoints. In the Portal, choose **Qwen + Rerank**, then enter `https://dashscope-intl.aliyuncs.com` or your workspace root Base URL such as `https://<workspace>.<region>.maas.aliyuncs.com`. For live smoke tests, set `QWEN_RERANK_BASE_URL` to that same root URL.
 

@@ -153,7 +153,7 @@ impl std::fmt::Debug for Backend {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RoutingPolicy {
-    /// Production default from preview-2: choose the lowest inflight/weight healthy endpoint.
+    /// Production default: choose the lowest inflight/weight healthy endpoint.
     LeastLoadedWeighted,
     /// One request per healthy endpoint in order. Endpoint weight is ignored.
     RoundRobin,
@@ -225,7 +225,7 @@ pub struct ModelRoute {
     pub provider_key: Option<String>,
     /// Model Group load-balancing policy. Existing routes default to least_loaded_weighted.
     pub routing_policy: RoutingPolicy,
-    /// Per-backend endpoint overrides for true mixed-provider groups. Empty keeps preview-2 behavior.
+    /// Per-backend endpoint overrides for true mixed-provider groups. Empty keeps legacy single-endpoint behavior.
     pub endpoints: HashMap<i64, ModelEndpoint>,
 }
 

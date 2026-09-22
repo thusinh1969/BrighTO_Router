@@ -25,7 +25,7 @@ Options through environment variables:
 
 Examples:
   BRIGHTO_INSTALL_DIR=/opt/brighto-router curl -fsSL URL | bash
-  BRIGHTO_REF=preview-3 curl -fsSL URL | bash
+  BRIGHTO_REF=main curl -fsSL URL | bash
 EOF
 }
 
