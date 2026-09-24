@@ -35,12 +35,14 @@ These benchmarks use deterministic local Rust mock backends. They measure router
 |---|---:|---|
 | 1M-token HTTP pass-through, 200 concurrent | `+2.167 ms p50`, `+1.664 ms p99` overhead, `0` non-200 | `benchmarks/artifacts/v1-http-1m-coding-context-summary.json` |
 | 1M-token HTTPS pass-through, 200 concurrent | `+6.539 ms p50`, `+35.845 ms p99` overhead, `0` non-200 | `benchmarks/artifacts/v1-https-1m-coding-context-summary.json` |
-| 1k Model Group, 200 concurrent, round-robin | `+0.325 ms p50` overhead, ~`3,999 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json` |
-| 1k Model Group, 200 concurrent, weighted | `+0.306 ms p50` overhead, ~`3,999 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json` |
-| 500k Model Group, 200 concurrent, round-robin | `+11.921 ms p50` overhead, ~`101.68 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json` |
-| 500k Model Group, 200 concurrent, weighted | `+11.292 ms p50` overhead, ~`100.47 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json` |
+| 1k Model Group, 200 concurrent, round-robin | `+0.419 ms p50` overhead, ~`1,999 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-current-summary.json` |
+| 1k Model Group, 200 concurrent, weighted | `+0.444 ms p50` overhead, ~`1,999 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-current-summary.json` |
+| 500k Model Group, 200 concurrent, round-robin | `+5.301 ms p50` overhead, ~`80 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-current-summary.json` |
+| 500k Model Group, 200 concurrent, weighted | `+4.999 ms p50` overhead, ~`80 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-current-summary.json` |
+| 1M Model Group, 200 concurrent, round-robin | `+9.233 ms p50` overhead, ~`40 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-current-summary.json` |
+| 1M Model Group, 200 concurrent, weighted | `+9.418 ms p50` overhead, ~`40 RPS`, `0` non-200 | `benchmarks/artifacts/v1-model-group-lb-current-summary.json` |
 
-Honest read: single-route pass-through is the fastest path. Model Groups add routing choice, per-endpoint model rewrite, PostgreSQL-backed round-robin counters, and fail-safe behavior; in the mock smoke that cost is still sub-millisecond for 1k payloads and about 11-13 ms p50 for 500k payloads. All load-balancing runs completed with `0` non-200 responses.
+Honest read: single-route pass-through is the fastest path. Model Groups add routing choice, per-endpoint model rewrite, PostgreSQL-backed round-robin counters, and fail-safe behavior. The current byte-splice Model Group path stays sub-millisecond for 1k prompts and measured about 5 ms p50 at 500k and about 9 ms p50 at 1M in this 10-second mock stress run. All load-balancing rows completed with `0` non-200 responses.
 
 ## Core capabilities
 
@@ -478,7 +480,7 @@ Benchmark matrix:
 Current verified public-facing status:
 
 - The large-context proof artifacts cover the 1.0 fast path from `1k` through `1m`, at concurrency 1, 50, and 200.
-- The Model Group load-balancing smoke covers two local mock endpoints, round-robin and weighted round-robin, payloads `1k` through `500k`, and concurrency 1, 50, and 200. Artifact: `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json`.
+- The current Model Group load-balancing artifact covers two local mock endpoints, round-robin and weighted round-robin, payloads `1k`, `500k`, and `1m` at concurrency 200 after byte-splice model rewrite. Artifact: `benchmarks/artifacts/v1-model-group-lb-current-summary.json`.
 - The headline 1M HTTP result at concurrency 200 is `+2.167 ms p50` and `+1.664 ms p99` router overhead with `0` non-200 responses.
 - The headline 1M HTTPS result at concurrency 200 is `+6.539 ms p50` and `+35.845 ms p99` router overhead with `0` non-200 responses.
 - Hard release thresholds still apply to the calibrated `1k`, `50k`, and `200k` gates. The `500k` and `1m` artifacts are published measurement proof and will become hard gates only after we have more repeated public baselines.
@@ -488,10 +490,9 @@ Model Group load-balancing smoke summary:
 
 | Payload | Concurrency | Round-robin p50 overhead | Weighted p50 overhead | Result |
 |---|---:|---:|---:|---|
-| `1k` | 200 | `+0.325 ms` | `+0.306 ms` | ~`4,000 RPS`, `0` non-200 |
-| `50k` | 200 | `+1.339 ms` | `+1.352 ms` | ~`1,000 RPS`, `0` non-200 |
-| `200k` | 200 | `+5.244 ms` | `+5.367 ms` | ~`250 RPS`, `0` non-200 |
-| `500k` | 200 | `+11.921 ms` | `+11.292 ms` | ~`100 RPS`, `0` non-200 |
+| `1k` | 200 | `+0.419 ms` | `+0.444 ms` | ~`2,000 RPS`, `0` non-200 |
+| `500k` | 200 | `+5.301 ms` | `+4.999 ms` | ~`80 RPS`, `0` non-200 |
+| `1m` | 200 | `+9.233 ms` | `+9.418 ms` | ~`40 RPS`, `0` non-200 |
 
 Benchmark docs:
 

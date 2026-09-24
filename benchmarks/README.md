@@ -121,16 +121,15 @@ The `50k` HTTP run at concurrency 200 had one p99 tail spike in the artifact. It
 
 BrighTO-Router 1.0 also measures the load-balancing path separately. This smoke uses two local `brighto-router-mock` upstreams and calls the router through Model Groups, so no paid provider is used. Direct baseline is one mock upstream; router path is the same payload through a Model Group.
 
-Artifact: `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json`.
+Current artifact: `benchmarks/artifacts/v1-model-group-lb-current-summary.json`. Historical full-grid smoke: `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json`.
 
 | Payload | Concurrency | Round-robin p50 / p99 overhead | Weighted p50 / p99 overhead | Router throughput | Non-200 |
 |---|---:|---:|---:|---:|---:|
-| `1k` | 200 | `+0.325 / +1.135 ms` | `+0.306 / +4.712 ms` | ~`4,000 RPS` | `0` |
-| `50k` | 200 | `+1.339 / +3.032 ms` | `+1.352 / +8.218 ms` | ~`1,000 RPS` | `0` |
-| `200k` | 200 | `+5.244 / +17.766 ms` | `+5.367 / +9.451 ms` | ~`250 RPS` | `0` |
-| `500k` | 200 | `+11.921 / +16.699 ms` | `+11.292 / +18.961 ms` | ~`100 RPS` | `0` |
+| `1k` | 200 | `+0.419 / +1.013 ms` | `+0.444 / +1.113 ms` | ~`2,000 RPS` | `0` |
+| `500k` | 200 | `+5.301 / +7.029 ms` | `+4.999 / +6.819 ms` | ~`80 RPS` | `0` |
+| `1m` | 200 | `+9.233 / +14.541 ms` | `+9.418 / +15.155 ms` | ~`40 RPS` | `0` |
 
-Honest read: Model Groups add route choice, endpoint-specific model rewrite, PostgreSQL-backed round-robin counters, and fail-safe behavior. The small-prompt cost stays sub-millisecond at p50. Large 500k payloads pay about 11-13 ms p50 in this smoke because the router rewrites the top-level `model` field for the selected endpoint.
+Honest read: Model Groups add route choice, endpoint-specific model rewrite, PostgreSQL-backed round-robin counters, and fail-safe behavior. The current byte-splice rewrite keeps 1k prompts sub-millisecond at p50. Large contexts still pay body pass-through cost: about 5 ms p50 at 500k and about 9 ms p50 at 1M in the current 10-second c=200 smoke.
 
 ## Commands
 

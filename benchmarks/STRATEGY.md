@@ -205,4 +205,4 @@ Do not claim “fastest in the world” until there is a public comparison again
 
 ## 1.0 Model Group benchmark
 
-Model Groups are measured separately from the single-route fast path. Use deterministic local mock endpoints and compare direct mock latency against router Model Group latency. Cover round-robin and weighted round-robin, payloads `1k`, `50k`, `200k`, and `500k`, and concurrency 1, 50, and 200. The current public smoke artifact is `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json`.
+Model Groups are measured separately from the single-route fast path. Use deterministic local mock endpoints and compare direct mock latency against router Model Group latency. The current post-byte-splice public artifact is `benchmarks/artifacts/v1-model-group-lb-current-summary.json`, covering round-robin and weighted round-robin for `1k`, `500k`, and `1m` at concurrency 200. The older full-grid smoke artifact remains at `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json` for historical comparison only.
