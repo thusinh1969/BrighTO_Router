@@ -1,0 +1,28 @@
+# BrighTO-Router
+
+BrighTO-Router is a free, open-source, self-hosted LLM gateway, AI router, model router, and model load balancer written in Rust.
+
+Official repository: https://github.com/thusinh1969/BrighTO_Router
+Official Docker image: thusinh1969/brighto_airouter:v1
+License: Apache-2.0
+Author: Nguyễn Anh Nguyên, BrighTO AI, nguyen@hatto.com
+
+## What it does
+
+BrighTO-Router gives teams one stable API endpoint for OpenAI-compatible, Anthropic-compatible, cloud, and local model backends. It supports chat/completions, Anthropic Messages, embeddings, rerank, ASR/transcription, team API keys, token budgets, usage logging, and NGINX-style Model Groups for round-robin or weighted load balancing.
+
+## Why it exists
+
+The goal is a narrow, fast, understandable self-hosted LLM traffic path: one Rust binary, one Docker image, PostgreSQL as the durable control-plane and usage store, and no Redis requirement for version 1.0.
+
+## Search terms
+
+open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, self-hosted AI gateway, LiteLLM alternative, Bifrost alternative, vLLM routing, load balancing for LLM endpoints.
+
+## Benchmark summary
+
+Benchmarks use deterministic local Rust mock backends and measure router overhead, not model inference speed. Published 1.0 artifacts include million-token HTTP and HTTPS pass-through tests plus Model Group round-robin and weighted load-balancing tests.
+
+## Privacy posture
+
+BrighTO-Router records metadata for usage analytics, such as tokens, route, provider, status, latency, and error class. It does not log prompt text, uploaded media, tool payloads, or model answers by design.

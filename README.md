@@ -1,13 +1,16 @@
-# BrighTO-Router
+# BrighTO-Router — Self-hosted LLM Gateway / Router in Rust
 
 **Million-token AI traffic, simple Rust fast path, one Docker install.**
 
-BrighTO-Router is a self-hosted Rust router for AI traffic. It gives a team one stable API endpoint for cloud and local models, keeps provider keys private, records usage in PostgreSQL, and adds NGINX-style Model Groups for **round-robin or weighted load balancing**.
+BrighTO-Router is an ultra-fast open-source, self-hosted LLM gateway, AI router, and model load balancer written in Rust. It gives a team one stable API endpoint for OpenAI-compatible, Anthropic-compatible, cloud, and local models; keeps provider keys private; records usage in PostgreSQL; and adds NGINX-style Model Groups for **round-robin or weighted load balancing**.
+
+Use it as a free, open-source LiteLLM or Bifrost alternative when you want a narrow, fast, self-hosted traffic path instead of a broad hosted AI platform.
 
 Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Model Groups](#first-model-group) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
 
 - Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 - Official Docker image: `thusinh1969/brighto_airouter:v1`
+- Search keywords: open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, LiteLLM alternative
 - Release version: `1.0.0`
 
 ## Why teams choose BrighTO-Router
@@ -22,7 +25,7 @@ Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Mod
 | **Private by design** | The router records metadata for usage analytics, not prompt text, uploaded media, tool payloads, or model answers. |
 | **Self-hosted control** | Works with OpenAI-compatible providers, Anthropic Messages, local llama.cpp/vLLM-style endpoints, embeddings, rerank, and ASR routes. |
 
-Compared with broad AI gateway platforms, BrighTO-Router keeps the promise narrower: be the fast, understandable router a team can own. It is not a hosted prompt suite or agent platform. It is the traffic path, policy point, load balancer, and usage ledger for your AI endpoints.
+Compared with broad AI gateway platforms, BrighTO-Router keeps the promise narrower: be the fast, understandable LLM gateway a team can own. It is not a hosted prompt suite or agent platform. It is the traffic path, policy point, model load balancer, and usage ledger for your AI endpoints.
 
 ## Benchmark headline
 
