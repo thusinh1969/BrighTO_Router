@@ -10,7 +10,7 @@
     "min_rows": 15839,
     "non200": 0,
     "observed_rows": 15964,
-    "raw": "/mnt/data02/BrigTO_Router/bench/results/20260920-115908/router-b10-ledger-lag.json",
+    "raw": "bench/results/20260920-115908/router-b10-ledger-lag.json",
     "rps": 1999.7,
     "target_rps": 2000
   },
@@ -25,7 +25,7 @@
     "missing": [],
     "mode": "missing",
     "pass": true,
-    "path": "/mnt/data02/BrigTO_Router/bench/baseline.json",
+    "path": "bench/baseline.json",
     "skipped": true
   },
   "command_pass": true,

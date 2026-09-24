@@ -3767,7 +3767,7 @@ mod tests {
 
     #[test]
     fn hash_prefix_length() {
-        let key = "sk-brighto-0123456789abcdef0123456789abcdef".to_string();
+        let key = generate_key().expect("generate key");
         let hash_bytes = Sha256::digest(key.as_bytes());
         let mut hash = [0u8; 32];
         hash.copy_from_slice(&hash_bytes);

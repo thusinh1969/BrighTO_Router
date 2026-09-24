@@ -82,11 +82,11 @@ LISTEN_ADDR=0.0.0.0:18443
 BASE_URL=https://<SERVER_IP>:18443
 TLS_CERT_PATH=/certs/fullchain.pem
 TLS_KEY_PATH=/certs/privkey.pem
-ADMIN_MASTER_KEY=brightoIsGreat@2026
-ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0
+ADMIN_MASTER_KEY=<generated-admin-key-from-.env>
+ADMIN_ALLOW_CIDR=127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
 ```
 
-For shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW_CIDR` to your VPN, office subnet, or private network.
+For a public server, connect through VPN/SSH tunnel or set `ADMIN_ALLOW_CIDR` to your office/VPN/proxy range. Do not expose the Admin Portal to the whole Internet.
 
 If you want standard HTTPS port 443:
 

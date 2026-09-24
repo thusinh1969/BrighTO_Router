@@ -105,13 +105,9 @@ Open it from another machine:
 http://<SERVER_IP>:18080/
 ```
 
-Default local admin key:
+Admin login uses the `ADMIN_MASTER_KEY` generated in `.env` during install. Keep `.env` private.
 
-```text
-brightoIsGreat@2026
-```
-
-Fresh install allows Admin Portal access from any IP so first-time remote testing works immediately. Before shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW_CIDR` in `.env` to your VPN, office subnet, or reverse proxy, then run:
+Fresh install allows Admin Portal access from localhost and private LAN ranges only. For a public server, connect through VPN/SSH tunnel or set `ADMIN_ALLOW_CIDR` in `.env` to your office/VPN/proxy range, then run:
 
 ```bash
 ./start.sh restart
@@ -259,7 +255,7 @@ Default records:
 | Record | Created value | Purpose |
 |---|---|---|
 | Team | `Default Team` | Lets an admin create client API keys immediately. |
-| Demo client key | `sk-brighto-0123456789abcdef0123456789abcdef` | Local smoke testing only. Replace or disable it before shared use. |
+| Demo client key | Random `sk-brighto-...` in `.env` | Local smoke testing only. Rotate, disable, or delete it before shared use. |
 | Model routes | None | You choose which provider models clients can call. |
 | Provider endpoints | OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, Custom LLM, Jina AI, Voyage AI, Cohere, Qwen Rerank | Friendly defaults for the Portal. They are endpoint templates, not usable routes until a tested model route is saved. |
 | Provider catalog | `PROVIDER_CATALOG` in `.env` | Controls the Add model route provider dropdown. |

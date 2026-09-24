@@ -8,18 +8,68 @@ COMPOSE="${COMPOSE:-docker compose}"
 COMPOSE_FILE_PATH="${COMPOSE_FILE_PATH:-$ROOT/docker-compose.yml}"
 ENV_FILE="$ROOT/.env"
 DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router"
-DEFAULT_ADMIN_KEY="brightoIsGreat@2026"
-DEFAULT_DEMO_CLIENT_KEY="sk-brighto-0123456789abcdef0123456789abcdef"
+DEFAULT_ADMIN_ALLOW_CIDR="127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 DEFAULT_LISTEN_ADDR="0.0.0.0:18080"
 DEFAULT_ROUTER_IMAGE="thusinh1969/brighto_airouter:v1"
 DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;jina|Jina AI|https://api.jina.ai|openai|JINA_API_KEY|1;voyage|Voyage AI|https://api.voyageai.com|openai|VOYAGE_API_KEY|1;cohere|Cohere|https://api.cohere.com/v2|openai|COHERE_API_KEY|1;meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1'
 # Legacy defaults are kept only to upgrade old local .env files in place.
 OLD_DEFAULT_LISTEN_ADDR="0.0.0.0:8080"
 OLD_DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router"
-OLD_DEFAULT_ADMIN_KEY="brighto-admin-dev"
+OLD_DEFAULT_ADMIN_HASH_DEV="d5a26818c9bb07fae055d6680c63bffa3718f321527b5dc1e25b07887812f7dc"
+OLD_DEFAULT_ADMIN_HASH_V1="c1a542f19233446e420d79fd87e06b781fba2be226831494034ceba974f7097d"
+OLD_DEFAULT_DEMO_CLIENT_HASH="1d86872169af3c343a921877fb32d18c5a4f0c4473a4063e7398c4457f63da2f"
 
 say() { printf '\n==> %s\n' "$*"; }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+random_hex() {
+  local bytes="${1:-32}"
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex "$bytes"
+  else
+    BYTES="$bytes" python3 - <<'PY'
+import os
+import secrets
+
+print(secrets.token_hex(int(os.environ.get("BYTES", "32"))))
+PY
+  fi
+}
+
+generate_admin_key() {
+  printf 'br-admin-%s\n' "$(random_hex 32)"
+}
+
+generate_client_key() {
+  printf 'sk-brighto-%s\n' "$(random_hex 32)"
+}
+
+sha256_hex() {
+  VALUE="$1" python3 - <<'PY'
+import hashlib
+import os
+
+print(hashlib.sha256(os.environ["VALUE"].encode()).hexdigest())
+PY
+}
+
+is_missing_or_old_admin_key() {
+  local hash
+  case "${1:-}" in
+    ""|CHANGE_ME|change-me|GENERATED_ON_INSTALL) return 0 ;;
+  esac
+  hash="$(sha256_hex "$1")"
+  [[ "$hash" == "$OLD_DEFAULT_ADMIN_HASH_DEV" || "$hash" == "$OLD_DEFAULT_ADMIN_HASH_V1" ]]
+}
+
+is_missing_or_old_client_key() {
+  local hash
+  case "${1:-}" in
+    ""|CHANGE_ME|change-me|GENERATED_ON_INSTALL) return 0 ;;
+  esac
+  hash="$(sha256_hex "$1")"
+  [[ "$hash" == "$OLD_DEFAULT_DEMO_CLIENT_HASH" ]]
+}
 
 set_env_var() {
   local key="$1"
@@ -77,8 +127,25 @@ PY
 
 ensure_env_defaults() {
   [[ -f "$ENV_FILE" ]] || return 0
-  if grep -q "^ADMIN_MASTER_KEY=${OLD_DEFAULT_ADMIN_KEY}$" "$ENV_FILE"; then
-    set_env_var ADMIN_MASTER_KEY "$DEFAULT_ADMIN_KEY"
+  local current_admin_key current_admin_cidr current_client_key
+  current_admin_key="$(get_env_var ADMIN_MASTER_KEY "")"
+  if is_missing_or_old_admin_key "$current_admin_key"; then
+    current_admin_key="$(generate_admin_key)"
+    set_env_var ADMIN_MASTER_KEY "$current_admin_key"
+    printf '\nGenerated ADMIN_MASTER_KEY: %s\n' "$current_admin_key"
+  fi
+  current_admin_cidr="$(get_env_var ADMIN_ALLOW_CIDR "")"
+  case "$current_admin_cidr" in
+    ""|"0.0.0.0/0"|"::/0"|"0.0.0.0/0,::/0"|"::/0,0.0.0.0/0")
+      set_env_var ADMIN_ALLOW_CIDR "$DEFAULT_ADMIN_ALLOW_CIDR"
+      printf 'Admin Portal CIDR default: %s\n' "$DEFAULT_ADMIN_ALLOW_CIDR"
+      ;;
+  esac
+  current_client_key="$(get_env_var BRIGHTO_ROUTER_API_KEY "")"
+  if is_missing_or_old_client_key "$current_client_key"; then
+    current_client_key="$(generate_client_key)"
+    set_env_var BRIGHTO_ROUTER_API_KEY "$current_client_key"
+    printf 'Generated local demo client key: %s\n' "$current_client_key"
   fi
   if grep -q "^DATABASE_URL=${OLD_DEFAULT_URL}$" "$ENV_FILE"; then
     set_env_var DATABASE_URL "$DEFAULT_URL"
@@ -91,9 +158,6 @@ ensure_env_defaults() {
   fi
   if ! grep -q "^PROVIDER_CATALOG=" "$ENV_FILE"; then
     set_env_var PROVIDER_CATALOG "\"$DEFAULT_PROVIDER_CATALOG\""
-  fi
-  if ! grep -q "^BRIGHTO_ROUTER_API_KEY=" "$ENV_FILE"; then
-    set_env_var BRIGHTO_ROUTER_API_KEY "$DEFAULT_DEMO_CLIENT_KEY"
   fi
   if ! grep -q "^BRIGHTO_MODEL=" "$ENV_FILE"; then
     set_env_var BRIGHTO_MODEL ""
@@ -131,8 +195,8 @@ ensure_env() {
     chmod 600 .env
     cat >&2 <<MSG
 Created .env from .env.example.
-Default local admin key: ${DEFAULT_ADMIN_KEY}
-Change ADMIN_MASTER_KEY before shared or production use.
+ADMIN_MASTER_KEY and BRIGHTO_ROUTER_API_KEY will be generated locally.
+Keep .env private; it contains admin and client credentials.
 MSG
   fi
   ensure_env_defaults
@@ -196,6 +260,17 @@ run_sql_file() {
   fi
 }
 
+run_sql_text() {
+  local sql="$1"
+  if command -v psql >/dev/null 2>&1; then
+    PGPASSWORD="$DB_PASS" psql "$DATABASE_URL_EFFECTIVE" -v ON_ERROR_STOP=1 <<< "$sql"
+  elif uses_local_db; then
+    compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<< "$sql"
+  else
+    fail "psql is required for external PostgreSQL installs"
+  fi
+}
+
 repair_known_migration_checksums() {
   # Migrations 0006/0007 had comment-only checksum changes during the pre-1.0 branch.
   # The SQL schema is identical. Repair known old checksums before sqlx validates.
@@ -235,9 +310,61 @@ run_migrations() {
   done
 }
 
+demo_client_key_seed_sql() {
+  local key
+  key="$(get_env_var BRIGHTO_ROUTER_API_KEY "")"
+  [[ -n "$key" ]] || fail "BRIGHTO_ROUTER_API_KEY must be set in .env"
+  CLIENT_KEY="$key" OLD_CLIENT_HASH="$OLD_DEFAULT_DEMO_CLIENT_HASH" python3 - <<'PY'
+import hashlib
+import os
+
+key = os.environ["CLIENT_KEY"]
+key_hash = hashlib.sha256(key.encode()).hexdigest()
+key_prefix = key[:8].replace("'", "''")
+key_secret = key.replace("'", "''")
+old_hash = os.environ["OLD_CLIENT_HASH"]
+
+print(f"""
+UPDATE api_keys
+   SET enabled = FALSE
+ WHERE key_hash = '{old_hash}';
+
+INSERT INTO api_keys (
+  key_hash, key_prefix, team_id, owner, allowed_models, budget,
+  rpm_limit, concurrency_limit, expires_at, enabled, key_secret
+)
+SELECT
+  '{key_hash}',
+  '{key_prefix}',
+  t.id,
+  'Local demo key',
+  '[]',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  TRUE,
+  '{key_secret}'
+FROM (SELECT id FROM teams WHERE name = 'Default Team' ORDER BY id LIMIT 1) t
+WHERE NOT EXISTS (SELECT 1 FROM api_keys WHERE key_hash = '{key_hash}');
+
+UPDATE api_keys
+   SET key_secret = '{key_secret}',
+       enabled = TRUE
+ WHERE key_hash = '{key_hash}'
+   AND (key_secret IS NULL OR key_secret = '');
+""")
+PY
+}
+
+seed_demo_client_key() {
+  run_sql_text "$(demo_client_key_seed_sql)"
+}
+
 seed_defaults() {
   say "Seeding default team and provider templates"
   run_sql_file "$ROOT/scripts/seed_defaults.sql"
+  seed_demo_client_key
 }
 
 validate_runtime_env() {
@@ -447,6 +574,13 @@ run_k8s_local_sql_file() {
     psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$file"
 }
 
+run_k8s_local_sql_text() {
+  local namespace="$1"
+  local sql="$2"
+  kubectl -n "$namespace" exec -i deploy/brighto-router-postgres -- \
+    psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<< "$sql"
+}
+
 run_k8s_migrations_and_seed() {
   local namespace="$1"
   if uses_local_db; then
@@ -459,6 +593,7 @@ run_k8s_migrations_and_seed() {
     done
     say "Seeding Kubernetes defaults"
     run_k8s_local_sql_file "$namespace" "$ROOT/scripts/seed_defaults.sql"
+    run_k8s_local_sql_text "$namespace" "$(demo_client_key_seed_sql)"
   else
     say "Running migrations against external PostgreSQL"
     run_migrations
@@ -701,8 +836,9 @@ Daily operation:
   ./start.sh make-self-signed-cert [HOST]    Generate a self-signed cert into ssl/
   ./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host HOST --port 18443   Enable HTTPS and recreate router
 
-Default local admin key:
-  brightoIsGreat@2026
+Credentials:
+  ./start.sh install generates ADMIN_MASTER_KEY and BRIGHTO_ROUTER_API_KEY in .env.
+  Keep .env private. Use ./start.sh status to view Portal URLs.
 
 Provider names for set-key:
   openai anthropic gemini deepseek kimi qwen dashscope zai openrouter jina voyage cohere meta-muse custom-llm

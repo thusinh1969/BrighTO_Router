@@ -62,15 +62,9 @@ Open from another machine by replacing `<SERVER_IP>` with the server address:
 http://<SERVER_IP>:18080/
 ```
 
-Default local admin key:
+Admin login uses the `ADMIN_MASTER_KEY` generated in `.env` during install. Keep `.env` private.
 
-```text
-brightoIsGreat@2026
-```
-
-Fresh install allows Admin Portal access from any IP so first-time remote testing works immediately.
-
-For shared or production use, replace `ADMIN_MASTER_KEY` and narrow `ADMIN_ALLOW_CIDR` in `.env` to your VPN, office subnet, or reverse proxy, then restart:
+Fresh install allows Admin Portal access from localhost and private LAN ranges only. For a public server, connect through VPN/SSH tunnel or set `ADMIN_ALLOW_CIDR` in `.env` to your office/VPN/proxy range, then restart:
 
 ```bash
 ./start.sh restart
@@ -145,7 +139,7 @@ After saving a model route and creating a client API key, run one request with t
 python3 test_router.py --router http://127.0.0.1:18080 --api-key sk-brighto-... --model <public-model-name> --text "Reply OK"
 ```
 
-If you use the seeded local demo key, the script can read it from `.env`:
+If you use the generated local demo key, the script can read it from `.env`:
 
 ```bash
 python3 test_router.py --model <public-model-name> --text "Reply OK"

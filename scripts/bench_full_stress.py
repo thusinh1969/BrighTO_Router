@@ -26,7 +26,7 @@ import time
 REPO = pathlib.Path(__file__).resolve().parents[1]
 OUT_ROOT = REPO / "bench" / "results"
 KEY = "bench-key"
-ADMIN_KEY = "brightoIsGreat@2026"
+ADMIN_KEY = os.environ.get("ADMIN_MASTER_KEY", "br-admin-bench-local-only")
 DUR = os.environ.get("DUR", "60s")
 CONCS = [int(x) for x in os.environ.get("CONCS", "50,100").split(",") if x]
 PAYLOADS = [x for x in os.environ.get("PAYLOADS", "1k,50k,200k,500k,1m").split(",") if x]

@@ -32,7 +32,6 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_ROUTER = "http://127.0.0.1:18080"
-DEFAULT_DEMO_KEY = "sk-brighto-0123456789abcdef0123456789abcdef"
 
 # Public route-name shortcuts used by the 1.0 smoke flow and docs.
 # They are client-side conveniences only. If your Portal route uses a custom public
@@ -384,7 +383,7 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     if not api_key:
         raise CliError(
             "missing BrighTO client API key. Pass --api-key sk-brighto-... or set BRIGHTO_ROUTER_API_KEY in .env. "
-            f"For a fresh local install, the demo key is {DEFAULT_DEMO_KEY}."
+            "Fresh installs generate BRIGHTO_ROUTER_API_KEY in .env."
         )
     if api_key.startswith("sk-") and not api_key.startswith("sk-brighto-"):
         raise CliError("this looks like a provider key. Use a BrighTO client key from the Portal API Keys screen, usually sk-brighto-...")
