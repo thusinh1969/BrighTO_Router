@@ -317,6 +317,122 @@ async fn model_group_round_robin_rewrites_per_endpoint_provider_model(pool: PgPo
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn model_group_large_rewrite_preserves_exact_content_length(pool: PgPool) {
+    set_test_env();
+    let (backend_base, capture_rx) = spawn_capture_backend().await;
+    let key_file =
+        std::env::temp_dir().join(format!("brighto_group_exact_key_{}", std::process::id()));
+    std::fs::write(&key_file, "mockkey").unwrap();
+    let key_ref = format!("file:{}", key_file.display());
+
+    sqlx::query(
+        "INSERT INTO backends (id, name, base_url, api_key_ref, weight, max_inflight, format, enabled) \
+         VALUES (1, 'backend-1', $1, $2, 1, 100, 'openai', TRUE)",
+    )
+    .bind(&backend_base)
+    .bind(&key_ref)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO model_routes \
+         (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
+          provider_model_name, enabled, auth_mode, protocol, routing_policy) \
+         VALUES ('group-model', '[1]', NULL, 4.0, 180, 'group-model', TRUE, 'bearer', 'openai_chat', 'round_robin')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO model_route_endpoints \
+         (model_name, backend_id, provider_model_name, provider_key_ref, auth_mode, protocol, weight, max_inflight, enabled) \
+         VALUES ('group-model', 1, 'provider-model-longer', $1, 'bearer', 'openai_chat', 1, 100, TRUE)",
+    )
+    .bind(&key_ref)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO teams (id, name, budget, enabled) \
+         VALUES (1, 'team-1', $1, TRUE)",
+    )
+    .bind(r#"{"period":"day","max_tokens":1000000,"per_model":{}}"#)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let key_hash = hex::encode(brighto_router::auth::hash_key("test-key"));
+    sqlx::query(
+        "INSERT INTO api_keys (id, key_hash, key_prefix, team_id, owner, allowed_models, budget, rpm_limit, concurrency_limit, expires_at, enabled) \
+         VALUES (1, $1, 'sk-brigh', 1, 'tester', '[]', NULL, NULL, NULL, NULL, TRUE)",
+    )
+    .bind(&key_hash)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let loader = brighto_router::config::DbConfigLoader::new(pool.clone(), 5);
+    let snap = loader.load_snapshot().await.unwrap();
+    let cfg = Arc::new(ArcSwap::from_pointee(snap));
+    let budget = Arc::new(RamBudgetStore::new());
+    budget.load_teams(&cfg.load_full().teams);
+    let backends = Arc::new(RamBackendPool::new_with_counter_pool(pool, 1));
+    for b in cfg.load_full().backends.values() {
+        backends.upsert_backend(b.clone());
+    }
+    let (ptx, _prx) = tokio::sync::mpsc::channel(8192);
+    let (otx, mut orx) = tokio::sync::mpsc::channel(8192);
+    tokio::spawn(async move { while orx.recv().await.is_some() {} });
+    let state = Arc::new(AppState {
+        cfg,
+        budget,
+        backends,
+        client: reqwest::Client::new(),
+        ledger: LedgerSink::new(ptx, otx),
+        metrics: metrics(),
+        max_body_bytes: 10 * 1024 * 1024,
+        reload_notify: Arc::new(tokio::sync::Notify::new()),
+        config_ok_at: Arc::new(std::sync::atomic::AtomicU64::new(1)),
+        config_err_at: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        readiness_max_stale_ms: 5_000,
+    });
+    let app = brighto_router::handlers::router(state);
+
+    let payload = format!(
+        r#"{{"model":"group-model","stream":false,"messages":[{{"role":"user","content":"{}"}}]}}"#,
+        "x".repeat(96 * 1024)
+    );
+    let original_len = payload.len();
+    let expected_rewritten_len = original_len - "group-model".len() + "provider-model-longer".len();
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/chat/completions")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .header("content-length", original_len.to_string())
+        .body(Body::from(payload))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let captured = tokio::time::timeout(Duration::from_secs(2), capture_rx)
+        .await
+        .expect("backend capture within 2s")
+        .expect("backend capture sent");
+    assert_eq!(captured.body_len, expected_rewritten_len);
+    assert_eq!(
+        captured.content_length.as_deref(),
+        Some(expected_rewritten_len.to_string().as_str())
+    );
+    assert!(
+        captured.transfer_encoding.is_none(),
+        "Model Group rewrite must not switch to chunked transfer: {captured:?}"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn embeddings_adapter_proxies_and_records_usage(pool: PgPool) {
     let backend_base = spawn_adapter_backend().await;
     let (state, mut ledger_rx) = build_state_for_route(

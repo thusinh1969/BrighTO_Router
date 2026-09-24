@@ -121,15 +121,15 @@ The `50k` HTTP run at concurrency 200 had one p99 tail spike in the artifact. It
 
 BrighTO-Router 1.0 also measures the load-balancing path separately. This smoke uses two local `brighto-router-mock` upstreams and calls the router through Model Groups, so no paid provider is used. Direct baseline is one mock upstream; router path is the same payload through a Model Group.
 
-Current artifact: `benchmarks/artifacts/v1-model-group-lb-current-summary.json`. Historical full-grid smoke: `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json`.
+Current artifact: `benchmarks/artifacts/v1-model-group-lb-current-summary.json`. Focused 60-second 1M delta gate: `benchmarks/artifacts/v1-model-group-lb-1m-60s-gate-summary.json`. Historical full-grid smoke: `benchmarks/artifacts/v1-model-group-lb-smoke-summary.json`.
 
 | Payload | Concurrency | Round-robin p50 / p99 overhead | Weighted p50 / p99 overhead | Router throughput | Non-200 |
 |---|---:|---:|---:|---:|---:|
-| `1k` | 200 | `+0.419 / +1.013 ms` | `+0.444 / +1.113 ms` | ~`2,000 RPS` | `0` |
-| `500k` | 200 | `+5.301 / +7.029 ms` | `+4.999 / +6.819 ms` | ~`80 RPS` | `0` |
-| `1m` | 200 | `+9.233 / +14.541 ms` | `+9.418 / +15.155 ms` | ~`40 RPS` | `0` |
+| `1k` | 200 | `+0.329 / +0.747 ms` | `+0.364 / +1.032 ms` | ~`2,000 RPS` | `0` |
+| `500k` | 200 | `+4.876 / +5.662 ms` | `+4.446 / +6.668 ms` | ~`80 RPS` | `0` |
+| `1m` | 200 | `+9.739 / +11.628 ms` | `+10.679 / +10.989 ms` | ~`40 RPS` | `0` |
 
-Honest read: Model Groups add route choice, endpoint-specific model rewrite, PostgreSQL-backed round-robin counters, and fail-safe behavior. The current byte-splice rewrite keeps 1k prompts sub-millisecond at p50. Large contexts still pay body pass-through cost: about 5 ms p50 at 500k and about 9 ms p50 at 1M in the current 10-second c=200 smoke.
+Honest read: Model Groups add route choice, endpoint-specific model rewrite, PostgreSQL-backed round-robin counters, and fail-safe behavior. The current exact-length body path keeps 1k prompts sub-millisecond at p50. The release gate now checks the important regression directly: HTTP 1M Model Group p50 overhead minus HTTP 1M single-route p50 overhead must be no more than `0.5 ms`. The focused 60-second c=200 run passed with Model Group minus single-route p50 deltas of `-4.820 ms` for round-robin and `-5.459 ms` for weighted. Negative means the run showed no extra Model Group overhead.
 
 ## Commands
 

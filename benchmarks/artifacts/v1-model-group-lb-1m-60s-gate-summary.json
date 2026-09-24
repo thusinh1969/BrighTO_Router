@@ -1,0 +1,138 @@
+{
+  "name": "BrighTO-Router 1.0 Model Group 1M 60s delta gate",
+  "date": "2026-09-24",
+  "source": "bench/results/20260924-180013-full-1m-http-https-lb-local/summary.json",
+  "method": "Deterministic local Rust mock upstreams. Direct baseline calls one mock upstream. Router path calls single route, Model Group round_robin, or Model Group weighted_round_robin. No paid providers are called.",
+  "duration": "60s",
+  "runs": 1,
+  "knobs": {
+    "DUR": "60s",
+    "CONCS": [
+      200
+    ],
+    "PAYLOADS": [
+      "1m"
+    ],
+    "rates_50": {
+      "1k": 1000,
+      "50k": 500,
+      "200k": 150,
+      "500k": 60,
+      "1m": 30
+    },
+    "rates_100": {
+      "1k": 2000,
+      "50k": 800,
+      "200k": 200,
+      "500k": 80,
+      "1m": 40
+    }
+  },
+  "note": "Focused 60-second 1M-token-class gate after exact-length Model Group body forwarding. This run proves Model Group does not add payload-proportional overhead compared with the single-route path under the same HTTP run.",
+  "results": [
+    {
+      "scheme": "http",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "single",
+      "direct_p50_ms": 8.129,
+      "direct_p99_ms": 13.668,
+      "router_p50_ms": 21.728,
+      "router_p99_ms": 33.424,
+      "overhead_p50_ms": 13.599,
+      "overhead_p99_ms": 19.756,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "http",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "rr",
+      "direct_p50_ms": 8.129,
+      "direct_p99_ms": 13.668,
+      "router_p50_ms": 16.908,
+      "router_p99_ms": 28.024,
+      "overhead_p50_ms": 8.779,
+      "overhead_p99_ms": 14.356,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "http",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "weighted",
+      "direct_p50_ms": 8.129,
+      "direct_p99_ms": 13.668,
+      "router_p50_ms": 16.269,
+      "router_p99_ms": 27.443,
+      "overhead_p50_ms": 8.139,
+      "overhead_p99_ms": 13.775,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "https",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "single",
+      "direct_p50_ms": 8.129,
+      "direct_p99_ms": 13.668,
+      "router_p50_ms": 30.662,
+      "router_p99_ms": 38.071,
+      "overhead_p50_ms": 22.532,
+      "overhead_p99_ms": 24.403,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "https",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "rr",
+      "direct_p50_ms": 8.129,
+      "direct_p99_ms": 13.668,
+      "router_p50_ms": 21.801,
+      "router_p99_ms": 33.144,
+      "overhead_p50_ms": 13.672,
+      "overhead_p99_ms": 19.476,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "https",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "weighted",
+      "direct_p50_ms": 8.129,
+      "direct_p99_ms": 13.668,
+      "router_p50_ms": 22.252,
+      "router_p99_ms": 33.242,
+      "overhead_p50_ms": 14.123,
+      "overhead_p99_ms": 19.574,
+      "router_rps": 40.0,
+      "non200": 0
+    }
+  ],
+  "gates": [
+    {
+      "id": "MODEL_GROUP_1M_DELTA",
+      "policy": "rr",
+      "concurrency": 200,
+      "metric": "p50_overhead_delta_vs_single_ms",
+      "value": -4.82,
+      "threshold": 0.5,
+      "pass": true
+    },
+    {
+      "id": "MODEL_GROUP_1M_DELTA",
+      "policy": "weighted",
+      "concurrency": 200,
+      "metric": "p50_overhead_delta_vs_single_ms",
+      "value": -5.459,
+      "threshold": 0.5,
+      "pass": true
+    }
+  ]
+}

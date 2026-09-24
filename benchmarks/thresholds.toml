@@ -53,6 +53,12 @@ max_worse_than_baseline_pct = 10
 # Do not add hard speed thresholds here without an artifact and written reason.
 payloads = ["500k", "1m"]
 
+[model_group]
+# Guard against payload-proportional overhead in the load-balancing path.
+# Compare within the same benchmark run: HTTP 1M Model Group p50 overhead
+# minus HTTP 1M single-route p50 overhead.
+max_1m_overhead_delta_vs_single_ms = 0.5
+
 [memory]
 # RSS means resident set size from Linux /proc/<pid>/status.
 record_rss = true

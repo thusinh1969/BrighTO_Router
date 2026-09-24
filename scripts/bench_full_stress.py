@@ -22,6 +22,10 @@ import pathlib
 import socket
 import subprocess
 import time
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python < 3.11 fallback
+    tomllib = None
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 OUT_ROOT = REPO / "bench" / "results"
@@ -34,6 +38,14 @@ POLICIES = ["single", "rr", "weighted"]
 TOKENS = {"1k": 1_000, "50k": 50_000, "200k": 200_000, "500k": 500_000, "1m": 1_000_000}
 RATES_50 = {"1k": 1_000, "50k": 500, "200k": 150, "500k": 60, "1m": 30}
 RATES_100 = {"1k": 2_000, "50k": 800, "200k": 200, "500k": 80, "1m": 40}
+
+
+def model_group_delta_threshold_ms() -> float:
+    path = REPO / "benchmarks" / "thresholds.toml"
+    if tomllib is None or not path.exists():
+        return 0.5
+    data = tomllib.loads(path.read_text())
+    return float(data.get("model_group", {}).get("max_1m_overhead_delta_vs_single_ms", 0.5))
 
 
 def rate_for(payload: str, conc: int) -> int:
@@ -357,8 +369,39 @@ VALUES (1,'{key_hash}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
             "note": "HTTPS rows compare HTTPS router latency against the same direct HTTP mock baseline, so they include direct router TLS cost.",
             "rows": rows,
         }
+        threshold = model_group_delta_threshold_ms()
+        gates = []
+        by_key = {(r["scheme"], r["payload"], r["concurrency"], r["policy"]): r for r in rows}
+        http_1m_concs = sorted(
+            {r["concurrency"] for r in rows if r["scheme"] == "http" and r["payload"] == "1m"}
+        )
+        for conc in http_1m_concs:
+            single = by_key.get(("http", "1m", conc, "single"))
+            if not single:
+                continue
+            for policy in ("rr", "weighted"):
+                grouped = by_key.get(("http", "1m", conc, policy))
+                if grouped:
+                    delta = grouped["overhead_p50_ms"] - single["overhead_p50_ms"]
+                    gates.append(
+                        {
+                            "id": "MODEL_GROUP_1M_DELTA",
+                            "policy": policy,
+                            "concurrency": conc,
+                            "metric": "p50_overhead_delta_vs_single_ms",
+                            "value": round(delta, 3),
+                            "threshold": threshold,
+                            "pass": delta <= threshold,
+                        }
+                    )
+        if gates:
+            summary["gates"] = gates
         (outdir / "summary.json").write_text(json.dumps(summary, indent=2))
         print("SUMMARY", outdir / "summary.json", flush=True)
+        failed = [g for g in gates if not g["pass"]]
+        if failed:
+            print("MODEL_GROUP_GATE_FAIL", json.dumps(failed, indent=2), flush=True)
+            raise SystemExit(2)
     finally:
         for proc, log in reversed(procs):
             try:

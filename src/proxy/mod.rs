@@ -78,8 +78,11 @@ fn reqwest_body_from_chunks(chunks: Vec<Bytes>) -> reqwest::Body {
     if chunks.len() == 1 {
         return reqwest::Body::from(chunks.into_iter().next().unwrap());
     }
-    let stream = futures::stream::iter(chunks.into_iter().map(Ok::<Bytes, std::io::Error>));
-    reqwest::Body::wrap_stream(stream)
+    // Keep the rewritten request on the same exact-content-length path as
+    // Body::from(Bytes). wrap_stream would work functionally, but it moves the
+    // Model Group path onto a chunked/streamed upload and adds large-payload
+    // overhead that the single-route path does not pay.
+    reqwest::Body::wrap(ExactLengthChunksBody::new(chunks))
 }
 
 fn find_top_level_model_string_span(body: &[u8]) -> Option<(usize, usize)> {
@@ -379,6 +382,73 @@ impl http_body::Body for ExactLengthUploadBody {
                 Poll::Ready(None)
             }
             Poll::Pending => Poll::Pending,
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.lock_inner().ended
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        let sent = self.lock_inner().sent;
+        SizeHint::with_exact(self.content_length.saturating_sub(sent))
+    }
+}
+
+struct ExactLengthChunksBody {
+    inner: Mutex<ExactLengthChunksInner>,
+    content_length: u64,
+}
+
+struct ExactLengthChunksInner {
+    chunks: std::vec::IntoIter<Bytes>,
+    sent: u64,
+    ended: bool,
+}
+
+impl ExactLengthChunksBody {
+    fn new(chunks: Vec<Bytes>) -> Self {
+        let content_length = chunks.iter().map(|chunk| chunk.len() as u64).sum();
+        Self {
+            inner: Mutex::new(ExactLengthChunksInner {
+                chunks: chunks.into_iter(),
+                sent: 0,
+                ended: false,
+            }),
+            content_length,
+        }
+    }
+
+    fn lock_inner(&self) -> std::sync::MutexGuard<'_, ExactLengthChunksInner> {
+        match self.inner.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+}
+
+impl http_body::Body for ExactLengthChunksBody {
+    type Data = Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        let this = self.as_ref().get_ref();
+        let mut inner = this.lock_inner();
+        loop {
+            match inner.chunks.next() {
+                Some(chunk) if chunk.is_empty() => continue,
+                Some(chunk) => {
+                    inner.sent = inner.sent.saturating_add(chunk.len() as u64);
+                    return Poll::Ready(Some(Ok(Frame::data(chunk))));
+                }
+                None => {
+                    inner.ended = true;
+                    return Poll::Ready(None);
+                }
+            }
         }
     }
 
@@ -1435,6 +1505,28 @@ mod tests {
     }
 
     #[test]
+    fn model_rewrite_finds_model_at_end_after_tool_schema() {
+        let filler = "x".repeat(20_000);
+        let body = format!(
+            "{{\"tools\":[{{\"type\":\"function\",\"function\":{{\"name\":\"x\",\"parameters\":{{\"type\":\"object\",\"properties\":{{\"model\":{{\"type\":\"string\",\"description\":\"nested only {filler}\"}}}}}}}}}}],\"messages\":[{{\"role\":\"user\",\"content\":\"hello\"}}],\"model\":\"public-group\"}}"
+        );
+        let rewritten = rewrite_top_level_model(body.as_bytes(), "provider-model").unwrap();
+        let text = std::str::from_utf8(&rewritten).unwrap();
+        assert!(text.contains(r#""model":"provider-model"}"#));
+        assert!(
+            text.contains(r#""properties":{"model":{"type":"string""#),
+            "nested tool schema model key must stay untouched"
+        );
+    }
+
+    #[test]
+    fn model_rewrite_rejects_invalid_or_missing_top_level_model() {
+        assert!(rewrite_top_level_model(br#"not-json"#, "x").is_none());
+        assert!(rewrite_top_level_model(br#"{"messages":[{"model":"nested"}]}"#, "x").is_none());
+        assert!(rewrite_top_level_model(br#"{"model":123,"messages":[]}"#, "x").is_none());
+    }
+
+    #[test]
     fn model_rewrite_preserves_body_when_provider_model_already_matches() {
         let body =
             br#"{"stream":true,"messages":[{"role":"user","content":"hello"}],"model":"same"}"#;
@@ -1450,6 +1542,16 @@ mod tests {
             rewritten.as_ref(),
             br#"{"model":"provider \"quoted\"","messages":[{"role":"user","content":"hello"}]}"#
         );
+    }
+
+    #[test]
+    fn exact_length_chunks_body_reports_exact_remaining_size() {
+        let body = ExactLengthChunksBody::new(vec![
+            Bytes::from_static(b"abc"),
+            Bytes::new(),
+            Bytes::from_static(b"defg"),
+        ]);
+        assert_eq!(http_body::Body::size_hint(&body).exact(), Some(7));
     }
 
     #[test]
