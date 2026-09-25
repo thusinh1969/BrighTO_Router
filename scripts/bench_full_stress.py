@@ -34,8 +34,9 @@ ADMIN_KEY = os.environ.get("ADMIN_MASTER_KEY", "br-admin-bench-local-only")
 DUR = os.environ.get("DUR", "60s")
 CONCS = [int(x) for x in os.environ.get("CONCS", "50,100").split(",") if x]
 PAYLOADS = [x for x in os.environ.get("PAYLOADS", "1k,50k,200k,500k,1m").split(",") if x]
-POLICIES = [x for x in os.environ.get("POLICIES_ORDER", "single,rr,weighted").split(",") if x]
+POLICIES = [x for x in os.environ.get("POLICIES_ORDER", "single,single_group,rr,weighted").split(",") if x]
 MODEL_GROUP_SAME_MOCK = os.environ.get("MODEL_GROUP_SAME_MOCK", "0") == "1"
+WARMUP_SECS = int(os.environ.get("WARMUP_SECS", "0"))
 TOKENS = {"1k": 1_000, "50k": 50_000, "200k": 200_000, "500k": 500_000, "1m": 1_000_000}
 RATES_50 = {"1k": 1_000, "50k": 500, "200k": 150, "500k": 60, "1m": 30}
 RATES_100 = {"1k": 2_000, "50k": 800, "200k": 200, "500k": 80, "1m": 40}
@@ -112,6 +113,7 @@ def make_payloads(outdir: pathlib.Path) -> pathlib.Path:
         for label, model in {
             "direct": "mock-model",
             "single": "mock-model",
+            "single_group": "lb-single",
             "rr": "lb-rr",
             "weighted": "lb-weighted",
         }.items():
@@ -139,6 +141,34 @@ def parse_oha(path: pathlib.Path) -> dict:
         "non200": max(0, total - ok),
         "total": total,
     }
+
+
+def run_warmup(url: str, body: pathlib.Path, conc: int, rate: int, *, auth=False, insecure=False) -> None:
+    if WARMUP_SECS <= 0:
+        return
+    cmd = [
+        "oha",
+        "-z",
+        f"{WARMUP_SECS}s",
+        "-c",
+        str(conc),
+        "-m",
+        "POST",
+        "--no-tui",
+        "--wait-ongoing-requests-after-deadline",
+        "-q",
+        str(rate),
+        "-T",
+        "application/json",
+        "-D",
+        str(body),
+    ]
+    if auth:
+        cmd += ["-H", f"authorization: Bearer {KEY}"]
+    if insecure:
+        cmd += ["--insecure"]
+    cmd += [url]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def run_oha(url: str, body: pathlib.Path, out: pathlib.Path, conc: int, rate: int, *, auth=False, insecure=False) -> dict:
@@ -265,10 +295,12 @@ VALUES (1,'mock-a','http://127.0.0.1:{mock_a_port}','',1,0,'openai',TRUE),
        (2,'mock-b','{group_b_base_url}','',1,0,'openai',TRUE);
 INSERT INTO model_routes (model_name,backend_ids,fallback_backend_id,chars_per_token,first_byte_timeout,provider_model_name,enabled,auth_mode,protocol,routing_policy)
 VALUES ('mock-model','[1]',NULL,4.0,180,'mock-model',TRUE,'none','openai_chat','least_loaded_weighted'),
+       ('lb-single','[1]',NULL,4.0,180,'lb-single',TRUE,'none','openai_chat','round_robin'),
        ('lb-rr','[1,2]',NULL,4.0,180,'lb-rr',TRUE,'none','openai_chat','round_robin'),
        ('lb-weighted','[1,2]',NULL,4.0,180,'lb-weighted',TRUE,'none','openai_chat','weighted_round_robin');
 INSERT INTO model_route_endpoints (model_name,backend_id,provider_model_name,provider_key_ref,auth_mode,protocol,weight,max_inflight,enabled)
-VALUES ('lb-rr',1,'{group_endpoint_model_a}',NULL,'none','openai_chat',1,0,TRUE),
+VALUES ('lb-single',1,'mock-model',NULL,'none','openai_chat',1,0,TRUE),
+       ('lb-rr',1,'{group_endpoint_model_a}',NULL,'none','openai_chat',1,0,TRUE),
        ('lb-rr',2,'{group_endpoint_model_b}',NULL,'none','openai_chat',1,0,TRUE),
        ('lb-weighted',1,'{group_endpoint_model_a}',NULL,'none','openai_chat',3,0,TRUE),
        ('lb-weighted',2,'{group_endpoint_model_b}',NULL,'none','openai_chat',1,0,TRUE);
@@ -284,9 +316,12 @@ VALUES (1,'{key_hash}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
         for payload in PAYLOADS:
             for conc in CONCS:
                 rate = rate_for(payload, conc)
+                direct_url = f"http://127.0.0.1:{mock_a_port}/v1/chat/completions"
+                direct_body = payload_dir / f"direct-{payload}.json"
+                run_warmup(direct_url, direct_body, conc, rate)
                 result = run_oha(
-                    f"http://127.0.0.1:{mock_a_port}/v1/chat/completions",
-                    payload_dir / f"direct-{payload}.json",
+                    direct_url,
+                    direct_body,
                     outdir / f"direct-{payload}-c{conc}.json",
                     conc,
                     rate,
@@ -329,9 +364,12 @@ VALUES (1,'{key_hash}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                     rate = rate_for(payload, conc)
                     baseline = direct[(payload, conc)]
                     for policy in POLICIES:
+                        router_url = f"{base}/v1/chat/completions"
+                        router_body = payload_dir / f"{policy}-{payload}.json"
+                        run_warmup(router_url, router_body, conc, rate, auth=True, insecure=insecure)
                         result = run_oha(
-                            f"{base}/v1/chat/completions",
-                            payload_dir / f"{policy}-{payload}.json",
+                            router_url,
+                            router_body,
                             outdir / f"{scheme}-{policy}-{payload}-c{conc}.json",
                             conc,
                             rate,
@@ -376,6 +414,7 @@ VALUES (1,'{key_hash}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                 "rates_50": RATES_50,
                 "rates_100": RATES_100,
                 "MODEL_GROUP_SAME_MOCK": MODEL_GROUP_SAME_MOCK,
+                "WARMUP_SECS": WARMUP_SECS,
             },
             "note": "HTTPS rows compare HTTPS router latency against the same direct HTTP mock baseline, so they include direct router TLS cost.",
             "rows": rows,
@@ -387,23 +426,25 @@ VALUES (1,'{key_hash}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
             {r["concurrency"] for r in rows if r["scheme"] == "http" and r["payload"] == "1m"}
         )
         for conc in http_1m_concs:
-            single = by_key.get(("http", "1m", conc, "single"))
-            if not single:
+            baseline_policy = "single_group" if MODEL_GROUP_SAME_MOCK else "single"
+            baseline = by_key.get(("http", "1m", conc, baseline_policy))
+            if not baseline:
                 continue
             for policy in ("rr", "weighted"):
                 grouped = by_key.get(("http", "1m", conc, policy))
                 if grouped:
-                    delta = grouped["overhead_p50_ms"] - single["overhead_p50_ms"]
-                    gate_pass = 0 <= delta <= threshold if MODEL_GROUP_SAME_MOCK else delta <= threshold
+                    delta = grouped["overhead_p50_ms"] - baseline["overhead_p50_ms"]
+                    gate_pass = abs(delta) <= threshold if MODEL_GROUP_SAME_MOCK else delta <= threshold
                     gates.append(
                         {
                             "id": "MODEL_GROUP_1M_DELTA",
+                            "baseline_policy": baseline_policy,
                             "policy": policy,
                             "concurrency": conc,
-                            "metric": "p50_overhead_delta_vs_single_ms",
+                            "metric": "p50_overhead_delta_vs_baseline_ms",
                             "value": round(delta, 3),
                             "threshold": threshold,
-                            "same_mock_required_non_negative": MODEL_GROUP_SAME_MOCK,
+                            "same_mock_abs_delta_gate": MODEL_GROUP_SAME_MOCK,
                             "pass": gate_pass,
                         }
                     )

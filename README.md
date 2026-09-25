@@ -480,7 +480,7 @@ Benchmark matrix:
 Current verified public-facing status:
 
 - The large-context proof artifacts cover the 1.0 fast path from `1k` through `1m`, at concurrency 1, 50, and 200.
-- The current Model Group load-balancing artifact covers two local mock endpoints, round-robin and weighted round-robin, payloads `1k`, `500k`, and `1m` at concurrency 200 after exact-length body forwarding. Artifact: `benchmarks/artifacts/v1-model-group-lb-current-summary.json`. The fair same-mock 1M delta gate is in the benchmark harness and must pass before a release claim uses Model Group-versus-single-route deltas.
+- The current Model Group load-balancing artifact covers two local mock endpoints, round-robin and weighted round-robin, payloads `1k`, `500k`, and `1m` at concurrency 200 after exact-length body forwarding. Artifact: `benchmarks/artifacts/v1-model-group-lb-current-summary.json`. The fair same-mock 60-second 1M gate passed with RR delta `-0.005 ms` and weighted delta `+0.004 ms` versus a one-endpoint Model Group baseline. Artifact: `benchmarks/artifacts/v1-model-group-lb-1m-60s-gate-summary.json`.
 - The headline 1M HTTP result at concurrency 200 is `+2.167 ms p50` and `+1.664 ms p99` router overhead with `0` non-200 responses.
 - The headline 1M HTTPS result at concurrency 200 is `+6.539 ms p50` and `+35.845 ms p99` router overhead with `0` non-200 responses.
 - Hard release thresholds still apply to the calibrated `1k`, `50k`, and `200k` gates. The `500k` and `1m` artifacts are published measurement proof and will become hard gates only after we have more repeated public baselines.

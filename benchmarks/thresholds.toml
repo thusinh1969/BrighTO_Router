@@ -55,8 +55,9 @@ payloads = ["500k", "1m"]
 
 [model_group]
 # Guard against payload-proportional overhead in the load-balancing path.
-# Compare within the same benchmark run: HTTP 1M Model Group p50 overhead
-# minus HTTP 1M single-route p50 overhead.
+# Compare within the same benchmark run. In fair same-mock mode this is
+# HTTP 1M Model Group p50 overhead minus the one-endpoint Model Group baseline.
+# The key name is kept stable for existing scripts.
 max_1m_overhead_delta_vs_single_ms = 0.5
 
 [memory]

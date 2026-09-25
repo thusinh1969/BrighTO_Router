@@ -1,0 +1,171 @@
+{
+  "name": "BrighTO-Router 1.0.1 fair same-mock Model Group 1M delta gate",
+  "date": "2026-09-25",
+  "source": "bench/results/20260925-082624-full-1m-http-https-lb-local/summary.json",
+  "method": "Deterministic local Rust mock upstream. MODEL_GROUP_SAME_MOCK=1 makes the single route and every Model Group endpoint use the same mock backend and provider model. The gate compares round-robin and weighted Model Groups against a one-endpoint Model Group baseline, so it measures load-balancing overhead without cross-backend noise.",
+  "duration": "60s",
+  "runs": 1,
+  "knobs": {
+    "DUR": "60s",
+    "CONCS": [
+      200
+    ],
+    "PAYLOADS": [
+      "1m"
+    ],
+    "rates_50": {
+      "1k": 1000,
+      "50k": 500,
+      "200k": 150,
+      "500k": 60,
+      "1m": 30
+    },
+    "rates_100": {
+      "1k": 2000,
+      "50k": 800,
+      "200k": 200,
+      "500k": 80,
+      "1m": 40
+    },
+    "MODEL_GROUP_SAME_MOCK": true,
+    "WARMUP_SECS": 5
+  },
+  "results": [
+    {
+      "scheme": "http",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "single",
+      "direct_p50_ms": 7.836,
+      "direct_p99_ms": 12.418,
+      "router_p50_ms": 16.585,
+      "router_p99_ms": 27.146,
+      "overhead_p50_ms": 8.75,
+      "overhead_p99_ms": 14.728,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "http",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "single_group",
+      "direct_p50_ms": 7.836,
+      "direct_p99_ms": 12.418,
+      "router_p50_ms": 16.411,
+      "router_p99_ms": 27.076,
+      "overhead_p50_ms": 8.575,
+      "overhead_p99_ms": 14.658,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "http",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "rr",
+      "direct_p50_ms": 7.836,
+      "direct_p99_ms": 12.418,
+      "router_p50_ms": 16.406,
+      "router_p99_ms": 25.219,
+      "overhead_p50_ms": 8.57,
+      "overhead_p99_ms": 12.801,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "http",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "weighted",
+      "direct_p50_ms": 7.836,
+      "direct_p99_ms": 12.418,
+      "router_p50_ms": 16.414,
+      "router_p99_ms": 26.869,
+      "overhead_p50_ms": 8.579,
+      "overhead_p99_ms": 14.451,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "https",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "single",
+      "direct_p50_ms": 7.836,
+      "direct_p99_ms": 12.418,
+      "router_p50_ms": 21.663,
+      "router_p99_ms": 33.183,
+      "overhead_p50_ms": 13.827,
+      "overhead_p99_ms": 20.765,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "https",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "single_group",
+      "direct_p50_ms": 7.836,
+      "direct_p99_ms": 12.418,
+      "router_p50_ms": 21.517,
+      "router_p99_ms": 33.407,
+      "overhead_p50_ms": 13.681,
+      "overhead_p99_ms": 20.989,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "https",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "rr",
+      "direct_p50_ms": 7.836,
+      "direct_p99_ms": 12.418,
+      "router_p50_ms": 20.756,
+      "router_p99_ms": 32.067,
+      "overhead_p50_ms": 12.921,
+      "overhead_p99_ms": 19.649,
+      "router_rps": 40.0,
+      "non200": 0
+    },
+    {
+      "scheme": "https",
+      "payload": "1m",
+      "ccu": 200,
+      "policy": "weighted",
+      "direct_p50_ms": 7.836,
+      "direct_p99_ms": 12.418,
+      "router_p50_ms": 21.345,
+      "router_p99_ms": 33.434,
+      "overhead_p50_ms": 13.509,
+      "overhead_p99_ms": 21.017,
+      "router_rps": 40.0,
+      "non200": 0
+    }
+  ],
+  "gates": [
+    {
+      "id": "MODEL_GROUP_1M_DELTA",
+      "baseline_policy": "single_group",
+      "policy": "rr",
+      "concurrency": 200,
+      "metric": "p50_overhead_delta_vs_baseline_ms",
+      "value": -0.005,
+      "threshold": 0.5,
+      "same_mock_abs_delta_gate": true,
+      "pass": true
+    },
+    {
+      "id": "MODEL_GROUP_1M_DELTA",
+      "baseline_policy": "single_group",
+      "policy": "weighted",
+      "concurrency": 200,
+      "metric": "p50_overhead_delta_vs_baseline_ms",
+      "value": 0.004,
+      "threshold": 0.5,
+      "same_mock_abs_delta_gate": true,
+      "pass": true
+    }
+  ]
+}

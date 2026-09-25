@@ -582,13 +582,11 @@ async fn handle_generate(
     let (head, mut proxy_body) = (head, proxy_body);
     match &proxy_body {
         ProxyRequestBody::Buffered(body) => {
-            if route.endpoints.is_empty() {
+            if route.endpoints.is_empty() && json_proxy_body_needs_rewrite(&route, model, protocol)
+            {
                 if let Some(b) = rewrite_json_proxy_body(body, &route, protocol) {
                     proxy_body = ProxyRequestBody::Buffered(Bytes::from(b));
-                } else if route.provider_model_name != model
-                    || protocol == ProviderProtocol::VoyageRerank
-                    || protocol == ProviderProtocol::QwenRerank
-                {
+                } else {
                     return build_error(
                         &request_id,
                         StatusCode::BAD_REQUEST,
@@ -918,6 +916,18 @@ fn rewrite_qwen_rerank_object(
         );
     }
     serde_json::to_vec(&serde_json::Value::Object(flat)).ok()
+}
+
+fn json_proxy_body_needs_rewrite(
+    route: &ModelRoute,
+    public_model: &str,
+    protocol: ProviderProtocol,
+) -> bool {
+    route.provider_model_name != public_model
+        || matches!(
+            protocol,
+            ProviderProtocol::QwenRerank | ProviderProtocol::VoyageRerank
+        )
 }
 
 /// Viết lại JSON buffered nhỏ. Không dùng cho streaming large body.
