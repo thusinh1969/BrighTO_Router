@@ -24,7 +24,7 @@ Options through environment variables:
   BRIGHTO_NO_START=1                          Clone/update only; do not start Docker
 
 Examples:
-  BRIGHTO_INSTALL_DIR=/opt/brighto-router curl -fsSL URL | bash
+  curl -fsSL URL | BRIGHTO_INSTALL_DIR=/opt/brighto-router bash
   BRIGHTO_REF=main curl -fsSL URL | bash
 EOF
 }

@@ -30,7 +30,7 @@
       "1m": 40
     }
   },
-  "note": "Smoke/stress measurement after exact-length Model Group body forwarding. The release safety check compares HTTP 1M Model Group p50 overhead against HTTP 1M single-route p50 overhead in the same run.",
+  "note": "Smoke/stress measurement after exact-length Model Group body forwarding. This artifact reports standalone Model Group overhead against a direct mock backend; it is not a Model Group-versus-single-route delta gate.",
   "results": [
     {
       "scheme": "http",
@@ -283,26 +283,6 @@
       "overhead_p99_ms": 33.3,
       "router_rps": 39.98,
       "non200": 0
-    }
-  ],
-  "gates": [
-    {
-      "id": "MODEL_GROUP_1M_DELTA",
-      "policy": "rr",
-      "concurrency": 200,
-      "metric": "p50_overhead_delta_vs_single_ms",
-      "value": -6.021,
-      "threshold": 0.5,
-      "pass": true
-    },
-    {
-      "id": "MODEL_GROUP_1M_DELTA",
-      "policy": "weighted",
-      "concurrency": 200,
-      "metric": "p50_overhead_delta_vs_single_ms",
-      "value": -5.081,
-      "threshold": 0.5,
-      "pass": true
     }
   ]
 }

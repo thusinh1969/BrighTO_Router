@@ -54,7 +54,7 @@ Layer B uses `brighto-router-mock`, a deterministic local backend that returns i
 | `INTERNAL_LEDGER_DROPS` | Internal safety counter from metrics. | all measured traffic | `router_ledger_dropped_total = 0` |
 | `baseline` | Regression against `bench/baseline.json`. | every gate row above | no metric worse than baseline by more than 10% |
 
-The harness records raw data for 500k and 1M in full 1.0 runs. Model Group has one calibrated large-payload regression gate: at HTTP 1M, Model Group p50 overhead minus single-route p50 overhead must be no more than `0.5 ms` in the same run.
+The harness records raw data for 500k and 1M in full 1.0 runs. Model Group has one calibrated large-payload regression gate in fair mode: run `MODEL_GROUP_SAME_MOCK=1` so the single route and every Model Group member use the same mock backend. At HTTP 1M, Model Group p50 overhead minus single-route p50 overhead must be between `0` and `0.5 ms` in the same run. A negative delta is rejected because it is not a credible release claim.
 
 ## Commands
 

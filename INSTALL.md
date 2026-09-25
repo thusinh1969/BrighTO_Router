@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/thusinh1969/BrighTO_Router/main/ins
 This clones or updates the repo in `$HOME/brighto-router` and runs `./start.sh install`. To choose another directory:
 
 ```bash
-BRIGHTO_INSTALL_DIR=/opt/brighto-router curl -fsSL https://raw.githubusercontent.com/thusinh1969/BrighTO_Router/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/thusinh1969/BrighTO_Router/main/install.sh | BRIGHTO_INSTALL_DIR=/opt/brighto-router bash
 ```
 
 If you want to inspect the installer before running it:

@@ -34,7 +34,8 @@ ADMIN_KEY = os.environ.get("ADMIN_MASTER_KEY", "br-admin-bench-local-only")
 DUR = os.environ.get("DUR", "60s")
 CONCS = [int(x) for x in os.environ.get("CONCS", "50,100").split(",") if x]
 PAYLOADS = [x for x in os.environ.get("PAYLOADS", "1k,50k,200k,500k,1m").split(",") if x]
-POLICIES = ["single", "rr", "weighted"]
+POLICIES = [x for x in os.environ.get("POLICIES_ORDER", "single,rr,weighted").split(",") if x]
+MODEL_GROUP_SAME_MOCK = os.environ.get("MODEL_GROUP_SAME_MOCK", "0") == "1"
 TOKENS = {"1k": 1_000, "50k": 50_000, "200k": 200_000, "500k": 500_000, "1m": 1_000_000}
 RATES_50 = {"1k": 1_000, "50k": 500, "200k": 150, "500k": 60, "1m": 30}
 RATES_100 = {"1k": 2_000, "50k": 800, "200k": 200, "500k": 80, "1m": 40}
@@ -253,21 +254,24 @@ def main() -> None:
         wait_url(f"http://127.0.0.1:{mock_b_port}/health")
 
         key_hash = hashlib.sha256(KEY.encode()).hexdigest()
+        group_b_base_url = f"http://127.0.0.1:{mock_a_port if MODEL_GROUP_SAME_MOCK else mock_b_port}"
+        group_endpoint_model_a = "mock-model" if MODEL_GROUP_SAME_MOCK else "mock-model-a"
+        group_endpoint_model_b = "mock-model" if MODEL_GROUP_SAME_MOCK else "mock-model-b"
         psql(
             db,
             f"""
 INSERT INTO backends (id,name,base_url,api_key_ref,weight,max_inflight,format,enabled)
 VALUES (1,'mock-a','http://127.0.0.1:{mock_a_port}','',1,0,'openai',TRUE),
-       (2,'mock-b','http://127.0.0.1:{mock_b_port}','',1,0,'openai',TRUE);
+       (2,'mock-b','{group_b_base_url}','',1,0,'openai',TRUE);
 INSERT INTO model_routes (model_name,backend_ids,fallback_backend_id,chars_per_token,first_byte_timeout,provider_model_name,enabled,auth_mode,protocol,routing_policy)
 VALUES ('mock-model','[1]',NULL,4.0,180,'mock-model',TRUE,'none','openai_chat','least_loaded_weighted'),
        ('lb-rr','[1,2]',NULL,4.0,180,'lb-rr',TRUE,'none','openai_chat','round_robin'),
        ('lb-weighted','[1,2]',NULL,4.0,180,'lb-weighted',TRUE,'none','openai_chat','weighted_round_robin');
 INSERT INTO model_route_endpoints (model_name,backend_id,provider_model_name,provider_key_ref,auth_mode,protocol,weight,max_inflight,enabled)
-VALUES ('lb-rr',1,'mock-model-a',NULL,'none','openai_chat',1,0,TRUE),
-       ('lb-rr',2,'mock-model-b',NULL,'none','openai_chat',1,0,TRUE),
-       ('lb-weighted',1,'mock-model-a',NULL,'none','openai_chat',3,0,TRUE),
-       ('lb-weighted',2,'mock-model-b',NULL,'none','openai_chat',1,0,TRUE);
+VALUES ('lb-rr',1,'{group_endpoint_model_a}',NULL,'none','openai_chat',1,0,TRUE),
+       ('lb-rr',2,'{group_endpoint_model_b}',NULL,'none','openai_chat',1,0,TRUE),
+       ('lb-weighted',1,'{group_endpoint_model_a}',NULL,'none','openai_chat',3,0,TRUE),
+       ('lb-weighted',2,'{group_endpoint_model_b}',NULL,'none','openai_chat',1,0,TRUE);
 INSERT INTO teams (id,name,budget,enabled)
 VALUES (1,'bench','{{"period":"month","max_tokens":1000000000000,"per_model":{{}}}}',TRUE);
 INSERT INTO api_keys (id,key_hash,key_prefix,team_id,owner,allowed_models,budget,rpm_limit,concurrency_limit,expires_at,enabled)
@@ -365,7 +369,14 @@ VALUES (1,'{key_hash}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
         summary = {
             "name": "BrighTO local full 1M HTTP/HTTPS single-route and Model Group stress",
             "commit": subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, text=True).strip(),
-            "knobs": {"DUR": DUR, "CONCS": CONCS, "PAYLOADS": PAYLOADS, "rates_50": RATES_50, "rates_100": RATES_100},
+            "knobs": {
+                "DUR": DUR,
+                "CONCS": CONCS,
+                "PAYLOADS": PAYLOADS,
+                "rates_50": RATES_50,
+                "rates_100": RATES_100,
+                "MODEL_GROUP_SAME_MOCK": MODEL_GROUP_SAME_MOCK,
+            },
             "note": "HTTPS rows compare HTTPS router latency against the same direct HTTP mock baseline, so they include direct router TLS cost.",
             "rows": rows,
         }
@@ -383,6 +394,7 @@ VALUES (1,'{key_hash}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                 grouped = by_key.get(("http", "1m", conc, policy))
                 if grouped:
                     delta = grouped["overhead_p50_ms"] - single["overhead_p50_ms"]
+                    gate_pass = 0 <= delta <= threshold if MODEL_GROUP_SAME_MOCK else delta <= threshold
                     gates.append(
                         {
                             "id": "MODEL_GROUP_1M_DELTA",
@@ -391,7 +403,8 @@ VALUES (1,'{key_hash}','bench-key',1,'bench','[]',NULL,NULL,NULL,NULL,TRUE);
                             "metric": "p50_overhead_delta_vs_single_ms",
                             "value": round(delta, 3),
                             "threshold": threshold,
-                            "pass": delta <= threshold,
+                            "same_mock_required_non_negative": MODEL_GROUP_SAME_MOCK,
+                            "pass": gate_pass,
                         }
                     )
         if gates:
