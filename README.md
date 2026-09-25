@@ -11,7 +11,7 @@ Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Mod
 - Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 - Official Docker image: `thusinh1969/brighto_airouter:v1`
 - Search keywords: open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, LiteLLM alternative
-- Release version: `1.0.0`
+- Release version: `1.0.1`
 
 ## Why teams choose BrighTO-Router
 
