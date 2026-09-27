@@ -4,7 +4,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-ROUTER_URL="${ROUTER_URL:-https://rtx3090:18443}"
+if [[ -z "${ROUTER_URL:-}" && -f .env ]]; then
+  ROUTER_URL="$(python3 - <<'PY'
+from pathlib import Path
+base = ''
+for raw in Path('.env').read_text(errors='ignore').splitlines():
+    if raw.startswith('BASE_URL='):
+        base = raw.split('=', 1)[1].strip().strip('"').strip("'")
+        break
+print(base or 'http://127.0.0.1:18080')
+PY
+)"
+else
+  ROUTER_URL="${ROUTER_URL:-http://127.0.0.1:18080}"
+fi
 OLLAYA_PORT="${OLLAYA_PORT:-11435}"
 OLLAYA_HOST_BIND="${OLLAYA_HOST_BIND:-127.0.0.1:${OLLAYA_PORT}}"
 OLLAYA_CONTAINER="${OLLAYA_CONTAINER:-brighto-ollaya-laya-smoke}"
