@@ -50,6 +50,8 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         async function login(page) {{
           await page.goto(baseURL + '/', {{ waitUntil: 'domcontentloaded' }});
           await expect(page.locator('#login-view')).toBeVisible();
+          await expect(page.locator('#login-user')).toBeVisible();
+          await page.fill('#login-user', 'admin');
           let blockedOnce = false;
           await page.route('**/admin/backends', async route => {{
             if (!blockedOnce && route.request().method() === 'GET') {{
@@ -63,7 +65,8 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await page.click('#login-submit');
           await expect(page.locator('#login-error')).toContainText('Admin access blocked: ip not allowed');
           await page.unroute('**/admin/backends');
-          await page.fill('#login-pass', ' ' + adminKey + ' ');
+          const pastedAdminKey = ' ' + String.fromCharCode(0x200b) + adminKey.replace('-', String.fromCharCode(0x2011)) + ' ';
+          await page.fill('#login-pass', pastedAdminKey);
           await page.click('#login-submit');
           await expect(page.locator('#app-view')).toBeVisible();
           await expect(page.locator('#page-title')).toContainText('Dashboard');
