@@ -19,6 +19,10 @@ bench/payloads/
 benchmarks/results/
 benchmarks/payloads/
 
+# generated diagram browser evidence
+docs/*.visual-check.*
+docs/**/*.visual-check.*
+
 # local notebooks/probes/cache
 .ipynb_checkpoints/
 .probe/

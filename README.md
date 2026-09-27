@@ -11,7 +11,7 @@ Use it as a free, open-source LiteLLM or Bifrost alternative when you want a nar
 </p>
 
 
-Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
+Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
 
 - Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 - Official Docker image: `thusinh1969/brighto_airouter:v1.1.0`
@@ -560,9 +560,12 @@ Runtime state is split deliberately:
 | Routing snapshot | Memory | The hot request path should not wait on the database. |
 | Budgets and live counters | Memory | Fast admission checks. |
 | Provider endpoints, routes, teams, keys | PostgreSQL | Durable control plane. |
+| Model Group counters | PostgreSQL | Keeps round-robin allocation consistent across router replicas. |
 | Usage ledger | PostgreSQL | Durable cost and usage record. |
 | Ledger fallback | Local JSONL file from `LEDGER_FALLBACK_FILE` | Keeps serving during a temporary PostgreSQL outage. |
 | Backend recovery probe | `BACKEND_CIRCUIT_OPEN_SECONDS`, default `30` | How long a failed backend stays out of rotation before a half-open test request can let it rejoin. |
+
+PostgreSQL is intentionally narrow: durable control plane, cross-pod Model Group counters, and usage metadata. It is not in the per-token provider streaming path. See the interactive diagrams: [v1.1.0 architecture](docs/architecture/brighto-router-workflow.html) and [PostgreSQL data flow](docs/postgresql-data-flow.html).
 
 **JSONL** means one JSON record per line.
 
@@ -660,6 +663,8 @@ Pass a tag if you want a custom local image name:
 ```
 
 The script builds the release binary, builds the Docker image, updates `.env` to use that local image with `BRIGHTO_ROUTER_PULL_POLICY=never`, restarts the router, and prints `./start.sh status`.
+
+Developer and release-support scripts are cataloged in [scripts/README.md](scripts/README.md). User-facing feature smoke tests live under `smoke/<feature>/` so the root install path stays simple.
 
 ## Enterprise direction
 

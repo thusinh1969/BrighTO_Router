@@ -1,0 +1,520 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "BrighTO-Router v1.1.0 Architecture",
+    "output": "docs/architecture/brighto-router-workflow.html",
+    "viewBox": [
+      1220,
+      760
+    ],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "control-plane",
+        "label": "Control plane",
+        "focus": [
+          "portal",
+          "admin_api",
+          "postgres",
+          "snapshot"
+        ],
+        "note": "Portal/Admin writes durable routes, teams, keys, provider config, and Model Group counters to PostgreSQL."
+      },
+      {
+        "id": "hot-path",
+        "label": "Fast path",
+        "focus": [
+          "client",
+          "router",
+          "snapshot",
+          "route_engine",
+          "providers"
+        ],
+        "note": "Client traffic reads an in-memory snapshot, chooses a route, and streams to cloud or local providers."
+      },
+      {
+        "id": "adapters",
+        "label": "Adapters",
+        "focus": [
+          "route_engine",
+          "adapters",
+          "providers",
+          "systemone"
+        ],
+        "note": "Chat, embeddings, rerank, ASR, Anthropic Messages, and System One decisions stay task-aware without bloating the hot path."
+      },
+      {
+        "id": "usage-release",
+        "label": "Usage + proof",
+        "focus": [
+          "router",
+          "ledger_queue",
+          "usage",
+          "fallback",
+          "release_gate"
+        ],
+        "note": "Usage metadata is queued and batched; release proof covers browser, API, Docker, and feature smoke."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "operators",
+      "type": "external",
+      "label": "Team Admin",
+      "sublabel": "routes, teams, budgets",
+      "pos": [
+        40,
+        105
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "tag": "human"
+    },
+    {
+      "id": "portal",
+      "type": "frontend",
+      "label": "Portal",
+      "sublabel": "single embedded HTML",
+      "pos": [
+        245,
+        105
+      ],
+      "size": [
+        155,
+        62
+      ],
+      "tag": "admin UI"
+    },
+    {
+      "id": "admin_api",
+      "type": "backend",
+      "label": "Admin API",
+      "sublabel": "test, save, edit",
+      "pos": [
+        455,
+        105
+      ],
+      "size": [
+        155,
+        62
+      ],
+      "tag": "validated"
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "config, counters, ledger",
+      "pos": [
+        690,
+        100
+      ],
+      "size": [
+        185,
+        72
+      ],
+      "tag": "durable"
+    },
+    {
+      "id": "snapshot",
+      "type": "messagebus",
+      "label": "ArcSwap Snapshot",
+      "sublabel": "lock-free config reads",
+      "pos": [
+        690,
+        245
+      ],
+      "size": [
+        185,
+        68
+      ],
+      "tag": "memory"
+    },
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "Client Apps",
+      "sublabel": "stable API model names",
+      "pos": [
+        40,
+        388
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "tag": "OpenAI-style"
+    },
+    {
+      "id": "router",
+      "type": "backend",
+      "label": "Rust Router",
+      "sublabel": "auth, budget, proxy",
+      "pos": [
+        245,
+        385
+      ],
+      "size": [
+        155,
+        68
+      ],
+      "tag": "hot path"
+    },
+    {
+      "id": "route_engine",
+      "type": "backend",
+      "label": "Route Engine",
+      "sublabel": "single route or group",
+      "pos": [
+        455,
+        385
+      ],
+      "size": [
+        155,
+        68
+      ],
+      "tag": "RR / weighted"
+    },
+    {
+      "id": "adapters",
+      "type": "backend",
+      "label": "Task Adapters",
+      "sublabel": "chat, embed, rerank, ASR, S1",
+      "pos": [
+        690,
+        385
+      ],
+      "size": [
+        185,
+        68
+      ],
+      "tag": "task-aware"
+    },
+    {
+      "id": "providers",
+      "type": "cloud",
+      "label": "Providers / Local LLMs",
+      "sublabel": "OpenAI, Anthropic, Ollaya/Laya",
+      "pos": [
+        995,
+        335
+      ],
+      "size": [
+        185,
+        68
+      ],
+      "tag": "upstream"
+    },
+    {
+      "id": "systemone",
+      "type": "external",
+      "label": "System One",
+      "sublabel": "JEV / DJEV / Ollaya / Laya",
+      "pos": [
+        995,
+        470
+      ],
+      "size": [
+        185,
+        68
+      ],
+      "tag": "/v1/systemone"
+    },
+    {
+      "id": "ledger_queue",
+      "type": "messagebus",
+      "label": "Async Ledger",
+      "sublabel": "batch off hot path",
+      "pos": [
+        455,
+        585
+      ],
+      "size": [
+        155,
+        62
+      ],
+      "tag": "mpsc"
+    },
+    {
+      "id": "usage",
+      "type": "database",
+      "label": "Usage Ledger",
+      "sublabel": "tokens, latency, errors",
+      "pos": [
+        690,
+        585
+      ],
+      "size": [
+        185,
+        62
+      ],
+      "tag": "metadata"
+    },
+    {
+      "id": "fallback",
+      "type": "database",
+      "label": "JSONL Fallback",
+      "sublabel": "temporary replay buffer",
+      "pos": [
+        690,
+        690
+      ],
+      "size": [
+        185,
+        62
+      ],
+      "tag": "DB down"
+    },
+    {
+      "id": "dashboard",
+      "type": "frontend",
+      "label": "Usage Dashboard",
+      "sublabel": "Portal charts and logs",
+      "pos": [
+        995,
+        625
+      ],
+      "size": [
+        185,
+        62
+      ],
+      "tag": "read-only"
+    },
+    {
+      "id": "release_gate",
+      "type": "security",
+      "label": "Release Gates",
+      "sublabel": "Playwright, cargo, Docker",
+      "pos": [
+        40,
+        625
+      ],
+      "size": [
+        160,
+        62
+      ],
+      "tag": "blocking"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "BrighTO-Router Docker image",
+      "wraps": [
+        "portal",
+        "admin_api",
+        "snapshot",
+        "router",
+        "route_engine",
+        "adapters",
+        "ledger_queue"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "Durable PostgreSQL state",
+      "wraps": [
+        "postgres",
+        "usage"
+      ],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    {
+      "id": "admin-opens",
+      "from": "operators",
+      "to": "portal",
+      "label": "configure",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelAt": [
+        218,
+        200
+      ]
+    },
+    {
+      "id": "portal-admin",
+      "from": "portal",
+      "to": "admin_api",
+      "label": "Admin API",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelDy": -30
+    },
+    {
+      "id": "admin-sql",
+      "from": "admin_api",
+      "to": "postgres",
+      "label": "routes / keys / teams",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelAt": [
+        610,
+        75
+      ]
+    },
+    {
+      "id": "snapshot-load",
+      "from": "postgres",
+      "to": "snapshot",
+      "label": "poll + swap",
+      "variant": "emphasis",
+      "route": "orthogonal-v",
+      "labelAt": [
+        785,
+        205
+      ]
+    },
+    {
+      "id": "client-call",
+      "from": "client",
+      "to": "router",
+      "label": "Bearer key",
+      "variant": "security",
+      "route": "straight",
+      "labelAt": [
+        218,
+        365
+      ]
+    },
+    {
+      "id": "router-route",
+      "from": "router",
+      "to": "route_engine",
+      "label": "policy OK",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelAt": [
+        428,
+        365
+      ]
+    },
+    {
+      "id": "snapshot-read",
+      "from": "snapshot",
+      "to": "router",
+      "label": "read config",
+      "variant": "dashed",
+      "route": "orthogonal-h",
+      "labelAt": [
+        500,
+        260
+      ],
+      "fromSide": "left",
+      "toSide": "top",
+      "via": [
+        [
+          650,
+          279
+        ],
+        [
+          322.5,
+          279
+        ],
+        [
+          322.5,
+          360
+        ]
+      ]
+    },
+    {
+      "id": "choose-adapter",
+      "from": "route_engine",
+      "to": "adapters",
+      "label": "route + protocol",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelAt": [
+        650,
+        470
+      ]
+    },
+    {
+      "id": "provider-proxy",
+      "from": "adapters",
+      "to": "providers",
+      "label": "proxy / stream",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelAt": [
+        910,
+        350
+      ]
+    },
+    {
+      "id": "systemone-proxy",
+      "from": "adapters",
+      "to": "systemone",
+      "label": "decision JSON",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelAt": [
+        910,
+        505
+      ]
+    },
+    {
+      "id": "usage-event",
+      "from": "router",
+      "to": "ledger_queue",
+      "label": "usage event",
+      "variant": "dashed",
+      "route": "orthogonal-v",
+      "labelAt": [
+        360,
+        535
+      ]
+    },
+    {
+      "id": "batch-insert",
+      "from": "ledger_queue",
+      "to": "usage",
+      "label": "batch INSERT",
+      "variant": "dashed",
+      "route": "straight",
+      "labelDy": -34
+    },
+    {
+      "id": "fallback-write",
+      "from": "ledger_queue",
+      "to": "fallback",
+      "label": "DB down",
+      "variant": "dashed",
+      "route": "orthogonal-h",
+      "labelAt": [
+        550,
+        705
+      ]
+    },
+    {
+      "id": "usage-dashboard",
+      "from": "usage",
+      "to": "dashboard",
+      "label": "usage SQL",
+      "variant": "default",
+      "route": "orthogonal-h",
+      "labelAt": [
+        915,
+        610
+      ]
+    },
+    {
+      "id": "release-proof",
+      "from": "release_gate",
+      "to": "router",
+      "label": "browser + API + Docker",
+      "variant": "security",
+      "route": "orthogonal-h",
+      "labelAt": [
+        235,
+        595
+      ]
+    }
+  ]
+}

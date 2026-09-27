@@ -1,0 +1,403 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "BrighTO-Router PostgreSQL Role",
+    "output": "docs/postgresql-data-flow.html",
+    "viewBox": [
+      1220,
+      760
+    ],
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "control-plane",
+        "label": "Control plane",
+        "focus": [
+          "portal",
+          "admin_api",
+          "control_tables",
+          "snapshot"
+        ],
+        "note": "Admin changes persist in PostgreSQL, then reload into the runtime snapshot."
+      },
+      {
+        "id": "hot-path",
+        "label": "Hot path",
+        "focus": [
+          "client",
+          "router_hot",
+          "snapshot",
+          "provider"
+        ],
+        "note": "Request routing uses memory state; PostgreSQL is not touched per token."
+      },
+      {
+        "id": "ledger-path",
+        "label": "Usage ledger",
+        "focus": [
+          "router_hot",
+          "ledger_queue",
+          "usage_table",
+          "fallback_file",
+          "dashboard"
+        ],
+        "note": "Usage metadata is queued, batched, and replayed if PostgreSQL recovers after an outage."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "portal",
+      "type": "frontend",
+      "label": "Admin Portal",
+      "sublabel": "routes, teams, keys",
+      "pos": [
+        50,
+        125
+      ],
+      "size": [
+        160,
+        62
+      ],
+      "tag": "control"
+    },
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "Client Apps",
+      "sublabel": "LLM / adapter calls",
+      "pos": [
+        50,
+        410
+      ],
+      "size": [
+        160,
+        62
+      ],
+      "tag": "traffic"
+    },
+    {
+      "id": "admin_api",
+      "type": "backend",
+      "label": "Admin API",
+      "sublabel": "validate changes",
+      "pos": [
+        290,
+        125
+      ],
+      "size": [
+        160,
+        62
+      ],
+      "tag": "SQL write"
+    },
+    {
+      "id": "router_hot",
+      "type": "backend",
+      "label": "Rust Hot Path",
+      "sublabel": "auth, budget, proxy",
+      "pos": [
+        290,
+        410
+      ],
+      "size": [
+        160,
+        62
+      ],
+      "tag": "fast path"
+    },
+    {
+      "id": "control_tables",
+      "type": "database",
+      "label": "Control Tables",
+      "sublabel": "backends, routes, teams, api_keys",
+      "pos": [
+        540,
+        100
+      ],
+      "size": [
+        190,
+        68
+      ],
+      "tag": "source of truth"
+    },
+    {
+      "id": "group_counters",
+      "type": "database",
+      "label": "Model Group Counters",
+      "sublabel": "cross-pod round robin",
+      "pos": [
+        540,
+        250
+      ],
+      "size": [
+        190,
+        68
+      ],
+      "tag": "PostgreSQL"
+    },
+    {
+      "id": "usage_table",
+      "type": "database",
+      "label": "Usage Ledger",
+      "sublabel": "tokens, latency, status, errors",
+      "pos": [
+        540,
+        445
+      ],
+      "size": [
+        190,
+        68
+      ],
+      "tag": "metadata only"
+    },
+    {
+      "id": "fallback_file",
+      "type": "database",
+      "label": "JSONL Fallback",
+      "sublabel": "local replay file",
+      "pos": [
+        540,
+        613
+      ],
+      "size": [
+        190,
+        68
+      ],
+      "tag": "temporary"
+    },
+    {
+      "id": "snapshot",
+      "type": "messagebus",
+      "label": "ArcSwap Snapshot",
+      "sublabel": "lock-free config read",
+      "pos": [
+        825,
+        175
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "tag": "in memory"
+    },
+    {
+      "id": "ledger_queue",
+      "type": "messagebus",
+      "label": "Async Ledger Queue",
+      "sublabel": "batch off hot path",
+      "pos": [
+        825,
+        615
+      ],
+      "size": [
+        180,
+        64
+      ],
+      "tag": "mpsc"
+    },
+    {
+      "id": "provider",
+      "type": "cloud",
+      "label": "LLM Providers",
+      "sublabel": "cloud or local backends",
+      "pos": [
+        1045,
+        365
+      ],
+      "size": [
+        165,
+        64
+      ],
+      "tag": "upstream"
+    },
+    {
+      "id": "dashboard",
+      "type": "backend",
+      "label": "Usage Dashboard",
+      "sublabel": "Portal charts and logs",
+      "pos": [
+        1045,
+        447
+      ],
+      "size": [
+        165,
+        64
+      ],
+      "tag": "read-only"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "PostgreSQL durable store",
+      "wraps": [
+        "control_tables",
+        "group_counters",
+        "usage_table"
+      ],
+      "pad": 20
+    },
+    {
+      "kind": "region",
+      "label": "Router process memory",
+      "wraps": [
+        "snapshot",
+        "ledger_queue"
+      ],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    {
+      "id": "portal-admin",
+      "from": "portal",
+      "to": "admin_api",
+      "label": "Admin CRUD",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelDy": -28
+    },
+    {
+      "id": "admin-control",
+      "from": "admin_api",
+      "to": "control_tables",
+      "label": "validated SQL",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelAt": [
+        465,
+        55
+      ]
+    },
+    {
+      "id": "control-snapshot",
+      "from": "control_tables",
+      "to": "snapshot",
+      "label": "poll + swap",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelDy": -34
+    },
+    {
+      "id": "client-request",
+      "from": "client",
+      "to": "router_hot",
+      "label": "API request",
+      "variant": "emphasis",
+      "route": "straight",
+      "labelDy": 42
+    },
+    {
+      "id": "snapshot-read",
+      "from": "snapshot",
+      "to": "router_hot",
+      "label": "read config",
+      "variant": "emphasis",
+      "route": "orthogonal-v",
+      "labelAt": [
+        680,
+        360
+      ]
+    },
+    {
+      "id": "rr-counter",
+      "from": "router_hot",
+      "to": "group_counters",
+      "label": "reserve RR block",
+      "variant": "default",
+      "route": "orthogonal-h",
+      "labelAt": [
+        500,
+        365
+      ]
+    },
+    {
+      "id": "provider-call",
+      "from": "router_hot",
+      "to": "provider",
+      "label": "proxy + stream",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelAt": [
+        840,
+        395
+      ]
+    },
+    {
+      "id": "usage-event",
+      "from": "router_hot",
+      "to": "ledger_queue",
+      "label": "usage event",
+      "variant": "default",
+      "route": "orthogonal-h",
+      "labelAt": [
+        620,
+        730
+      ],
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          370,
+          730
+        ],
+        [
+          915,
+          730
+        ]
+      ]
+    },
+    {
+      "id": "ledger-write",
+      "from": "ledger_queue",
+      "to": "usage_table",
+      "label": "batch INSERT",
+      "variant": "emphasis",
+      "route": "orthogonal-h",
+      "labelAt": [
+        775,
+        580
+      ]
+    },
+    {
+      "id": "fallback-write",
+      "from": "ledger_queue",
+      "to": "fallback_file",
+      "label": "DB down: append",
+      "variant": "dashed",
+      "route": "orthogonal-h",
+      "labelAt": [
+        680,
+        705
+      ]
+    },
+    {
+      "id": "fallback-replay",
+      "from": "fallback_file",
+      "to": "usage_table",
+      "label": "replay later",
+      "variant": "dashed",
+      "route": "straight",
+      "labelDx": -78,
+      "labelAt": [
+        505,
+        585
+      ]
+    },
+    {
+      "id": "dashboard-read",
+      "from": "usage_table",
+      "to": "dashboard",
+      "label": "usage SQL",
+      "variant": "default",
+      "route": "orthogonal-h",
+      "labelDy": -38,
+      "labelAt": [
+        895,
+        425
+      ]
+    }
+  ]
+}
