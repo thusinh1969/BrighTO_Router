@@ -114,10 +114,16 @@ http://<SERVER_IP>:18080/
 
 Admin login uses the `ADMIN_MASTER_KEY` generated in `.env` during install. Keep `.env` private.
 
-Fresh install allows Admin Portal access from localhost and private LAN ranges only. For a public server, connect through VPN/SSH tunnel or set `ADMIN_ALLOW_CIDR` in `.env` to your office/VPN/proxy range, then run:
+Fresh install lets the generated random admin key work from the Portal URL printed by the installer. For production, restrict admin source IPs by setting `ADMIN_ALLOW_CIDR` in `.env` to your office, VPN, or reverse-proxy range, then run:
 
 ```bash
 ./start.sh restart
+```
+
+HTTPS first-run with a local self-signed certificate:
+
+```bash
+./start.sh install --https --host <SERVER_HOST_OR_IP>
 ```
 
 Check the stack at any time:

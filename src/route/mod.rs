@@ -139,6 +139,93 @@ pub enum AcquireError {
 }
 
 impl RamBackendPool {
+    /// Explain why acquire() could not pick any backend. This runs only on
+    /// failure, so the small formatting cost stays out of the successful path.
+    pub fn unavailable_report(&self, route: &ModelRoute) -> String {
+        let mut ids = route.backend_ids.clone();
+        if let Some(fallback) = route.fallback_backend_id
+            && !ids.contains(&fallback)
+        {
+            ids.push(fallback);
+        }
+        if ids.is_empty() {
+            return "route has no backend ids".to_string();
+        }
+
+        let now = tokio::time::Instant::now();
+        let mut out = Vec::with_capacity(ids.len());
+        for backend_id in ids {
+            if !route.endpoint_enabled(backend_id) {
+                out.push(format!("backend {backend_id}: route endpoint disabled"));
+                continue;
+            }
+
+            let Some(state) = self.states.get(&backend_id) else {
+                out.push(format!(
+                    "backend {backend_id}: not loaded in runtime snapshot"
+                ));
+                continue;
+            };
+
+            if !state.enabled.load(Ordering::Relaxed) {
+                out.push(format!("backend {backend_id}: provider disabled"));
+                continue;
+            }
+
+            match state.circuit.load(Ordering::Acquire) {
+                CIRCUIT_CLOSED => {}
+                CIRCUIT_OPEN => {
+                    let until = state.opened_until.load();
+                    let remaining_ms = until
+                        .as_ref()
+                        .map(|i| i.saturating_duration_since(now).as_millis())
+                        .unwrap_or(0);
+                    if remaining_ms > 0 {
+                        out.push(format!(
+                            "backend {backend_id}: circuit open {remaining_ms}ms"
+                        ));
+                    } else {
+                        out.push(format!(
+                            "backend {backend_id}: circuit open, retry window ready"
+                        ));
+                    }
+                    continue;
+                }
+                CIRCUIT_HALF_OPEN => {
+                    if state.half_open_probe.load(Ordering::Acquire) {
+                        out.push(format!("backend {backend_id}: half-open probe available"));
+                    } else {
+                        out.push(format!("backend {backend_id}: half-open probe in flight"));
+                    }
+                    continue;
+                }
+                _ => {
+                    out.push(format!("backend {backend_id}: invalid circuit state"));
+                    continue;
+                }
+            }
+
+            let inflight = state.inflight.load(Ordering::Relaxed);
+            let global_max = state.max_inflight.load(Ordering::Relaxed);
+            let endpoint_max = route.endpoint_max_inflight(backend_id);
+            let max = match (global_max, endpoint_max) {
+                (0, 0) => 0,
+                (0, x) => x,
+                (x, 0) => x,
+                (x, y) => x.min(y),
+            };
+            if max > 0 && inflight >= max {
+                out.push(format!(
+                    "backend {backend_id}: max_inflight full {inflight}/{max}"
+                ));
+            } else {
+                out.push(format!("backend {backend_id}: eligible but not selected"));
+            }
+        }
+
+        out.join("; ")
+    }
+
     pub fn new() -> Self {
         Self::new_without_counter_pool()
     }
@@ -783,16 +870,27 @@ async fn check_backend_health(client: &reqwest::Client, base_url: &str) -> bool 
         return true;
     }
 
-    if let Ok(resp) = client
-        .get(format!("{base}/v1/models"))
-        .timeout(Duration::from_secs(3))
-        .send()
-        .await
-    {
-        return resp.status().is_success();
+    for url in model_probe_urls(base) {
+        if let Ok(resp) = client.get(url).timeout(Duration::from_secs(3)).send().await
+            && resp.status().is_success()
+        {
+            return true;
+        }
     }
 
     false
+}
+
+fn model_probe_urls(base_url: &str) -> Vec<String> {
+    let base = base_url.trim_end_matches('/');
+    let mut out = Vec::with_capacity(2);
+    if base.ends_with("/v1") {
+        out.push(format!("{base}/models"));
+    } else {
+        out.push(format!("{base}/v1/models"));
+        out.push(format!("{base}/models"));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -905,6 +1003,41 @@ mod tests {
         pool.upsert_backend(backend(1, 1, 10, false));
 
         assert!(pool.acquire(&route(vec![1])).await.unwrap().is_none());
+        assert!(
+            pool.unavailable_report(&route(vec![1]))
+                .contains("provider disabled")
+        );
+    }
+
+    #[test]
+    fn local_health_probe_respects_openai_v1_base_url() {
+        assert_eq!(
+            model_probe_urls("http://0.0.0.0:8088/v1"),
+            vec!["http://0.0.0.0:8088/v1/models"]
+        );
+        assert_eq!(
+            model_probe_urls("http://0.0.0.0:8088"),
+            vec![
+                "http://0.0.0.0:8088/v1/models",
+                "http://0.0.0.0:8088/models"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn unavailable_report_explains_disabled_route_endpoint() {
+        let pool = Arc::new(RamBackendPool::new());
+        pool.upsert_backend(backend(1, 1, 10, true));
+        let mut route = route(vec![1]);
+        let mut e = endpoint(1, 1, 0);
+        e.enabled = false;
+        route.endpoints.insert(1, e);
+
+        assert!(pool.acquire(&route).await.unwrap().is_none());
+        assert!(
+            pool.unavailable_report(&route)
+                .contains("route endpoint disabled")
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -921,6 +1054,7 @@ mod tests {
 
         pool.note_result(1, false);
         assert!(pool.acquire(&route).await.unwrap().is_none()); // circuit mở
+        assert!(pool.unavailable_report(&route).contains("circuit open"));
 
         tokio::time::advance(Duration::from_secs(29)).await;
         assert!(pool.acquire(&route).await.unwrap().is_none()); // vẫn mở

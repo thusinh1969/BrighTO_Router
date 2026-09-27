@@ -50,8 +50,20 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         async function login(page) {{
           await page.goto(baseURL + '/', {{ waitUntil: 'domcontentloaded' }});
           await expect(page.locator('#login-view')).toBeVisible();
-          await page.fill('#login-user', 'admin');
+          let blockedOnce = false;
+          await page.route('**/admin/backends', async route => {{
+            if (!blockedOnce && route.request().method() === 'GET') {{
+              blockedOnce = true;
+              await route.fulfill({{ status: 403, body: 'ip not allowed' }});
+            }} else {{
+              await route.continue();
+            }}
+          }});
           await page.fill('#login-pass', adminKey);
+          await page.click('#login-submit');
+          await expect(page.locator('#login-error')).toContainText('Admin access blocked: ip not allowed');
+          await page.unroute('**/admin/backends');
+          await page.fill('#login-pass', ' ' + adminKey + ' ');
           await page.click('#login-submit');
           await expect(page.locator('#app-view')).toBeVisible();
           await expect(page.locator('#page-title')).toContainText('Dashboard');

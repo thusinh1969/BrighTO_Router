@@ -665,9 +665,8 @@ table.key-list-table td:nth-child(2) .compact-line,table.key-list-table td:nth-c
         <button id="seg-admin" class="active" onclick="setMode('admin')">Admin</button>
         <button id="seg-user" onclick="setMode('user')">User</button>
       </div>
-      <p class="login-help" id="login-help">Use username <code>admin</code> and the <code>ADMIN_MASTER_KEY</code> value.</p>
+      <p class="login-help" id="login-help">Paste the <code>ADMIN_MASTER_KEY</code> value generated in <code>.env</code>.</p>
       <div id="admin-fields">
-        <div class="field"><label>Username</label><input id="login-user" value="admin" autocomplete="username"></div>
         <div class="field"><label>Admin key</label><input id="login-pass" type="password" placeholder="ADMIN_MASTER_KEY" autocomplete="current-password"></div>
       </div>
       <div class="field hidden" id="user-field"><label>Client API key</label><input id="login-apikey" type="password" placeholder="sk-brighto-..." autocomplete="off"></div>
@@ -779,17 +778,16 @@ function setMode(m){
   $("admin-fields").classList.toggle("hidden",m!=="admin");
   $("user-field").classList.toggle("hidden",m==="admin");
   $("login-sub").textContent = m==="admin" ? "Admin signs in with the master key from .env." : "User signs in with a client API key.";
-  $("login-help").innerHTML = m==="admin" ? "Use username <code>admin</code> and the <code>ADMIN_MASTER_KEY</code> value." : "Paste the visible <code>sk-brighto-...</code> key issued from the API Keys screen.";
+  $("login-help").innerHTML = m==="admin" ? "Paste the <code>ADMIN_MASTER_KEY</code> value generated in <code>.env</code>." : "Paste the visible <code>sk-brighto-...</code> key issued from the API Keys screen.";
 }
 async function login(){
   if(loginBusy) return;
   clearLoginError();
   var path, errMsg;
   if(mode==="admin"){
-    var u=$("login-user").value.trim();
-    var p=$("login-pass").value;
-    if(u!=="admin" || !p){ showLoginError("Invalid admin username or password."); return; }
-    authKey=p; path="/admin/backends"; errMsg="Invalid admin username or password.";
+    var p=$("login-pass").value.trim();
+    if(!p){ showLoginError("Please enter the admin key from .env."); return; }
+    authKey=p; path="/admin/backends"; errMsg="Invalid admin key.";
   }else{
     authKey=$("login-apikey").value.trim();
     if(!authKey){ showLoginError("Please enter your API key."); return; }
@@ -803,7 +801,13 @@ async function login(){
     await refresh();
   }catch(e){
     authKey="";
-    showLoginError(errMsg);
+    var msg=String((e&&e.message)||"");
+    if(mode==="admin" && msg){
+      msg=msg.replace(/^403\s+/,"Admin access blocked: ").replace(/^401\s+/,"");
+      showLoginError(msg||errMsg);
+    }else{
+      showLoginError(errMsg);
+    }
   }finally{
     setLoginBusy(false);
   }
@@ -2892,7 +2896,7 @@ document.addEventListener("keydown",function(e){
   if(e.key==="Escape") closeSidebar();
   if(e.key==="Enter" && $("login-view") && !$("login-view").classList.contains("hidden")){
     var id=e.target&&e.target.id;
-    if(id==="login-user" || id==="login-pass" || id==="login-apikey"){ e.preventDefault(); login(); }
+    if(id==="login-pass" || id==="login-apikey"){ e.preventDefault(); login(); }
   }
 });
 window.addEventListener("resize",function(){ if(window.innerWidth>820) closeSidebar(); });

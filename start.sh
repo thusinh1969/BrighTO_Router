@@ -8,7 +8,9 @@ COMPOSE="${COMPOSE:-docker compose}"
 COMPOSE_FILE_PATH="${COMPOSE_FILE_PATH:-$ROOT/docker-compose.yml}"
 ENV_FILE="$ROOT/.env"
 DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router"
-DEFAULT_ADMIN_ALLOW_CIDR="127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+# First-run admin must work from the URL printed by the installer. The admin
+# key is generated randomly; production users can narrow this in .env later.
+DEFAULT_ADMIN_ALLOW_CIDR="0.0.0.0/0,::/0"
 DEFAULT_LISTEN_ADDR="0.0.0.0:18080"
 DEFAULT_ROUTER_IMAGE="thusinh1969/brighto_airouter:v1"
 DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;jina|Jina AI|https://api.jina.ai|openai|JINA_API_KEY|1;voyage|Voyage AI|https://api.voyageai.com|openai|VOYAGE_API_KEY|1;cohere|Cohere|https://api.cohere.com/v2|openai|COHERE_API_KEY|1;meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1'
@@ -54,12 +56,10 @@ PY
 }
 
 is_missing_or_old_admin_key() {
-  local hash
   case "${1:-}" in
     ""|CHANGE_ME|change-me|GENERATED_ON_INSTALL) return 0 ;;
   esac
-  hash="$(sha256_hex "$1")"
-  [[ "$hash" == "$OLD_DEFAULT_ADMIN_HASH_DEV" || "$hash" == "$OLD_DEFAULT_ADMIN_HASH_V1" ]]
+  return 1
 }
 
 is_missing_or_old_client_key() {
@@ -136,7 +136,7 @@ ensure_env_defaults() {
   fi
   current_admin_cidr="$(get_env_var ADMIN_ALLOW_CIDR "")"
   case "$current_admin_cidr" in
-    ""|"0.0.0.0/0"|"::/0"|"0.0.0.0/0,::/0"|"::/0,0.0.0.0/0")
+    ""|CHANGE_ME|change-me|GENERATED_ON_INSTALL)
       set_env_var ADMIN_ALLOW_CIDR "$DEFAULT_ADMIN_ALLOW_CIDR"
       printf 'Admin Portal CIDR default: %s\n' "$DEFAULT_ADMIN_ALLOW_CIDR"
       ;;
@@ -493,6 +493,9 @@ provider_env_name() {
 
 cmd_install() {
   local use_k8s=0
+  local use_https=0
+  local tls_host=""
+  local tls_port="18443"
   local replicas=1
   local namespace=brighto-router
   while [[ $# -gt 0 ]]; do
@@ -507,6 +510,26 @@ cmd_install() {
         [[ $# -ge 2 ]] || fail "--admin-key requires a value"
         ensure_env
         set_env_var ADMIN_MASTER_KEY "$2"
+        shift 2
+        ;;
+      --allow-cidr)
+        [[ $# -ge 2 ]] || fail "--allow-cidr requires a value"
+        ensure_env
+        set_env_var ADMIN_ALLOW_CIDR "$2"
+        shift 2
+        ;;
+      --https)
+        use_https=1
+        shift
+        ;;
+      --host)
+        [[ $# -ge 2 ]] || fail "--host requires a value"
+        tls_host="$2"
+        shift 2
+        ;;
+      --port)
+        [[ $# -ge 2 ]] || fail "--port requires a value"
+        tls_port="$2"
         shift 2
         ;;
       --k8s)
@@ -527,8 +550,22 @@ cmd_install() {
     esac
   done
   if [[ "$use_k8s" == "1" ]]; then
+    [[ "$use_https" == "0" ]] || fail "--https is for Docker Compose installs; configure TLS at ingress for Kubernetes"
     cmd_k8s --replicas "$replicas" --namespace "$namespace"
   else
+    if [[ "$use_https" == "1" ]]; then
+      ensure_env
+      if [[ -z "$tls_host" ]]; then
+        tls_host="$(hostname)"
+        [[ -n "$tls_host" ]] || tls_host="$(hostname -I | awk '{print $1}')"
+        [[ -n "$tls_host" ]] || fail "cannot detect host; pass --host HOST"
+      fi
+      cmd_make_self_signed_cert "$tls_host"
+      set_env_var LISTEN_ADDR "0.0.0.0:$tls_port"
+      set_env_var BASE_URL "https://$tls_host:$tls_port"
+      set_env_var TLS_CERT_PATH "/certs/fullchain.pem"
+      set_env_var TLS_KEY_PATH "/certs/privkey.pem"
+    fi
     start_stack
   fi
 }
@@ -818,7 +855,9 @@ BrighTO-Router helper
 
 First-time install:
   ./start.sh install                         Local Docker PostgreSQL + migrations + provider templates + v1 router
+  ./start.sh install --https --host HOST     Same install, HTTPS on port 18443 with a self-signed cert
   ./start.sh install --database-url URL      Use an existing PostgreSQL database
+  ./start.sh install --allow-cidr CIDR       Restrict Admin Portal source IPs after install
   ./start.sh install --k8s --replicas 2      Install to Kubernetes with two router pods
 
 Daily operation:

@@ -83,10 +83,10 @@ BASE_URL=https://<SERVER_IP>:18443
 TLS_CERT_PATH=/certs/fullchain.pem
 TLS_KEY_PATH=/certs/privkey.pem
 ADMIN_MASTER_KEY=<generated-admin-key-from-.env>
-ADMIN_ALLOW_CIDR=127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0
 ```
 
-For a public server, connect through VPN/SSH tunnel or set `ADMIN_ALLOW_CIDR` to your office/VPN/proxy range. Do not expose the Admin Portal to the whole Internet.
+The first-run default works from the browser URL printed by the installer because `ADMIN_MASTER_KEY` is random. For production, restrict `ADMIN_ALLOW_CIDR` to your office, VPN, or reverse-proxy range.
 
 If you want standard HTTPS port 443:
 

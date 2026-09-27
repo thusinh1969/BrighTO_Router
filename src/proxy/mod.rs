@@ -1058,9 +1058,10 @@ pub async fn proxy_forward(
 
     loop {
         let Some(l) = lease else {
+            let report = state.backends.unavailable_report(&ctx.route);
             request_total_for(&ctx, "", 503);
             return tag_router_headers(
-                no_backend_body("no healthy backend available"),
+                no_backend_body(&format!("no healthy backend available: {report}")),
                 &ctx.request_id,
                 None,
                 start.elapsed().as_millis() as u64,

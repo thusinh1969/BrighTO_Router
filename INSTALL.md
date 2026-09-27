@@ -64,17 +64,24 @@ http://<SERVER_IP>:18080/
 
 Admin login uses the `ADMIN_MASTER_KEY` generated in `.env` during install. Keep `.env` private.
 
-Fresh install allows Admin Portal access from localhost and private LAN ranges only. For a public server, connect through VPN/SSH tunnel or set `ADMIN_ALLOW_CIDR` in `.env` to your office/VPN/proxy range, then restart:
+Fresh install lets the generated random admin key work from the Portal URL printed by the installer. For production, restrict admin source IPs by setting `ADMIN_ALLOW_CIDR` in `.env` to your office, VPN, or reverse-proxy range, then restart:
 
 ```bash
 ./start.sh restart
+```
+
+To install directly with HTTPS and a local self-signed certificate:
+
+```bash
+./start.sh install --https --host <SERVER_HOST_OR_IP>
 ```
 
 ## Daily commands
 
 | Command | Meaning |
 |---|---|
-| `./start.sh install` | First-time local install. Safe to rerun. |
+| `./start.sh install` | First-time local HTTP install. Safe to rerun. |
+| `./start.sh install --https --host HOST` | First-time HTTPS install with a self-signed certificate. |
 | `./start.sh start` | Start Postgres when local, run migrations/seed, start router. Keeps existing PostgreSQL data. |
 | `./start.sh stop` | Stop the Docker Compose stack. |
 | `./start.sh restart` | Run migrations/seed and recreate router. Keeps existing PostgreSQL data. |
