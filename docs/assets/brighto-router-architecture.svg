@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">BrighTO LLM Router architecture diagram</title>
+  <desc id="desc">Self-hosted Rust LLM gateway routing team API requests through authentication, budgets, model groups, provider adapters, PostgreSQL usage ledger, and cloud or local LLM backends.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#07111f"/><stop offset="1" stop-color="#102a43"/></linearGradient>
+    <linearGradient id="accent" x1="0" x2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#22c55e"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity="0.24"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#93c5fd"/></marker>
+    <style>
+      .title{font:700 34px Inter,Arial,sans-serif;fill:#f8fafc}.sub{font:500 17px Inter,Arial,sans-serif;fill:#cbd5e1}.box{fill:#0f172a;stroke:#334155;stroke-width:1.4;rx:22;filter:url(#shadow)}.box2{fill:#111827;stroke:#1d4ed8;stroke-width:1.4;rx:22;filter:url(#shadow)}.label{font:700 20px Inter,Arial,sans-serif;fill:#f8fafc}.small{font:500 14px Inter,Arial,sans-serif;fill:#cbd5e1}.tiny{font:500 12px Inter,Arial,sans-serif;fill:#94a3b8}.pill{fill:#0b1220;stroke:#38bdf8;stroke-width:1;rx:14}.line{stroke:#93c5fd;stroke-width:3;fill:none;marker-end:url(#arrow)}.line2{stroke:#22c55e;stroke-width:3;fill:none;marker-end:url(#arrow)}.muted{stroke:#64748b;stroke-width:2;fill:none;stroke-dasharray:7 7;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="620" fill="url(#bg)"/>
+  <text x="60" y="62" class="title">BrighTO-Router: self-hosted LLM Gateway in Rust</text>
+  <text x="60" y="94" class="sub">Million-token AI traffic · model load balancing · team keys and budgets · one Docker install</text>
+
+  <rect class="box" x="58" y="150" width="205" height="126" rx="22"/>
+  <text x="82" y="190" class="label">Teams & Apps</text>
+  <text x="82" y="222" class="small">OpenAI-compatible SDKs</text>
+  <text x="82" y="246" class="small">Anthropic clients</text>
+  <text x="82" y="270" class="small">Coding agents</text>
+
+  <rect class="box2" x="352" y="120" width="300" height="220" rx="24"/>
+  <text x="382" y="162" class="label">Rust hot path</text>
+  <text x="382" y="194" class="small">Auth: API key → team policy</text>
+  <text x="382" y="222" class="small">Budget: tokens, RPM, concurrency</text>
+  <text x="382" y="250" class="small">Route: model or Model Group</text>
+  <text x="382" y="278" class="small">Proxy: stream/pass-through body</text>
+  <text x="382" y="306" class="small">Ledger: async usage metadata</text>
+
+  <rect class="box" x="742" y="82" width="180" height="92" rx="22"/>
+  <text x="766" y="122" class="label">PostgreSQL</text>
+  <text x="766" y="150" class="small">config + usage ledger</text>
+
+  <rect class="box" x="742" y="215" width="180" height="92" rx="22"/>
+  <text x="766" y="254" class="label">Portal</text>
+  <text x="766" y="282" class="small">routes, teams, keys</text>
+
+  <rect class="box" x="742" y="350" width="180" height="92" rx="22"/>
+  <text x="766" y="389" class="label">Metrics</text>
+  <text x="766" y="417" class="small">Prometheus/Grafana</text>
+
+  <rect class="box" x="1002" y="72" width="150" height="78" rx="20"/>
+  <text x="1025" y="112" class="label">OpenAI</text>
+  <text x="1025" y="136" class="tiny">chat, embeddings</text>
+
+  <rect class="box" x="1002" y="177" width="150" height="78" rx="20"/>
+  <text x="1025" y="216" class="label">Anthropic</text>
+  <text x="1025" y="240" class="tiny">messages</text>
+
+  <rect class="box" x="1002" y="282" width="150" height="78" rx="20"/>
+  <text x="1025" y="321" class="label">Adapters</text>
+  <text x="1025" y="345" class="tiny">rerank, ASR</text>
+
+  <rect class="box" x="1002" y="387" width="150" height="78" rx="20"/>
+  <text x="1025" y="426" class="label">Local LLM</text>
+  <text x="1025" y="450" class="tiny">llama.cpp/vLLM</text>
+
+  <path class="line" d="M264 213 C300 213, 314 230, 352 230"/>
+  <path class="line2" d="M652 230 C694 230, 704 128, 742 128"/>
+  <path class="line2" d="M652 246 C692 246, 704 261, 742 261"/>
+  <path class="muted" d="M652 264 C692 264, 704 396, 742 396"/>
+  <path class="line" d="M652 202 C804 188, 868 112, 1002 111"/>
+  <path class="line" d="M652 225 C813 219, 861 216, 1002 216"/>
+  <path class="line" d="M652 250 C812 270, 860 321, 1002 321"/>
+  <path class="line" d="M652 278 C812 330, 860 426, 1002 426"/>
+
+  <rect class="pill" x="356" y="386" width="296" height="54" rx="14"/>
+  <text x="378" y="419" class="small">No prompt/response content stored by default</text>
+  <rect class="pill" x="356" y="458" width="296" height="54" rx="14"/>
+  <text x="378" y="491" class="small">Round-robin and weighted Model Groups</text>
+  <rect class="pill" x="356" y="530" width="296" height="54" rx="14"/>
+  <text x="378" y="563" class="small">PostgreSQL only; no Redis required for 1.0</text>
+</svg>
