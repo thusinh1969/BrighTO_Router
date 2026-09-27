@@ -271,6 +271,165 @@ run_sql_text() {
   fi
 }
 
+backup_database_to() {
+  local out_dir="$1"
+  local dump_file="$out_dir/db.dump"
+  if uses_local_db; then
+    say "Backing up local PostgreSQL to $dump_file"
+    compose up -d postgres
+    wait_postgres
+    compose exec -T postgres pg_dump -Fc --no-owner --no-acl -U "$DB_USER" -d "$DB_NAME" > "$dump_file"
+  else
+    command -v pg_dump >/dev/null 2>&1 || fail "pg_dump is required for external PostgreSQL backup"
+    say "Backing up external PostgreSQL to $dump_file"
+    PGPASSWORD="$DB_PASS" pg_dump -Fc --no-owner --no-acl "$DATABASE_URL_EFFECTIVE" > "$dump_file"
+  fi
+  chmod 600 "$dump_file"
+}
+
+cmd_backup() {
+  local parent="backups"
+  local quiet=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dir)
+        [[ $# -ge 2 ]] || fail "--dir requires a value"
+        parent="$2"
+        shift 2
+        ;;
+      --quiet)
+        quiet=1
+        shift
+        ;;
+      *) fail "unknown backup option: $1" ;;
+    esac
+  done
+  load_env
+  local stamp out_dir
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  out_dir="$parent/brighto-backup-$stamp"
+  mkdir -p "$out_dir"
+  chmod 700 "$parent" "$out_dir" 2>/dev/null || true
+  cp "$ENV_FILE" "$out_dir/.env.backup"
+  chmod 600 "$out_dir/.env.backup"
+  backup_database_to "$out_dir"
+  say "Backup ready: $out_dir"
+  if [[ "$quiet" != "1" ]]; then
+    printf 'Files:\n  %s\n  %s\n' "$out_dir/db.dump" "$out_dir/.env.backup"
+  fi
+}
+
+cmd_restore() {
+  local backup_dir=""
+  local yes=0
+  local restore_env=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --yes)
+        yes=1
+        shift
+        ;;
+      --with-env)
+        restore_env=1
+        shift
+        ;;
+      --dir)
+        [[ $# -ge 2 ]] || fail "--dir requires a value"
+        backup_dir="$2"
+        shift 2
+        ;;
+      *)
+        if [[ -z "$backup_dir" ]]; then
+          backup_dir="$1"
+          shift
+        else
+          fail "unknown restore option: $1"
+        fi
+        ;;
+    esac
+  done
+  [[ -n "$backup_dir" ]] || fail "usage: ./start.sh restore <backup-dir> --yes [--with-env]"
+  [[ "$yes" == "1" ]] || fail "restore replaces the current database; rerun with --yes when you are sure"
+  [[ -f "$backup_dir/db.dump" ]] || fail "backup dump not found: $backup_dir/db.dump"
+  if [[ ! -f "$ENV_FILE" || "$restore_env" == "1" ]]; then
+    [[ -f "$backup_dir/.env.backup" ]] || fail "env backup not found: $backup_dir/.env.backup"
+    cp "$backup_dir/.env.backup" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+  fi
+  load_env
+  say "Stopping router before restore"
+  compose stop router >/dev/null 2>&1 || true
+  if uses_local_db; then
+    compose up -d postgres
+    wait_postgres
+    say "Restoring local PostgreSQL from $backup_dir/db.dump"
+    compose exec -T postgres pg_restore --clean --if-exists --no-owner --no-acl -U "$DB_USER" -d "$DB_NAME" < "$backup_dir/db.dump"
+  else
+    command -v pg_restore >/dev/null 2>&1 || fail "pg_restore is required for external PostgreSQL restore"
+    say "Restoring external PostgreSQL from $backup_dir/db.dump"
+    PGPASSWORD="$DB_PASS" pg_restore --clean --if-exists --no-owner --no-acl -d "$DATABASE_URL_EFFECTIVE" "$backup_dir/db.dump"
+  fi
+  run_migrations
+  seed_defaults
+  ensure_runtime_dirs
+  say "Starting BrighTO-Router after restore"
+  compose up -d router
+  wait_router
+  compose ps
+  print_access_status
+}
+
+cmd_upgrade() {
+  local do_backup=1
+  local image=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --no-backup)
+        do_backup=0
+        shift
+        ;;
+      --image)
+        [[ $# -ge 2 ]] || fail "--image requires a value"
+        image="$2"
+        shift 2
+        ;;
+      *) fail "unknown upgrade option: $1" ;;
+    esac
+  done
+  ensure_env
+  if [[ -n "$image" ]]; then
+    set_env_var BRIGHTO_ROUTER_IMAGE "$image"
+  fi
+  load_env
+  validate_runtime_env
+  if [[ "$do_backup" == "1" ]]; then
+    cmd_backup --quiet
+  fi
+  local pull_policy
+  pull_policy="$(get_env_var BRIGHTO_ROUTER_PULL_POLICY "always")"
+  if [[ "$pull_policy" == "never" ]]; then
+    say "Skipping docker pull because BRIGHTO_ROUTER_PULL_POLICY=never"
+  else
+    say "Pulling router image $(get_env_var BRIGHTO_ROUTER_IMAGE "$DEFAULT_ROUTER_IMAGE")"
+    compose pull router
+  fi
+  if uses_local_db; then
+    say "Starting local PostgreSQL"
+    compose up -d postgres
+    wait_postgres
+  else
+    say "Using external PostgreSQL from DATABASE_URL"
+  fi
+  run_migrations
+  seed_defaults
+  ensure_runtime_dirs
+  say "Recreating BrighTO-Router with the upgraded image"
+  compose up -d --no-deps --force-recreate router
+  wait_router
+  compose ps
+  print_access_status
+}
+
 repair_known_migration_checksums() {
   # Migrations 0006/0007 had comment-only checksum changes during the pre-1.0 branch.
   # The SQL schema is identical. Repair known old checksums before sqlx validates.
@@ -785,6 +944,15 @@ case "$cmd" in
     compose ps
     print_access_status
     ;;
+  upgrade)
+    cmd_upgrade "$@"
+    ;;
+  backup)
+    cmd_backup "$@"
+    ;;
+  restore)
+    cmd_restore "$@"
+    ;;
   status)
     if [[ ! -f "$ENV_FILE" ]]; then
       say ".env is missing; run ./start.sh install to create it from .env.example"
@@ -864,6 +1032,9 @@ Daily operation:
   ./start.sh start       Start local/external DB flow and router
   ./start.sh stop        Stop Docker Compose stack
   ./start.sh restart     Run migrations, seed templates, recreate router
+  ./start.sh upgrade     Backup, pull the latest image, migrate, seed, recreate router
+  ./start.sh backup      Write backups/brighto-backup-*/db.dump plus .env.backup
+  ./start.sh restore DIR --yes [--with-env]   Restore a backup; destructive to the current DB
   ./start.sh status      Show containers plus /healthz and /readyz
   ./start.sh logs        Follow router logs
   ./start.sh migrate     Run SQL migrations

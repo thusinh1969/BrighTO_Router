@@ -13,6 +13,7 @@ ssl/*
 *.p12
 
 # runtime/generated artifacts
+backups/
 ledger_fallback.jsonl
 bench/results/
 bench/payloads/

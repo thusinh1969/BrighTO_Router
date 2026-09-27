@@ -391,6 +391,30 @@ Default records:
 
 `./start.sh start`, `./start.sh restart`, Docker image pulls, and Docker image rebuilds do **not** wipe PostgreSQL. Local data is stored in the Docker named volume `brighto-airouter_pg-data`. Data is removed only when you explicitly delete the volume, run `docker compose down -v`, or manually reset the database.
 
+## Upgrade without export/import pain
+
+Normal upgrades are in-place. Users do **not** need to export routes, reinstall, and import them again.
+
+```bash
+cd ~/brighto-router
+./start.sh upgrade
+```
+
+That command creates a private backup under `backups/`, pulls the configured Docker image, runs SQL migrations, seeds any missing default templates, recreates only the router container, and keeps the existing PostgreSQL data. To pin a new image tag explicitly:
+
+```bash
+./start.sh upgrade --image thusinh1969/brighto_airouter:v1.1.0
+```
+
+Manual safety commands are available when moving servers or before a risky maintenance window:
+
+```bash
+./start.sh backup
+./start.sh restore backups/brighto-backup-YYYYMMDD-HHMMSS --yes
+```
+
+`restore` replaces the current database, so it requires `--yes`. Add `--with-env` only when you intentionally want to restore the saved `.env` credentials too.
+
 ## HTTP first, HTTPS when ready
 
 Most users should start with HTTP, confirm the Portal works, then enable HTTPS.

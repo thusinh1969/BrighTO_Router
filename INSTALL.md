@@ -85,6 +85,9 @@ To install directly with HTTPS and a local self-signed certificate:
 | `./start.sh start` | Start Postgres when local, run migrations/seed, start router. Keeps existing PostgreSQL data. |
 | `./start.sh stop` | Stop the Docker Compose stack. |
 | `./start.sh restart` | Run migrations/seed and recreate router. Keeps existing PostgreSQL data. |
+| `./start.sh upgrade` | Backup, pull the configured router image, run migrations/seed, and recreate only the router. Keeps existing PostgreSQL data. |
+| `./start.sh backup` | Write `backups/brighto-backup-*/db.dump` plus `.env.backup`. |
+| `./start.sh restore DIR --yes` | Restore a backup into the current database. Destructive; use `--with-env` only when moving credentials too. |
 | `./start.sh status` | Show containers plus `/healthz` and `/readyz`. |
 | `./start.sh logs` | Follow router logs. |
 | `./start.sh migrate` | Run SQL migrations only. |
@@ -92,7 +95,25 @@ To install directly with HTTPS and a local self-signed certificate:
 | `./start.sh set-key openai sk-...` | Store a cloud provider key in `.env` and recreate router if running. The Add model route wizard can also accept a pasted route key. |
 | `./start.sh smoke` | Run a short non-release benchmark smoke. |
 
-Data safety: `docker build`, `docker compose up -d --force-recreate router`, `./start.sh start`, `./start.sh stop`, and `./start.sh restart` keep the local PostgreSQL volume. Do not run `docker compose down -v`, `docker volume rm brighto-airouter_pg-data`, or manual reset/truncate SQL unless you want to erase local routes, teams, keys, and usage.
+Data safety: `docker build`, `docker compose up -d --force-recreate router`, `./start.sh start`, `./start.sh stop`, `./start.sh restart`, and `./start.sh upgrade` keep the local PostgreSQL volume. Do not run `docker compose down -v`, `docker volume rm brighto-airouter_pg-data`, or manual reset/truncate SQL unless you want to erase local routes, teams, keys, and usage.
+
+For normal upgrades, do not export/import manually:
+
+```bash
+cd ~/brighto-router
+./start.sh upgrade
+```
+
+The upgrade command creates a private backup in `backups/`, pulls the configured Docker image, runs migrations, seeds missing defaults only, and recreates the router container. Existing teams, provider endpoints, model routes, Model Groups, API keys, usage ledger, and `.env` provider keys stay in place.
+
+For server moves or manual rollback:
+
+```bash
+./start.sh backup
+./start.sh restore backups/brighto-backup-YYYYMMDD-HHMMSS --yes
+```
+
+`restore` replaces the current database. Use `--with-env` only when you intentionally want to restore saved credentials from `.env.backup`.
 
 Developer note: the default Compose policy pulls the official Docker image. If you are testing a locally built image with the same tag, set `BRIGHTO_ROUTER_PULL_POLICY=never` in `.env`, then run `docker compose up -d --force-recreate router`.
 
