@@ -9,7 +9,6 @@ description: Free open-source, self-hosted LLM gateway and router in Rust for Op
 
 BrighTO-Router, also searchable as **Brighto LLM Router**, is a free open-source, self-hosted LLM gateway and AI router written in Rust. It gives teams one stable API endpoint for OpenAI-compatible, Anthropic-compatible, cloud, and local models with model load balancing, fallback routing, team API keys, token budgets, usage analytics, and privacy-first logging.
 
-![BrighTO LLM Router Architecture diagram showing the self-hosted Rust AI gateway, model load balancing, PostgreSQL ledger, Portal, and cloud or local LLM providers](assets/brighto-router-architecture.svg)
 
 ## Why this exists
 
