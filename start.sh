@@ -17,6 +17,7 @@ DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API
 # Legacy defaults are kept only to upgrade old local .env files in place.
 OLD_DEFAULT_LISTEN_ADDR="0.0.0.0:8080"
 OLD_DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router"
+OLD_DEFAULT_ADMIN_ALLOW_CIDR="127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 OLD_DEFAULT_ADMIN_HASH_DEV="d5a26818c9bb07fae055d6680c63bffa3718f321527b5dc1e25b07887812f7dc"
 OLD_DEFAULT_ADMIN_HASH_V1="c1a542f19233446e420d79fd87e06b781fba2be226831494034ceba974f7097d"
 OLD_DEFAULT_DEMO_CLIENT_HASH="1d86872169af3c343a921877fb32d18c5a4f0c4473a4063e7398c4457f63da2f"
@@ -136,7 +137,7 @@ ensure_env_defaults() {
   fi
   current_admin_cidr="$(get_env_var ADMIN_ALLOW_CIDR "")"
   case "$current_admin_cidr" in
-    ""|CHANGE_ME|change-me|GENERATED_ON_INSTALL)
+    ""|CHANGE_ME|change-me|GENERATED_ON_INSTALL|"$OLD_DEFAULT_ADMIN_ALLOW_CIDR")
       set_env_var ADMIN_ALLOW_CIDR "$DEFAULT_ADMIN_ALLOW_CIDR"
       printf 'Admin Portal CIDR default: %s\n' "$DEFAULT_ADMIN_ALLOW_CIDR"
       ;;

@@ -104,7 +104,7 @@ cd ~/brighto-router
 ./start.sh upgrade
 ```
 
-The upgrade command creates a private backup in `backups/`, pulls the configured Docker image, runs migrations, seeds missing defaults only, and recreates the router container. Existing teams, provider endpoints, model routes, Model Groups, API keys, usage ledger, and `.env` provider keys stay in place.
+The upgrade command creates a private backup in `backups/`, pulls the configured Docker image, runs migrations, seeds missing defaults only, and recreates the router container. Existing teams, provider endpoints, model routes, Model Groups, API keys, usage ledger, and `.env` provider keys stay in place. If the install used the old LAN-only admin CIDR default, upgrade also changes that old default to the current first-run value so the Portal URL printed by `./start.sh status` can log in immediately.
 
 For server moves or manual rollback:
 

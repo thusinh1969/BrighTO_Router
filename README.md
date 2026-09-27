@@ -400,7 +400,7 @@ cd ~/brighto-router
 ./start.sh upgrade
 ```
 
-That command creates a private backup under `backups/`, pulls the configured Docker image, runs SQL migrations, seeds any missing default templates, recreates only the router container, and keeps the existing PostgreSQL data. To pin a new image tag explicitly:
+That command creates a private backup under `backups/`, pulls the configured Docker image, runs SQL migrations, seeds any missing default templates, recreates only the router container, and keeps the existing PostgreSQL data. If the install used the old LAN-only admin CIDR default, upgrade also changes that old default to the current first-run value so the Portal URL printed by `./start.sh status` can log in immediately. To pin a new image tag explicitly:
 
 ```bash
 ./start.sh upgrade --image thusinh1969/brighto_airouter:v1.1.0
