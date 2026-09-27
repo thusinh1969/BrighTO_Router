@@ -47,10 +47,10 @@ System One Ollaya/Laya smoke completed.
 
 ## HTTPS router example
 
-Use this when you want to override `.env` and point the smoke at a specific HTTPS BrighTO Portal/API, for example `https://rtx3090:18443`:
+Use this when you want to override `.env` and point the smoke at a specific HTTPS BrighTO Portal/API, for example `https://<router-host>:18443`:
 
 ```bash
-ROUTER_URL=https://rtx3090:18443 \
+ROUTER_URL=https://<router-host>:18443 \
   ./smoke/systemone/run_ollaya_laya.sh
 ```
 
@@ -68,7 +68,7 @@ OLLAYA_API_KEY="test-systemone-key" \
 With a remote HTTPS router:
 
 ```bash
-ROUTER_URL=https://rtx3090:18443 \
+ROUTER_URL=https://<router-host>:18443 \
 OLLAYA_API_KEY="test-systemone-key" \
   ./smoke/systemone/run_ollaya_laya.sh
 ```

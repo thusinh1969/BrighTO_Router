@@ -373,7 +373,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           let testSeen = false;
           await page.route('**/admin/routes/preview-models', async route => {{
             const body = route.request().postDataJSON();
-            if (body.base_url === 'http://rtx3090:8088/v1') {{
+            if (body.base_url === 'http://llm-host.local:8088/v1') {{
               previewSeen = true;
               expect(body.auth_mode).toBe('none');
               expect(body.provider_key).toBeUndefined();
@@ -385,7 +385,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           }});
           await page.route('**/admin/test-connection', async route => {{
             const body = route.request().postDataJSON();
-            if (body.base_url === 'http://rtx3090:8088/v1') {{
+            if (body.base_url === 'http://llm-host.local:8088/v1') {{
               testSeen = true;
               expect(body.auth_mode).toBe('none');
               expect(body.provider_key).toBeUndefined();
@@ -400,7 +400,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await selects.nth(0).selectOption('chat');
           await selects.nth(1).selectOption('custom-llm');
           const inputs = modal.locator('input');
-          await inputs.nth(0).fill('http://rtx3090:8088/v1');
+          await inputs.nth(0).fill('http://llm-host.local:8088/v1');
           await modal.getByRole('button', {{ name: /Load models/i }}).click();
           await choosePickerModel(page, 'qwen3.8-flash-next');
           await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();

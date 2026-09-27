@@ -101,7 +101,7 @@ For llama.cpp, vLLM, LiteLLM, or another local OpenAI-compatible server, choose 
 http://127.0.0.1:8088/v1
 ```
 
-If the local endpoint does not require auth, leave API key blank. BrighTO saves that route as no-auth routing. This also works for LAN hostnames such as `http://rtx3090:8088/v1` when you choose **Custom LLM**.
+If the local endpoint does not require auth, leave API key blank. BrighTO saves that route as no-auth routing. This also works for LAN hostnames such as `http://llm-host.local:8088/v1` when you choose **Custom LLM**.
 
 ## URL handling
 
