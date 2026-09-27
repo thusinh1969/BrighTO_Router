@@ -6,6 +6,10 @@ BrighTO-Router is an ultra-fast open-source, self-hosted LLM gateway, AI router,
 
 Use it as a free, open-source LiteLLM or Bifrost alternative when you want a narrow, fast, self-hosted traffic path instead of a broad hosted AI platform.
 
+<p align="center">
+  <img src="docs/assets/brighto-router-architecture.png" alt="BrighTO-Router architecture: open-source Rust LLM gateway with model load balancing, chat completions, embeddings, rerank, ASR transcription, PostgreSQL usage metadata, and privacy-first no prompt storage" />
+</p>
+
 
 Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Model Groups](#first-model-group) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
 
