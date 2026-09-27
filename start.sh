@@ -12,8 +12,8 @@ DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/bright
 # key is generated randomly; production users can narrow this in .env later.
 DEFAULT_ADMIN_ALLOW_CIDR="0.0.0.0/0,::/0"
 DEFAULT_LISTEN_ADDR="0.0.0.0:18080"
-DEFAULT_ROUTER_IMAGE="thusinh1969/brighto_airouter:v1"
-DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;jina|Jina AI|https://api.jina.ai|openai|JINA_API_KEY|1;voyage|Voyage AI|https://api.voyageai.com|openai|VOYAGE_API_KEY|1;cohere|Cohere|https://api.cohere.com/v2|openai|COHERE_API_KEY|1;meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1'
+DEFAULT_ROUTER_IMAGE="thusinh1969/brighto_airouter:v1.1.0"
+DEFAULT_PROVIDER_CATALOG='openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;jina|Jina AI|https://api.jina.ai|openai|JINA_API_KEY|1;voyage|Voyage AI|https://api.voyageai.com|openai|VOYAGE_API_KEY|1;cohere|Cohere|https://api.cohere.com/v2|openai|COHERE_API_KEY|1;meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1;ollaya|Ollaya System One|http://127.0.0.1:11435/v1|openai|OLLAYA_API_KEY|1'
 # Legacy defaults are kept only to upgrade old local .env files in place.
 OLD_DEFAULT_LISTEN_ADDR="0.0.0.0:8080"
 OLD_DEFAULT_URL="postgres://brighto_router:brighto_router_dev@127.0.0.1:5432/brighto_router"
@@ -181,7 +181,7 @@ ensure_env_defaults() {
     set_env_var BRIGHTO_ROUTER_IMAGE "$DEFAULT_ROUTER_IMAGE"
   fi
   local env_key
-  for env_key in OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY KIMI_API_KEY QWEN_API_KEY DASHSCOPE_API_KEY ZAI_API_KEY OPENROUTER_API_KEY JINA_API_KEY VOYAGE_API_KEY COHERE_API_KEY META_MUSE_API_KEY CUSTOM_LLM_API_KEY; do
+  for env_key in OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY KIMI_API_KEY QWEN_API_KEY DASHSCOPE_API_KEY ZAI_API_KEY OPENROUTER_API_KEY JINA_API_KEY VOYAGE_API_KEY COHERE_API_KEY META_MUSE_API_KEY CUSTOM_LLM_API_KEY OLLAYA_API_KEY; do
     if ! grep -q "^${env_key}=" "$ENV_FILE"; then
       set_env_var "$env_key" ""
     fi
@@ -854,7 +854,7 @@ case "$cmd" in
 BrighTO-Router helper
 
 First-time install:
-  ./start.sh install                         Local Docker PostgreSQL + migrations + provider templates + v1 router
+  ./start.sh install                         Local Docker PostgreSQL + migrations + provider templates + v1.1.0 router
   ./start.sh install --https --host HOST     Same install, HTTPS on port 18443 with a self-signed cert
   ./start.sh install --database-url URL      Use an existing PostgreSQL database
   ./start.sh install --allow-cidr CIDR       Restrict Admin Portal source IPs after install

@@ -35,10 +35,10 @@ cd BrighTO_Router
 
 A failed Model Group backend is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; change it in `.env`, then run `./start.sh restart`. `ROUTER_WORKER_THREADS` is blank by default, which means the router uses all available CPU threads; set it only when you want to cap CPU use.
 
-BrighTO-Router 1.0 uses `thusinh1969/brighto_airouter:v1` by default. Existing local `.env` files from older installs should include:
+BrighTO-Router 1.1.0 uses `thusinh1969/brighto_airouter:v1.1.0` by default. Existing local `.env` files from older installs should include:
 
 ```bash
-BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1
+BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.1.0
 BACKEND_CIRCUIT_OPEN_SECONDS=30
 ```
 
@@ -48,7 +48,7 @@ What happens:
 2. Docker starts PostgreSQL 16.
 3. SQL migrations run.
 4. The default team and local demo client key are seeded.
-5. Docker pulls and starts `thusinh1969/brighto_airouter:v1`.
+5. Docker pulls and starts `thusinh1969/brighto_airouter:v1.1.0`.
 
 Open on the same server:
 
@@ -96,6 +96,19 @@ Data safety: `docker build`, `docker compose up -d --force-recreate router`, `./
 
 Developer note: the default Compose policy pulls the official Docker image. If you are testing a locally built image with the same tag, set `BRIGHTO_ROUTER_PULL_POLICY=never` in `.env`, then run `docker compose up -d --force-recreate router`.
 
+For the common local developer flow after editing Rust or after baking Portal HTML into the image, use:
+
+```bash
+./scripts/rebuild_docker_local.sh
+```
+
+For live Portal HTML/CSS/JS editing without rebuilding, set this once in `.env`, restart, then edit `static/index.html` and refresh the browser:
+
+```bash
+PORTAL_STATIC_FILE=/app/static/index.html
+./start.sh restart
+```
+
 ## Add a model route
 
 The first useful setup is a model route. A route exposes one API model name to your applications and points it to one upstream provider model.
@@ -114,7 +127,7 @@ Use the portal:
 Provider key names supported by `set-key` if you prefer `.env` secrets:
 
 ```text
-openai anthropic gemini deepseek kimi qwen dashscope zai openrouter jina voyage cohere meta-muse custom-llm
+openai anthropic gemini deepseek kimi qwen dashscope zai openrouter jina voyage cohere meta-muse custom-llm ollaya
 ```
 
 For providers that do not expose a compatible `/models` endpoint, type the provider model name manually and still use **Test connection** before saving enabled.
@@ -136,7 +149,7 @@ Use the portal:
 7. Add two or more existing tested routes from the compatible-route dropdown.
 8. Save enabled. Provider URLs and provider API keys are not entered in the group wizard; they stay on the source routes.
 
-1.0 Model Groups require all selected routes to match the same model type. Do not mix chat, embeddings, rerank, ASR, or Anthropic Messages inside one group.
+1.1.0 Model Groups require all selected routes to match the same model type. Do not mix chat, embeddings, rerank, ASR, System One, or Anthropic Messages inside one group.
 
 ## Test from the command line
 
@@ -158,6 +171,7 @@ Other quick modes:
 python3 test_router.py --mode embeddings --model <public-embedding-route> --text "hello"
 python3 test_router.py --mode rerank --model <public-rerank-route> --query "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
 python3 test_router.py --mode asr --model <public-asr-route> --file tests/fixtures/asr_smoke.wav
+python3 test_router.py --mode systemone --model <public-systemone-route> --text "Choose refund or replacement."
 python3 test_router.py --provider qwen --mode embeddings --text "hello"
 python3 test_router.py --provider qwen --mode rerank --query "router speed"
 python3 test_router.py --provider jina --mode embeddings --text "hello"
@@ -171,13 +185,14 @@ python3 test_router.py --model <audio-model-route> --text "Summarize this audio.
 
 `--provider` uses standard public route names. Run `python3 test_router.py --list-presets` to see the mapping, or pass `--model` when your route name is custom. In rerank mode, `--query` and `--text` both work; `--query` is clearer and takes priority.
 
-1.0 live provider smoke tests:
+1.1.0 live provider smoke tests:
 
 ```bash
 python3 scripts/adapter_smoke.py --provider qwen --task embedding
 python3 scripts/adapter_smoke.py --provider qwen --task rerank
 python3 scripts/adapter_smoke.py --provider all --task all
 python3 scripts/adapter_router_smoke.py
+./smoke/systemone/run_ollaya_laya.sh
 ```
 
 For self-signed HTTPS, add `--insecure`. Image and audio examples require a backend model that accepts OpenAI-style multimodal chat JSON.

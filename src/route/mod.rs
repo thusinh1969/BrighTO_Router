@@ -814,8 +814,14 @@ impl RamBackendPool {
             .collect();
 
         for (id, base) in targets {
-            let ok = check_backend_health(client, &base).await;
-            self.note_result(id, ok);
+            match check_backend_health(client, &base).await {
+                HealthProbeResult::Healthy => self.note_result(id, true),
+                HealthProbeResult::Unhealthy => self.note_result(id, false),
+                // Local backends such as Ollaya/Jev may require Authorization for /v1/models.
+                // Route-level credentials are resolved later on the real request, so an
+                // unauthenticated health probe must not open the backend circuit.
+                HealthProbeResult::AuthRequired => {}
+            }
         }
     }
 }
@@ -857,28 +863,47 @@ fn is_local_host(base_url: &str) -> bool {
         || host == "::1"
 }
 
-async fn check_backend_health(client: &reqwest::Client, base_url: &str) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HealthProbeResult {
+    Healthy,
+    Unhealthy,
+    AuthRequired,
+}
+
+async fn check_backend_health(client: &reqwest::Client, base_url: &str) -> HealthProbeResult {
     let base = base_url.trim_end_matches('/');
+    let mut auth_required = false;
 
     if let Ok(resp) = client
         .get(format!("{base}/health"))
         .timeout(Duration::from_secs(3))
         .send()
         .await
-        && resp.status().is_success()
     {
-        return true;
-    }
-
-    for url in model_probe_urls(base) {
-        if let Ok(resp) = client.get(url).timeout(Duration::from_secs(3)).send().await
-            && resp.status().is_success()
-        {
-            return true;
+        if resp.status().is_success() {
+            return HealthProbeResult::Healthy;
+        }
+        if matches!(resp.status().as_u16(), 401 | 403) {
+            auth_required = true;
         }
     }
 
-    false
+    for url in model_probe_urls(base) {
+        if let Ok(resp) = client.get(url).timeout(Duration::from_secs(3)).send().await {
+            if resp.status().is_success() {
+                return HealthProbeResult::Healthy;
+            }
+            if matches!(resp.status().as_u16(), 401 | 403) {
+                auth_required = true;
+            }
+        }
+    }
+
+    if auth_required {
+        HealthProbeResult::AuthRequired
+    } else {
+        HealthProbeResult::Unhealthy
+    }
 }
 
 fn model_probe_urls(base_url: &str) -> Vec<String> {
@@ -1022,6 +1047,25 @@ mod tests {
                 "http://0.0.0.0:8088/models"
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn local_auth_required_health_probe_does_not_mark_unhealthy() {
+        let app = axum::Router::new().route(
+            "/v1/models",
+            axum::routing::get(|| async {
+                (axum::http::StatusCode::UNAUTHORIZED, "missing bearer token")
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let client = reqwest::Client::new();
+
+        let result = check_backend_health(&client, &format!("http://{addr}/v1")).await;
+        assert_eq!(result, HealthProbeResult::AuthRequired);
     }
 
     #[tokio::test]

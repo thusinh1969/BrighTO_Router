@@ -8,7 +8,8 @@
 //!   x-mock-no-usage             : không trả usage (test ước lượng)
 //!   x-mock-hang                 : nhận rồi im (test first-byte timeout)
 //! Endpoint: POST /v1/chat/completions, /v1/embeddings, /v1/rerank, /v2/rerank,
-//! POST /v1/audio/transcriptions, POST /v1/messages, GET /v1/models, GET /health
+//! POST /v1/audio/transcriptions, POST /v1/messages, POST /v1/systemone,
+//! POST /v1/decisions, GET /v1/models, GET /health
 //! Thống kê để test so sánh: GET /_stats → {"requests":N,"prompt_tokens_total":..,"completion_tokens_total":..}
 use axum::{
     Router,
@@ -62,7 +63,9 @@ async fn main() {
         .route("/v2/rerank", post(rerank))
         .route("/v1/audio/transcriptions", post(transcriptions))
         .route("/v1/messages", post(anthropic))
-        .route("/v1/models", get(|| async { Json(serde_json::json!({"object":"list","data":[{"id":"mock-model","object":"model","owned_by":"mock"},{"id":"mock-embedding","object":"model","owned_by":"mock"},{"id":"mock-rerank","object":"model","owned_by":"mock"},{"id":"mock-asr","object":"model","owned_by":"mock"}]})) }))
+        .route("/v1/systemone", post(systemone))
+        .route("/v1/decisions", post(systemone))
+        .route("/v1/models", get(|| async { Json(serde_json::json!({"object":"list","data":[{"id":"mock-model","object":"model","owned_by":"mock"},{"id":"mock-embedding","object":"model","owned_by":"mock"},{"id":"mock-rerank","object":"model","owned_by":"mock"},{"id":"mock-asr","object":"model","owned_by":"mock"},{"id":"mock-systemone","object":"model","owned_by":"mock"}],"models":[{"name":"mock-systemone"}]})) }))
         .route("/health", get(|| async { "ok" }))
         .route("/_stats", get(|State(s): State<S>| async move {
             Json(serde_json::json!({"requests": s.requests.load(Ordering::Relaxed),
@@ -208,6 +211,62 @@ async fn openai(State(st): State<S>, headers: HeaderMap, body: Bytes) -> Respons
         Ok::<_, Infallible>(e)
     });
     Sse::new(s).into_response()
+}
+
+async fn systemone(State(st): State<S>, headers: HeaderMap, body: Bytes) -> Response {
+    let (p, _, _, _, _, no_usage) = match common(&headers, &st, &body).await {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let value = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+    let question_count = value
+        .get("questions")
+        .and_then(|v| v.as_object())
+        .map(|o| o.len())
+        .unwrap_or(1);
+    let mut answers = serde_json::Map::new();
+    if let Some(questions) = value.get("questions").and_then(|v| v.as_object()) {
+        for (name, question) in questions {
+            match question
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("noul")
+            {
+                "choice" => {
+                    let mut probabilities = serde_json::Map::new();
+                    if let Some(criteria) = question.get("criteria").and_then(|v| v.as_object()) {
+                        let n = criteria.len().max(1) as f64;
+                        for key in criteria.keys() {
+                            probabilities.insert(key.clone(), serde_json::json!(1.0 / n));
+                        }
+                        let choice = criteria
+                            .keys()
+                            .next()
+                            .cloned()
+                            .unwrap_or_else(|| "yes".to_string());
+                        answers.insert(name.clone(), serde_json::json!({"choice":choice,"confidence":0.9,"probabilities":probabilities}));
+                    } else {
+                        answers.insert(name.clone(), serde_json::json!({"choice":"yes","confidence":0.9,"probabilities":{"yes":0.9,"no":0.1}}));
+                    }
+                }
+                "score" => {
+                    answers.insert(name.clone(), serde_json::json!({"score":1.0,"confidence":0.8,"legend":["low","high"],"probabilities":{"0":0.2,"1":0.8}}));
+                }
+                _ => {
+                    answers.insert(name.clone(), serde_json::json!({"noul":0.91}));
+                }
+            }
+        }
+    }
+    if answers.is_empty() {
+        answers.insert("ok".to_string(), serde_json::json!({"noul":0.91}));
+    }
+    let mut j =
+        serde_json::json!({"id":"systemone-mock","model":"mock-systemone","answers":answers});
+    if !no_usage {
+        j["usage"] = serde_json::json!({"input_tokens":p,"output_tokens":0,"total_tokens":p,"questions":question_count});
+    }
+    Json(j).into_response()
 }
 
 async fn anthropic(State(st): State<S>, headers: HeaderMap, body: Bytes) -> Response {

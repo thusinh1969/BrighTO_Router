@@ -7,6 +7,7 @@ Examples:
   python3 test_router.py --mode embeddings --model my-embedding --text "hello"
   python3 test_router.py --mode rerank --model my-reranker --text "search query" --document "doc one" --document "doc two"
   python3 test_router.py --mode asr --model my-asr --file ./sample.wav
+  python3 test_router.py --mode systemone --model my-decision --text "Refund not received"
   python3 test_router.py --provider qwen --mode embeddings --text "hello"
   python3 test_router.py --provider jina --mode rerank --query "search query"
   python3 test_router.py --model my-vision-model --text "What is this?" --image ./photo.jpg
@@ -42,6 +43,7 @@ PROVIDER_ROUTE_PRESETS: dict[str, dict[str, str]] = {
     "jina": {"embeddings": "jina-embedding", "rerank": "jina-rerank"},
     "voyage": {"embeddings": "voyage-embedding", "rerank": "voyage-rerank"},
     "cohere": {"rerank": "cohere-rerank"},
+    "ollaya": {"systemone": "ollaya-laya"},
 }
 
 
@@ -194,6 +196,25 @@ def build_body(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
             "top_n": min(args.top_n or len(docs), len(docs)),
         }
 
+    if args.mode == "systemone":
+        if args.image or args.audio:
+            raise CliError("systemone mode accepts JSON/text state only in this helper")
+        return "/v1/systemone", {
+            "model": args.model,
+            "state": {"message": args.text},
+            "questions": {
+                "is_actionable": {
+                    "type": "noul",
+                    "instructions": args.question or "Is this message actionable?",
+                },
+                "team": {
+                    "type": "choice",
+                    "instructions": "Which team should handle this?",
+                    "criteria": {"billing": "payments and refunds", "support": "product or technical support"},
+                },
+            },
+        }
+
     if args.mode == "messages":
         if args.image or args.audio:
             raise CliError("messages mode in this helper is text-only; use --mode chat for OpenAI-style image/audio JSON")
@@ -316,6 +337,16 @@ def print_asr(data: dict[str, Any]) -> None:
         print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+def print_systemone(data: dict[str, Any]) -> None:
+    answers = data.get("answers") or {}
+    print(f"answers: {len(answers) if isinstance(answers, dict) else 0}")
+    if isinstance(answers, dict):
+        for name, answer in answers.items():
+            print(f"{name}: {json.dumps(answer, ensure_ascii=False)}")
+    if data.get("usage") is not None:
+        print("usage:", json.dumps(data["usage"], ensure_ascii=False))
+
+
 def print_messages(data: dict[str, Any]) -> None:
     content = data.get("content")
     if isinstance(content, list):
@@ -331,7 +362,7 @@ def print_messages(data: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Call BrighTO-Router once with chat, embeddings, rerank, ASR, or Anthropic Messages.",
+        description="Call BrighTO-Router once with chat, embeddings, rerank, ASR, System One, or Anthropic Messages.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Environment fallback order:
   router URL: BRIGHTO_ROUTER_URL, then BASE_URL from .env, then http://127.0.0.1:18080
@@ -349,6 +380,7 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
   python3 test_router.py --provider voyage --mode rerank --query "router speed"
   python3 test_router.py --provider cohere --mode rerank --query "router speed"
   python3 test_router.py --provider openai --mode asr --file tests/fixtures/asr_smoke.wav
+  python3 test_router.py --provider ollaya --mode systemone --text "I was charged twice"
 """,
     )
     parser.add_argument("--router", help="Router base URL, for example http://127.0.0.1:18080")
@@ -358,7 +390,8 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     parser.add_argument("--list-presets", action="store_true", help="Print provider route presets and exit")
     parser.add_argument("--text", default="Reply OK in one short sentence.", help="Text input to send; in rerank mode this is the query unless --query is set")
     parser.add_argument("--query", help="Search query for --mode rerank. Friendly alias; overrides --text for rerank only")
-    parser.add_argument("--mode", choices=["chat", "embeddings", "rerank", "asr", "messages"], default="chat", help="Request type")
+    parser.add_argument("--question", help="System One yes/no question for --mode systemone")
+    parser.add_argument("--mode", choices=["chat", "embeddings", "rerank", "asr", "systemone", "messages"], default="chat", help="Request type")
     parser.add_argument("--image", action="append", default=[], help="Image file path, http URL, https URL, or data URL for OpenAI-style chat JSON")
     parser.add_argument("--audio", action="append", default=[], help="Audio file path for OpenAI-style chat JSON")
     parser.add_argument("--document", action="append", default=[], help="Document text for --mode rerank; repeat for multiple documents")
@@ -443,6 +476,8 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
         print_rerank(data)
     elif args.mode == "asr":
         print_asr(data)
+    elif args.mode == "systemone":
+        print_systemone(data)
     elif args.mode == "messages":
         print_messages(data)
     else:

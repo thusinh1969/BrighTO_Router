@@ -40,6 +40,7 @@ pub enum ProviderProtocol {
     VoyageRerank,
     JinaRerank,
     OpenAiAudioTranscriptions,
+    SystemOne,
     AnthropicMessages,
     LocalOpenAiChat,
     CustomOpenAiChat,
@@ -59,6 +60,9 @@ impl ProviderProtocol {
             "openai_audio_transcriptions" | "openai_asr" | "asr" | "transcriptions" => {
                 ProviderProtocol::OpenAiAudioTranscriptions
             }
+            "systemone" | "system_one" | "typesafe_systemone" | "jev_systemone" | "decisions" => {
+                ProviderProtocol::SystemOne
+            }
             "anthropic_messages" | "messages" => ProviderProtocol::AnthropicMessages,
             "local_openai_chat" => ProviderProtocol::LocalOpenAiChat,
             "custom_openai_chat" => ProviderProtocol::CustomOpenAiChat,
@@ -77,6 +81,7 @@ impl ProviderProtocol {
             ProviderProtocol::VoyageRerank => "voyage_rerank",
             ProviderProtocol::JinaRerank => "jina_rerank",
             ProviderProtocol::OpenAiAudioTranscriptions => "openai_audio_transcriptions",
+            ProviderProtocol::SystemOne => "systemone",
             ProviderProtocol::AnthropicMessages => "anthropic_messages",
             ProviderProtocol::LocalOpenAiChat => "local_openai_chat",
             ProviderProtocol::CustomOpenAiChat => "custom_openai_chat",
@@ -97,8 +102,14 @@ impl ProviderProtocol {
             | ProviderProtocol::VoyageRerank
             | ProviderProtocol::JinaRerank => "/v1/rerank",
             ProviderProtocol::OpenAiAudioTranscriptions => "/v1/audio/transcriptions",
+            ProviderProtocol::SystemOne => "/v1/systemone",
             ProviderProtocol::AnthropicMessages => "/v1/messages",
         }
+    }
+
+    pub fn accepts_incoming_path(self, path: &str) -> bool {
+        path == self.incoming_path()
+            || matches!(self, ProviderProtocol::SystemOne) && path == "/v1/decisions"
     }
 
     /// Nhãn hiển thị cho wizard + lỗi endpoint guard.
@@ -113,6 +124,7 @@ impl ProviderProtocol {
             ProviderProtocol::VoyageRerank => "Voyage Rerank",
             ProviderProtocol::JinaRerank => "Jina Rerank",
             ProviderProtocol::OpenAiAudioTranscriptions => "OpenAI-compatible Audio Transcriptions",
+            ProviderProtocol::SystemOne => "System One Decisions",
             ProviderProtocol::AnthropicMessages => "Anthropic Messages",
             ProviderProtocol::LocalOpenAiChat => "Local OpenAI-compatible Chat",
             ProviderProtocol::CustomOpenAiChat => "Custom OpenAI-compatible",
@@ -422,6 +434,14 @@ mod tests {
             ProviderProtocol::OpenAiAudioTranscriptions
         );
         assert_eq!(
+            ProviderProtocol::parse("systemone"),
+            ProviderProtocol::SystemOne
+        );
+        assert_eq!(
+            ProviderProtocol::parse("decisions"),
+            ProviderProtocol::SystemOne
+        );
+        assert_eq!(
             ProviderProtocol::parse("anthropic_messages"),
             ProviderProtocol::AnthropicMessages
         );
@@ -462,6 +482,8 @@ mod tests {
             ProviderProtocol::OpenAiAudioTranscriptions.incoming_path(),
             "/v1/audio/transcriptions"
         );
+        assert_eq!(ProviderProtocol::SystemOne.incoming_path(), "/v1/systemone");
+        assert!(ProviderProtocol::SystemOne.accepts_incoming_path("/v1/decisions"));
         assert_eq!(
             ProviderProtocol::AnthropicMessages.incoming_path(),
             "/v1/messages"
@@ -470,6 +492,7 @@ mod tests {
             ProviderProtocol::OpenAiChat.label(),
             "OpenAI Chat Completions"
         );
+        assert_eq!(ProviderProtocol::SystemOne.label(), "System One Decisions");
         assert_eq!(
             ProviderProtocol::AnthropicMessages.label(),
             "Anthropic Messages"

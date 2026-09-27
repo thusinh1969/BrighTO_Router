@@ -318,6 +318,54 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         }}
 
 
+        async function createSystemOneModelGroup(page) {{
+          let groupPayload = null;
+          await page.route('**/admin/routes', async route => {{
+            if (route.request().method() === 'POST') {{
+              const body = route.request().postDataJSON();
+              if (body.model_name === 'browser-systemone-group') {{
+                groupPayload = body;
+                expect(body.protocol).toBe('systemone');
+                expect(body.routing_policy).toBe('round_robin');
+                expect(body.provider_key).toBeUndefined();
+                expect(body.provider_key_ref).toBeUndefined();
+                expect(body.endpoints).toHaveLength(2);
+                for (const ep of body.endpoints) {{
+                  expect(ep.protocol).toBe('systemone');
+                  expect(ep.auth_mode).toBe('none');
+                  expect(ep.provider_key).toBeUndefined();
+                  expect(ep.provider_key_ref).toBeUndefined();
+                  expect(ep.weight).toBe(1);
+                }}
+              }}
+            }}
+            await route.continue();
+          }});
+          const modal = await openCreateModelGroup(page);
+          await expect(modal).toContainText('No provider keys here');
+          await expect(modal).not.toContainText('Provider API key');
+          const selects = modal.locator('select');
+          await selects.nth(0).selectOption('systemone');
+          await selects.nth(1).selectOption('round_robin');
+          const inputs = modal.locator('input');
+          await inputs.nth(0).fill('browser-systemone-group');
+          await selects.nth(2).selectOption('browser-systemone-a');
+          await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
+          await selects.nth(2).selectOption('browser-systemone-b');
+          await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
+          await expect(modal.locator('.route-picker-row')).toHaveCount(2);
+          await expect(modal.locator('.group-weight-input')).toHaveCount(0);
+          await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+          expect(groupPayload).toBeTruthy();
+          await page.unroute('**/admin/routes');
+          await expect(page.locator('#content')).toContainText('browser-systemone-group', {{ timeout: 15000 }});
+          const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'browser-systemone-group' }}).first();
+          await expect(row).toContainText('System One / Decision Model Group');
+          await expect(row).toContainText('2 endpoints');
+        }}
+
+
         async function assertCustomHostnameNoAuth(page) {{
           await page.click('#nav-models');
           await expect(page.locator('#page-title')).toContainText('Models');
@@ -374,11 +422,14 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await createCustomRoute(page, 'embedding', 'mock-embedding', 'browser-embedding');
             await createCustomRoute(page, 'rerank', 'mock-rerank', 'browser-rerank');
             await createCustomRoute(page, 'asr', 'mock-asr', 'browser-asr');
+            await createCustomRoute(page, 'systemone', 'mock-systemone', 'browser-systemone-a');
+            await createCustomRoute(page, 'systemone', 'mock-systemone', 'browser-systemone-b', mockURL + '/');
             await createCustomRoute(page, 'chat', 'mock-model', 'browser-chat-a');
             await createCustomRoute(page, 'chat', 'mock-model', 'browser-chat-b', mockURL + '/');
             await assertDuplicateModelRouteNameBlocked(page);
             await createModelGroup(page);
             await createWeightedModelGroup(page);
+            await createSystemOneModelGroup(page);
             await assertCustomHostnameNoAuth(page);
             await page.reload({{ waitUntil: 'domcontentloaded' }});
             await expect(page.locator('#app-view')).toBeVisible();
@@ -414,6 +465,12 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await expect(picker).toContainText('rerank-v3.5');
             await expect(picker).not.toContainText('qwen3-rerank');
             await picker.getByRole('button', {{ name: 'Cancel' }}).click();
+            await selects.nth(0).selectOption('systemone');
+            await expect(providerSelect.locator('option[value="ollaya"]')).toHaveCount(1);
+            await providerSelect.selectOption('ollaya');
+            await expect(modal.locator('input').nth(0)).toHaveValue(/11435\/v1/);
+            await expect(modal.locator('input').nth(2)).toHaveValue('laya');
+            await expect(modal).toContainText('System One calls /v1/systemone');
             await modal.getByRole('button', {{ name: 'Cancel' }}).click();
             await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
           }} finally {{

@@ -1,15 +1,16 @@
-# BrighTO-Router 1.0 adapters: embeddings, rerank, ASR, and Model Groups
+# BrighTO-Router 1.1.0 adapters: embeddings, rerank, System One, ASR, and Model Groups
 
-This is the BrighTO-Router 1.0 adapter and routing scope: embeddings stay on the OpenAI-compatible route, rerank plus ASR/transcription are task-specific adapters, and Model Groups add same-type route load balancing without changing the client API call.
+This is the BrighTO-Router 1.1.0 adapter and routing scope: embeddings stay on the OpenAI-compatible route, rerank, System One, and ASR/transcription are task-specific adapters, and Model Groups add same-type route load balancing without changing the client API call.
 
-Implemented and tested in 1.0:
+Implemented and tested in 1.1.0:
 
 | Task | Public BrighTO endpoint | Route protocol | Request shape | Status |
 |---|---|---|---|---|
 | Embeddings | `/v1/embeddings` | `openai_embeddings` | OpenAI-compatible JSON | Mock/integration tested; live OpenAI, Qwen, Jina, and Voyage smoke passed |
 | Rerank | `/v1/rerank` | `openai_rerank`, `qwen_rerank`, `cohere_rerank`, `voyage_rerank`, `jina_rerank` | JSON with `model`, `query`, `documents`, optional `top_n` | Mock/integration tested; live Qwen, Jina, Voyage, and Cohere smoke passed |
 | ASR / speech-to-text | `/v1/audio/transcriptions` | `openai_audio_transcriptions` | OpenAI-compatible multipart form upload | Mock/integration tested; live OpenAI smoke passed with repo WAV fixtures |
-| Model Groups | Same endpoint as selected route type | `model_group_<type>` | Normal request shape for chat, embeddings, rerank, or ASR using the public group model name | Mock/integration tested; Portal browser smoke creates source routes, saves a group from existing routes, and lists it |
+| System One / decisions | `/v1/systemone`, `/v1/decisions` | `systemone` | TypeSafe/Jev-compatible JSON with `model`, `state`, and typed `questions` | Mock/integration tested; live Ollaya/Laya smoke passed with no-auth and Bearer-key mode |
+| Model Groups | Same endpoint as selected route type | `model_group_<type>` | Normal request shape for chat, embeddings, rerank, System One, or ASR using the public group model name | Mock/integration tested; Portal browser smoke creates source routes, saves a group from existing routes, and lists it |
 
 The router still does not run models. It forwards to a configured provider or local service, applies client-key auth, route policy, budget/concurrency limits, and usage logging. It does not store vectors, rerank documents, audio files, transcripts, prompts, or provider response bodies.
 
@@ -37,6 +38,22 @@ Provider key env vars:
 | Cohere | `COHERE_API_KEY` | rerank |
 
 Keep stress tests on mock providers. Live provider smoke should stay small and cheap.
+
+## System One Ollaya/Laya smoke
+
+To prove System One locally without a paid provider, run:
+
+```bash
+./smoke/systemone/run_ollaya_laya.sh
+```
+
+The script starts `ghcr.io/ollaya-dev/ollaya:latest`, pulls `laya`, creates two BrighTO routes and one Model Group, calls `/v1/systemone`, calls `/v1/decisions`, waits past the health interval, and calls again.
+
+No-auth local mode is the default. Auth-required mode is one environment variable:
+
+```bash
+OLLAYA_API_KEY="test-systemone-key" ./smoke/systemone/run_ollaya_laya.sh
+```
 
 ## Client smoke tests through BrighTO-Router
 
@@ -121,7 +138,8 @@ Embedding and rerank routes are not selected by changing only the provider. In *
 1. **Embedding** creates a route for `/v1/embeddings`. The provider model must be an embedding model such as Qwen `qwen3.7-text-embedding`, Jina embedding models, Voyage embedding models, or OpenAI embedding models.
 2. **Rerank** creates a route for `/v1/rerank`. The provider model must be a reranker such as Qwen `qwen3-rerank`, Jina reranker, Voyage reranker, or Cohere reranker.
 3. **ASR / transcription** creates a route for `/v1/audio/transcriptions` and tests with the small bundled WAV fixture.
-4. **Chat / LLM** remains the normal `/v1/chat/completions` or Anthropic Messages flow.
+4. **System One / Decision** creates a route for `/v1/systemone` and `/v1/decisions`. It works with Ollaya/Laya, hosted Jev/System One, and compatible local services.
+5. **Chat / LLM** remains the normal `/v1/chat/completions` or Anthropic Messages flow.
 
 Provider endpoint templates in **Providers** are only Base URLs. A route becomes usable only after the task-specific **Test connection** passes and the route is saved enabled.
 
@@ -137,7 +155,7 @@ In **Models & Routes → Create Model Group**:
 4. Add existing tested routes from the compatible-route dropdown.
 5. Save enabled after at least two compatible routes are selected.
 
-Provider URL, provider model, auth mode, and provider key/reference stay on the source routes. The group wizard does not ask for provider keys. 1.0 Model Groups do not mix protocol shapes: chat routes group with chat, embeddings with embeddings, rerank with rerank, and ASR with ASR.
+Provider URL, provider model, auth mode, and provider key/reference stay on the source routes. The group wizard does not ask for provider keys. 1.1.0 Model Groups do not mix protocol shapes: chat routes group with chat, embeddings with embeddings, rerank with rerank, System One with System One, and ASR with ASR.
 
 ## Route creation status
 
@@ -147,6 +165,7 @@ The Portal model wizard supports task-specific route creation for Chat, Embeddin
 - Embedding: one short `/v1/embeddings` request and vector-dimension validation.
 - Rerank: one `/v1/rerank` request with three tiny documents and score validation.
 - ASR: one `/v1/audio/transcriptions` multipart request using `tests/fixtures/asr_smoke.wav`.
+- System One: one `/v1/systemone` request with a tiny `state` and two typed questions.
 
 Save enabled only after Test Connection passes. Save draft remains available for disabled routes.
 
@@ -157,10 +176,11 @@ Save enabled only after Test Connection passes. Save draft remains available for
 - Voyage and Jina rerank use `/v1/rerank`. BrighTO maps public `top_n` to Voyage `top_k` when needed.
 - Qwen/DashScope rerank is not OpenAI-compatible. BrighTO accepts public `/v1/rerank`, then maps `qwen3-rerank` to `/compatible-api/v1/reranks`; `qwen3.7-text-rerank`, `qwen3-vl-rerank`, and `gte-rerank-v2` map to `/api/v1/services/rerank/text-rerank/text-rerank`. Configure the Base URL as `https://dashscope-intl.aliyuncs.com` for the international shared endpoint, or as your workspace root such as `https://<workspace>.<region>.maas.aliyuncs.com`.
 - Qwen `tongyi-embedding-vision-flash` is a real multimodal embedding model, but it uses DashScope multimodal embedding APIs, not the OpenAI-compatible `/v1/embeddings` text route. It should be a dedicated future adapter rather than a misleading model suggestion in the current text embedding flow.
+- System One currently expects the TypeSafe/Jev-compatible `/v1/systemone` JSON contract. `/v1/decisions` is accepted as an alias. Provider keys may be blank for local/no-auth Ollaya/Laya or set per route for auth-required Jev/Ollaya endpoints.
 - ASR currently expects OpenAI-compatible `/v1/audio/transcriptions` multipart behavior.
 - Additional Qwen/Alibaba ASR or media adapters should wait for exact provider API proof before coding.
 
-## Validation in 1.0
+## Validation in 1.1.0
 
 - `cargo fmt --check`
 - `cargo check --locked`

@@ -196,6 +196,51 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
         }}
 
+        async function createSystemOneModelGroupRoute(page) {{
+          let payload = null;
+          await page.route('**/admin/routes', async route => {{
+            if (route.request().method() === 'POST') {{
+              const body = route.request().postDataJSON();
+              if (body.model_name === 'audit-systemone-group') {{
+                payload = body;
+                expect(body.protocol).toBe('systemone');
+                expect(body.routing_policy).toBe('round_robin');
+                expect(body.endpoints).toHaveLength(2);
+                for (const ep of body.endpoints) {{
+                  expect(ep.protocol).toBe('systemone');
+                  expect(ep.auth_mode).toBe('none');
+                  expect(ep.provider_key).toBeUndefined();
+                  expect(ep.provider_key_ref).toBeUndefined();
+                  expect(ep.weight).toBe(1);
+                }}
+              }}
+            }}
+            await route.continue();
+          }});
+          const modal = await openCreateModelGroup(page);
+          await expect(modal).toContainText('No provider key is entered here');
+          await expect(modal).not.toContainText('Provider API key');
+          const selects = modal.locator('select');
+          await selects.nth(0).selectOption('systemone');
+          await selects.nth(1).selectOption('round_robin');
+          const inputs = modal.locator('input');
+          await inputs.nth(0).fill('audit-systemone-group');
+          await selects.nth(2).selectOption('audit-systemone');
+          await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
+          await selects.nth(2).selectOption('audit-systemone-b');
+          await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
+          await expect(modal.locator('.route-picker-row')).toHaveCount(2);
+          await expect(modal.locator('.group-weight-input')).toHaveCount(0);
+          await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+          expect(payload).toBeTruthy();
+          await page.unroute('**/admin/routes');
+          const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'audit-systemone-group' }}).first();
+          await expect(row).toContainText('System One / Decision Model Group');
+          await expect(row).toContainText('2 endpoints');
+        }}
+
+
         async function auditProviderTaskChoices(page) {{
           const modal = await openAddModel(page);
           const selects = modal.locator('select');
@@ -215,6 +260,12 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(picker).toContainText('rerank-v3.5');
           await expect(picker).not.toContainText('qwen3-rerank');
           await picker.getByRole('button', {{ name: 'Cancel' }}).click();
+          await selects.nth(0).selectOption('systemone');
+          await expect(providerSelect.locator('option[value="ollaya"]')).toHaveCount(1);
+          await providerSelect.selectOption('ollaya');
+          await expect(modal.locator('input').nth(0)).toHaveValue(/11435\/v1/);
+          await expect(modal.locator('input').nth(2)).toHaveValue('laya');
+          await expect(modal).toContainText('System One calls /v1/systemone');
           await modal.getByRole('button', {{ name: 'Cancel' }}).click();
           await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
         }}
@@ -273,12 +324,15 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await createCustomRoute(page, 'embedding', 'mock-embedding', 'audit-embedding');
           await createCustomRoute(page, 'rerank', 'mock-rerank', 'audit-rerank');
           await createCustomRoute(page, 'asr', 'mock-asr', 'audit-asr');
+          await createCustomRoute(page, 'systemone', 'mock-systemone', 'audit-systemone');
+          await createCustomRoute(page, 'systemone', 'mock-systemone', 'audit-systemone-b', mockURL + '/');
           await createModelGroupRoute(page);
+          await createSystemOneModelGroupRoute(page);
 
           await page.reload({{ waitUntil: 'domcontentloaded' }});
           await expect(page.locator('#app-view')).toBeVisible();
           await nav(page, 'models', 'Models');
-          for (const name of ['audit-chat', 'audit-chat-b', 'audit-embedding', 'audit-rerank', 'audit-asr', 'audit-model-group']) {{
+          for (const name of ['audit-chat', 'audit-chat-b', 'audit-embedding', 'audit-rerank', 'audit-asr', 'audit-systemone', 'audit-systemone-b', 'audit-model-group', 'audit-systemone-group']) {{
             await expect(page.locator('#content')).toContainText(name);
           }}
 

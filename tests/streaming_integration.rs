@@ -176,6 +176,45 @@ async fn spawn_adapter_backend() -> String {
                     "usage":{"prompt_tokens":4,"total_tokens":4}
                 }))
             }),
+        )
+        .route(
+            "/v1/systemone",
+            axum::routing::post(|headers: HeaderMap, body: Bytes| async move {
+                assert_eq!(
+                    headers.get("authorization").and_then(|v| v.to_str().ok()),
+                    Some("Bearer mockkey")
+                );
+                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(body["model"], "mock-systemone");
+                assert!(body.get("state").is_some());
+                assert!(body.get("questions").is_some());
+                axum::Json(serde_json::json!({
+                    "id":"systemone-test",
+                    "model":"mock-systemone",
+                    "answers":{
+                        "duplicate_charge":{"noul":0.91},
+                        "team":{"choice":"billing","confidence":0.9,"probabilities":{"billing":0.9,"support":0.1}}
+                    },
+                    "usage":{"input_tokens":7,"output_tokens":0,"total_tokens":7}
+                }))
+            }),
+        )
+        .route(
+            "/v1/decisions",
+            axum::routing::post(|headers: HeaderMap, body: Bytes| async move {
+                assert_eq!(
+                    headers.get("authorization").and_then(|v| v.to_str().ok()),
+                    Some("Bearer mockkey")
+                );
+                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(body["model"], "mock-systemone");
+                axum::Json(serde_json::json!({
+                    "id":"decision-test",
+                    "model":"mock-systemone",
+                    "answers":{"ok":{"noul":0.99}},
+                    "usage":{"input_tokens":5,"output_tokens":0,"total_tokens":5}
+                }))
+            }),
         );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -553,6 +592,73 @@ async fn asr_adapter_proxies_multipart_and_records_usage(pool: PgPool) {
     assert_eq!(ev.input_tokens, 4);
     assert_eq!(ev.output_tokens, 0);
     assert!(!ev.estimated);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn systemone_adapter_proxies_rewrites_model_and_records_usage(pool: PgPool) {
+    let backend_base = spawn_adapter_backend().await;
+    let (state, mut ledger_rx) = build_state_for_route(
+        pool,
+        backend_base,
+        "public-decision",
+        "mock-systemone",
+        "systemone",
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/systemone")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"public-decision","state":{"message":"charged twice"},"questions":{"duplicate_charge":{"type":"noul","instructions":"Duplicate charge?"},"team":{"type":"choice","instructions":"Team?","criteria":{"billing":"payments","support":"help"}}}}"#,
+        ))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = to_bytes(resp.into_body(), 10 * 1024 * 1024).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["model"], "mock-systemone");
+    assert_eq!(json["answers"]["duplicate_charge"]["noul"], 0.91);
+
+    let ev = tokio::time::timeout(Duration::from_secs(2), ledger_rx.recv())
+        .await
+        .expect("ledger event within 2s")
+        .expect("ledger event present");
+    assert_eq!(ev.model, "public-decision");
+    assert_eq!(ev.input_tokens, 7);
+    assert_eq!(ev.output_tokens, 0);
+    assert!(!ev.estimated);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn decisions_alias_accepts_systemone_route(pool: PgPool) {
+    let backend_base = spawn_adapter_backend().await;
+    let (state, _ledger_rx) = build_state_for_route(
+        pool,
+        backend_base,
+        "public-decision",
+        "mock-systemone",
+        "systemone",
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/decisions")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"public-decision","state":"ok","questions":{"ok":{"type":"noul","instructions":"OK?"}}}"#,
+        ))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
 }
 
 async fn build_state(

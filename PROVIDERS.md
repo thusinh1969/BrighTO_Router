@@ -1,6 +1,6 @@
 # Provider setup
 
-BrighTO-Router 1.0 keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, and ASR/transcription.
+BrighTO-Router 1.1.0 keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, System One/Decision, and ASR/transcription.
 
 A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
 
@@ -28,7 +28,8 @@ The catalog is configured by `PROVIDER_CATALOG` in `.env`. The default catalog i
 | Voyage AI | `https://api.voyageai.com` | Embedding/rerank adapter | `VOYAGE_API_KEY` |
 | Cohere | `https://api.cohere.com/v2` | Rerank adapter | `COHERE_API_KEY` |
 | Meta Muse | `https://api.meta.ai/v1` | OpenAI-compatible | `META_MUSE_API_KEY` |
-| Custom LLM | `http://127.0.0.1:8088/v1` | OpenAI-compatible | `CUSTOM_LLM_API_KEY` |
+| Custom LLM | `http://127.0.0.1:8088/v1` | OpenAI-compatible or System One when selected by task | `CUSTOM_LLM_API_KEY` |
+| Ollaya System One | `http://127.0.0.1:11435/v1` | System One decisions | `OLLAYA_API_KEY` |
 
 **OpenAI-compatible** means the backend accepts OpenAI-style routes such as `/v1/chat/completions`, `/v1/embeddings`, `/v1/audio/transcriptions`, or `/v1/models` depending on the selected task. Rerank providers are selected by task type because several providers use different request shapes.
 
@@ -53,7 +54,7 @@ In the Portal:
 
 1. Open **Models & Routes**.
 2. Click **Add model route**.
-3. Choose **Task type**: Chat / LLM, Embedding, Rerank, or ASR / transcription.
+3. Choose **Task type**: Chat / LLM, Embedding, Rerank, System One / Decision, or ASR / transcription.
 4. Pick a provider preset or **Custom LLM**.
 5. Enter the Base URL.
 6. Paste the provider API key when required, leave it blank to use the provider `.env` key when configured, or leave it blank for local/no-auth **Custom LLM** endpoints.
@@ -71,10 +72,10 @@ Use **Models & Routes → Create Model Group** when several existing tested rout
 - one local chat route plus one cloud fallback route;
 - several embedding or rerank routes of the same type where one has more capacity than the others.
 
-Rules in 1.0:
+Rules in 1.1.0:
 
 - Group members must be existing tested routes.
-- All selected routes must match the selected model type: chat, embedding, rerank, or ASR.
+- All selected routes must match the selected model type: chat, embedding, rerank, System One, or ASR.
 - Provider Base URL, provider model name, auth mode, and provider key/reference stay on the source route. The group wizard does not ask for provider keys.
 - Round robin rotates evenly and does not use weights. Weighted round robin shows per-route weights.
 - Route counters are stored through PostgreSQL so multiple router pods keep consistent rotation.
@@ -123,7 +124,9 @@ Create client keys in **API Keys**. Admin can view and copy them again later.
 
 ## Adapter providers
 
-Embeddings, rerank, and ASR/transcription are first-class 1.0 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models`. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route wizard. Model Groups reuse those tested routes and do not ask for provider keys.
+Embeddings, rerank, System One/Decision, and ASR/transcription are first-class 1.1.0 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models` or the same request shape. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route wizard. Model Groups reuse those tested routes and do not ask for provider keys.
+
+System One routes use `/v1/systemone` and `/v1/decisions` for Ollaya/Laya, Jev/DJev-style, or TypeSafe System One-compatible endpoints. Local Ollaya/Laya can run with no API key; hosted endpoints normally use Bearer auth.
 
 Qwen rerank needs special handling: embeddings can use the OpenAI-compatible `/compatible-mode/v1` Base URL, while rerank uses DashScope workspace endpoints. In the Portal, choose **Qwen + Rerank**, then enter `https://dashscope-intl.aliyuncs.com` or your workspace root Base URL such as `https://<workspace>.<region>.maas.aliyuncs.com`. For live smoke tests, set `QWEN_RERANK_BASE_URL` to that same root URL.
 
@@ -133,5 +136,6 @@ Useful provider key placeholders are present in `.env.example`:
 - `VOYAGE_API_KEY`
 - `COHERE_API_KEY`
 - `DASHSCOPE_API_KEY`
+- `OLLAYA_API_KEY`
 
 See [ADAPTERS.md](ADAPTERS.md) for current adapter endpoints and smoke commands.

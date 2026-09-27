@@ -1287,16 +1287,7 @@ async fn fetch_backend_models(
         .json()
         .await
         .map_err(|e| ApiError::internal(format!("parse models response: {e}")))?;
-    let models = body
-        .get("data")
-        .and_then(|v| v.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.get("id").and_then(|v| v.as_str()).map(str::to_owned))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let models = parse_model_list(&body);
     Ok(Json(ModelListResponse {
         backend_id: id,
         backend_name: name,
@@ -1364,16 +1355,7 @@ async fn preview_models(
         .json()
         .await
         .map_err(|e| ApiError::internal(format!("parse models response: {e}")))?;
-    let models = body
-        .get("data")
-        .and_then(|v| v.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.get("id").and_then(|v| v.as_str()).map(str::to_owned))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let models = parse_model_list(&body);
     Ok(Json(ModelListResponse {
         backend_id: 0,
         backend_name: base_url,
@@ -1382,6 +1364,35 @@ async fn preview_models(
 }
 
 // ===== Provider catalog (hard-coded trong .env) =====
+
+fn parse_model_list(body: &serde_json::Value) -> Vec<String> {
+    if let Some(items) = body.get("data").and_then(|v| v.as_array()) {
+        return items
+            .iter()
+            .filter_map(|item| {
+                item.get("id")
+                    .or_else(|| item.get("name"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+                    .or_else(|| item.as_str().map(str::to_owned))
+            })
+            .collect();
+    }
+    if let Some(items) = body.get("models").and_then(|v| v.as_array()) {
+        return items
+            .iter()
+            .filter_map(|item| {
+                item.get("id")
+                    .or_else(|| item.get("name"))
+                    .or_else(|| item.get("model"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+                    .or_else(|| item.as_str().map(str::to_owned))
+            })
+            .collect();
+    }
+    Vec::new()
+}
 
 #[derive(Serialize)]
 struct ProviderCatalogEntry {
@@ -1417,7 +1428,7 @@ fn provider_env_key_set(key_env: &str) -> bool {
 
 fn provider_catalog_from_env() -> Vec<ProviderCatalogEntry> {
     let raw = std::env::var("PROVIDER_CATALOG").unwrap_or_else(|_| {
-        "openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;         anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;         gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;         deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;         kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;         qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;         zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;         openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;         jina|Jina AI|https://api.jina.ai|openai|JINA_API_KEY|1;         voyage|Voyage AI|https://api.voyageai.com|openai|VOYAGE_API_KEY|1;         cohere|Cohere|https://api.cohere.com/v2|openai|COHERE_API_KEY|1;         meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;         custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1"
+        "openai|OpenAI|https://api.openai.com|openai|OPENAI_API_KEY|1;         anthropic|Anthropic|https://api.anthropic.com|anthropic|ANTHROPIC_API_KEY|1;         gemini|Gemini|https://generativelanguage.googleapis.com/v1beta/openai|openai|GEMINI_API_KEY|0;         deepseek|DeepSeek|https://api.deepseek.com|openai|DEEPSEEK_API_KEY|1;         kimi|Kimi|https://api.moonshot.ai/v1|openai|KIMI_API_KEY|1;         qwen|Qwen|https://dashscope-intl.aliyuncs.com/compatible-mode/v1|openai|QWEN_API_KEY|1;         zai|Z.AI|https://api.z.ai/api/paas/v4|openai|ZAI_API_KEY|1;         openrouter|OpenRouter|https://openrouter.ai/api/v1|openai|OPENROUTER_API_KEY|1;         jina|Jina AI|https://api.jina.ai|openai|JINA_API_KEY|1;         voyage|Voyage AI|https://api.voyageai.com|openai|VOYAGE_API_KEY|1;         cohere|Cohere|https://api.cohere.com/v2|openai|COHERE_API_KEY|1;         meta-muse|Meta Muse|https://api.meta.ai/v1|openai|META_MUSE_API_KEY|0;         custom-llm|Custom LLM|http://127.0.0.1:8088/v1|openai|CUSTOM_LLM_API_KEY|1;         ollaya|Ollaya System One|http://127.0.0.1:11435/v1|openai|OLLAYA_API_KEY|1"
             .to_string()
     });
     let mut entries: Vec<ProviderCatalogEntry> = raw
@@ -1724,6 +1735,42 @@ async fn test_rerank(
     ))
 }
 
+async fn test_systemone(
+    state: &Arc<AdminState>,
+    base_url: &str,
+    dialect: &str,
+    key: &str,
+    model: &str,
+) -> Result<(u16, bool, String), String> {
+    let body = serde_json::json!({
+        "model": model,
+        "state": {"message": "I was charged twice for one order."},
+        "questions": {
+            "duplicate_charge": {
+                "type": "noul",
+                "instructions": "Does the message report a duplicate charge?"
+            },
+            "team": {
+                "type": "choice",
+                "instructions": "Which team should handle this?",
+                "criteria": {"billing": "payments and refunds", "support": "technical help"}
+            }
+        }
+    });
+    let (status, data) =
+        post_json_probe(state, base_url, "/v1/systemone", dialect, key, body, 30).await?;
+    let answers = data
+        .as_ref()
+        .and_then(|v| v.get("answers"))
+        .and_then(|v| v.as_object());
+    let count = answers.map(|a| a.len()).unwrap_or(0);
+    Ok((
+        status,
+        status < 400 && count > 0,
+        format!("systemone answers {count}"),
+    ))
+}
+
 async fn test_asr(
     state: &Arc<AdminState>,
     base_url: &str,
@@ -1833,6 +1880,9 @@ async fn test_connection(
         ProviderProtocol::OpenAiAudioTranscriptions => {
             test_asr(&state, &base_url, dialect, &key, model).await
         }
+        ProviderProtocol::SystemOne => {
+            test_systemone(&state, &base_url, dialect, &key, model).await
+        }
         _ => test_completion(&state, &base_url, dialect, &key, model)
             .await
             .map(|(status, _)| (status, status < 400, "model completion OK".to_string())),
@@ -1907,6 +1957,7 @@ fn protocol_family(protocol: &str) -> &'static str {
         | ProviderProtocol::VoyageRerank
         | ProviderProtocol::JinaRerank => "rerank",
         ProviderProtocol::OpenAiAudioTranscriptions => "openai_audio_transcriptions",
+        ProviderProtocol::SystemOne => "systemone",
         ProviderProtocol::AnthropicMessages => "anthropic_messages",
     }
 }
@@ -3677,6 +3728,10 @@ mod tests {
         assert_eq!(
             join_provider_url("https://api.cohere.com/v2", "/v1/rerank"),
             "https://api.cohere.com/v2/rerank"
+        );
+        assert_eq!(
+            join_provider_url("http://127.0.0.1:11435/v1", "/v1/systemone"),
+            "http://127.0.0.1:11435/v1/systemone"
         );
     }
 

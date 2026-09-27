@@ -335,6 +335,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/embeddings", post(embeddings))
         .route("/v1/rerank", post(rerank))
         .route("/v1/audio/transcriptions", post(audio_transcriptions))
+        .route("/v1/systemone", post(systemone))
+        .route("/v1/decisions", post(decisions))
         .route("/v1/messages", post(messages))
         .route("/v1/models", get(models))
         .route("/metrics", get(metrics))
@@ -366,6 +368,12 @@ async fn audio_transcriptions(
     req: Request<Body>,
 ) -> Response<Body> {
     handle_multipart_adapter(state, req, "/v1/audio/transcriptions").await
+}
+async fn systemone(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
+    handle_generate(state, req, "/v1/systemone").await
+}
+async fn decisions(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
+    handle_generate(state, req, "/v1/decisions").await
 }
 async fn messages(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
     handle_generate(state, req, "/v1/messages").await
@@ -535,7 +543,7 @@ async fn handle_generate(
     // Protocol endpoint guard (CODEX provider-protocol taxonomy): route chỉ chấp nhận endpoint
     // đã khai báo. Gọi sai endpoint -> 400 rõ ràng, KHÔNG forward shape sai lên provider.
     let protocol = ProviderProtocol::parse(&route.protocol);
-    if protocol.incoming_path() != incoming_path {
+    if !protocol.accepts_incoming_path(incoming_path) {
         return build_error(
             &request_id,
             StatusCode::BAD_REQUEST,
@@ -600,6 +608,7 @@ async fn handle_generate(
                 || route.provider_model_name != model
                 || protocol == ProviderProtocol::VoyageRerank
                 || protocol == ProviderProtocol::QwenRerank
+                || protocol == ProviderProtocol::SystemOne
             {
                 return build_error(
                     &request_id,
@@ -768,7 +777,7 @@ async fn handle_multipart_adapter(
     }
 
     let protocol = ProviderProtocol::parse(&route.protocol);
-    if protocol.incoming_path() != incoming_path {
+    if !protocol.accepts_incoming_path(incoming_path) {
         return build_error(
             &request_id,
             StatusCode::BAD_REQUEST,

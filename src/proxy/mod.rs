@@ -545,11 +545,19 @@ fn parse_usage_from_body(body: &[u8], format: BackendFormat) -> UsageAccumulator
             if let Ok(v) = serde_json::from_slice::<Value>(body)
                 && let Some(usage) = v.get("usage")
             {
-                if let Some(pt) = usage.get("prompt_tokens").and_then(Value::as_u64) {
+                if let Some(pt) = usage
+                    .get("prompt_tokens")
+                    .or_else(|| usage.get("input_tokens"))
+                    .and_then(Value::as_u64)
+                {
                     acc.input_tokens = pt;
                     acc.seen_usage = true;
                 }
-                if let Some(ct) = usage.get("completion_tokens").and_then(Value::as_u64) {
+                if let Some(ct) = usage
+                    .get("completion_tokens")
+                    .or_else(|| usage.get("output_tokens"))
+                    .and_then(Value::as_u64)
+                {
                     acc.output_tokens = ct;
                     acc.seen_usage = true;
                 }
