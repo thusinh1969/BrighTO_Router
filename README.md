@@ -113,13 +113,28 @@ Open it from another machine:
 http://<SERVER_IP>:18080/
 ```
 
-Admin login uses the `ADMIN_MASTER_KEY` generated in `.env` during install. Keep `.env` private.
+Admin login uses username `admin` and the random `ADMIN_MASTER_KEY` generated in `.env` during install. Keep `.env` private.
 
-Fresh install lets the generated random admin key work from the Portal URL printed by the installer. For production, restrict admin source IPs by setting `ADMIN_ALLOW_CIDR` in `.env` to your office, VPN, or reverse-proxy range, then run:
+### Admin access CIDR: install works first, then lock it down
+
+`ADMIN_ALLOW_CIDR` is the list of IP addresses or IP ranges allowed to use the Admin Portal and Admin API. **CIDR** means IP range notation, for example `203.0.113.10/32` for one public IP, `10.0.0.0/8` for a private network, or `0.0.0.0/0` for all IPv4 addresses.
+
+Fresh installs default to:
 
 ```bash
+ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0
+```
+
+That is intentional: the generated admin key must work from the Portal URL printed by the installer, including a browser on another machine. The admin key is still required. After first login, production servers should restrict it to your office, VPN, bastion host, or reverse-proxy range:
+
+```bash
+# edit .env
+ADMIN_ALLOW_CIDR=<YOUR_PUBLIC_IP>/32
+
 ./start.sh restart
 ```
+
+If the Portal says `Admin access blocked: ip not allowed`, your browser IP is outside `ADMIN_ALLOW_CIDR`. Set it to a range that includes your browser, or temporarily use `0.0.0.0/0,::/0`, then restart.
 
 HTTPS first-run with a local self-signed certificate:
 
@@ -400,7 +415,11 @@ cd ~/brighto-router
 ./start.sh upgrade
 ```
 
-That command creates a private backup under `backups/`, pulls the configured Docker image, runs SQL migrations, seeds any missing default templates, recreates only the router container, and keeps the existing PostgreSQL data. If the install used the old LAN-only admin CIDR default, upgrade also changes that old default to the current first-run value so the Portal URL printed by `./start.sh status` can log in immediately. To pin a new image tag explicitly:
+That command creates a private backup under `backups/`, pulls the configured Docker image, runs SQL migrations, seeds any missing default templates, recreates only the router container, and keeps the existing PostgreSQL data.
+
+Upgrade also protects existing users from the old LAN-only admin default. If `.env` still has the old default `127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`, `./start.sh upgrade` changes it to `0.0.0.0/0,::/0` so the Portal URL printed by `./start.sh status` can log in immediately. If you already set a custom `ADMIN_ALLOW_CIDR`, upgrade leaves it untouched.
+
+To pin a new image tag explicitly:
 
 ```bash
 ./start.sh upgrade --image thusinh1969/brighto_airouter:v1.1.0

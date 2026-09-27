@@ -64,11 +64,16 @@ http://<SERVER_IP>:18080/
 
 Admin login uses the `ADMIN_MASTER_KEY` generated in `.env` during install. Keep `.env` private.
 
-Fresh install lets the generated random admin key work from the Portal URL printed by the installer. For production, restrict admin source IPs by setting `ADMIN_ALLOW_CIDR` in `.env` to your office, VPN, or reverse-proxy range, then restart:
+Fresh install defaults `ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0` so the generated random admin key works from the Portal URL printed by the installer, including a browser on another machine. The admin key is still required. For production, restrict admin source IPs by setting `ADMIN_ALLOW_CIDR` in `.env` to your office, VPN, bastion host, or reverse-proxy range, then restart:
 
 ```bash
+# edit .env and set one allowed public IP, for example:
+ADMIN_ALLOW_CIDR=<YOUR_PUBLIC_IP>/32
+
 ./start.sh restart
 ```
+
+If the Portal says `Admin access blocked: ip not allowed`, your browser IP is outside `ADMIN_ALLOW_CIDR`; widen the range or temporarily use `0.0.0.0/0,::/0`, then restart.
 
 To install directly with HTTPS and a local self-signed certificate:
 
@@ -104,7 +109,9 @@ cd ~/brighto-router
 ./start.sh upgrade
 ```
 
-The upgrade command creates a private backup in `backups/`, pulls the configured Docker image, runs migrations, seeds missing defaults only, and recreates the router container. Existing teams, provider endpoints, model routes, Model Groups, API keys, usage ledger, and `.env` provider keys stay in place. If the install used the old LAN-only admin CIDR default, upgrade also changes that old default to the current first-run value so the Portal URL printed by `./start.sh status` can log in immediately.
+The upgrade command creates a private backup in `backups/`, pulls the configured Docker image, runs migrations, seeds missing defaults only, and recreates the router container. Existing teams, provider endpoints, model routes, Model Groups, API keys, usage ledger, and `.env` provider keys stay in place.
+
+If `.env` still has the old LAN-only admin default `127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`, upgrade changes it to `0.0.0.0/0,::/0` so the Portal URL printed by `./start.sh status` can log in immediately. Custom `ADMIN_ALLOW_CIDR` values are preserved.
 
 For server moves or manual rollback:
 
