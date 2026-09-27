@@ -15,7 +15,7 @@
   <text x="60" y="94" class="sub">Million-token AI traffic · model load balancing · team keys and budgets · one Docker install</text>
 
   <rect class="box" x="58" y="150" width="205" height="126" rx="22"/>
-  <text x="82" y="190" class="label">Teams & Apps</text>
+  <text x="82" y="190" class="label">Teams &amp; Apps</text>
   <text x="82" y="222" class="small">OpenAI-compatible SDKs</text>
   <text x="82" y="246" class="small">Anthropic clients</text>
   <text x="82" y="270" class="small">Coding agents</text>
