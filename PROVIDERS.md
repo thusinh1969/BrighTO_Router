@@ -31,7 +31,7 @@ The catalog is configured by `PROVIDER_CATALOG` in `.env`. The default catalog i
 | Custom LLM | `http://127.0.0.1:8088/v1` | OpenAI-compatible or System One when selected by task | `CUSTOM_LLM_API_KEY` |
 | Ollaya System One | `http://127.0.0.1:11435/v1` | System One decisions | `OLLAYA_API_KEY` |
 
-**OpenAI-compatible** means the backend accepts OpenAI-style routes such as `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/audio/transcriptions`, or `/v1/models` depending on the selected task. Rerank providers are selected by task type because several providers use different request shapes.
+**OpenAI-compatible** means the backend accepts OpenAI-style routes such as `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/audio/transcriptions`, or `/v1/models` depending on the selected task. Rerank providers are selected by task type because several providers use different request shapes.
 
 
 ## Default seeded provider endpoints
@@ -110,6 +110,7 @@ Both host-only and SDK-style Base URLs work:
 | Base URL | Incoming route | Forwarded URL |
 |---|---|---|
 | `https://api.openai.com` | `/v1/chat/completions` | `https://api.openai.com/v1/chat/completions` |
+| `https://api.openai.com/v1` | `/v1/completions` | `https://api.openai.com/v1/completions` |
 | `https://api.openai.com/v1` | `/v1/responses` | `https://api.openai.com/v1/responses` |
 | `https://api.moonshot.ai/v1` | `/v1/chat/completions` | `https://api.moonshot.ai/v1/chat/completions` |
 | `https://example.com/compatible-mode/v1` | `/v1/models` | `https://example.com/compatible-mode/v1/models` |

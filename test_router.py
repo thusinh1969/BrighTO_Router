@@ -4,6 +4,7 @@
 Examples:
   python3 test_router.py --model my-model --text "Reply OK"
   python3 test_router.py --router http://SERVER:18080 --api-key sk-brighto-... --model my-model --text "Reply OK"
+  python3 test_router.py --mode completions --model my-completion --text "Reply OK"
   python3 test_router.py --mode responses --model my-responses --text "Reply OK"
   python3 test_router.py --mode embeddings --model my-embedding --text "hello"
   python3 test_router.py --mode rerank --model my-reranker --text "search query" --document "doc one" --document "doc two"
@@ -173,6 +174,20 @@ def build_body(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
         if args.temperature is not None:
             body["temperature"] = args.temperature
         return "/v1/chat/completions", body
+
+    if args.mode == "completions":
+        if args.image or args.audio:
+            raise CliError("completions mode accepts text prompts only; use --mode chat for message or media input")
+        body = {
+            "model": args.model,
+            "prompt": args.text,
+            "stream": False,
+        }
+        if args.max_tokens is not None:
+            body["max_tokens"] = args.max_tokens
+        if args.temperature is not None:
+            body["temperature"] = args.temperature
+        return "/v1/completions", body
 
     if args.mode == "responses":
         if args.image or args.audio:
@@ -394,7 +409,7 @@ def print_messages(data: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Call BrighTO-Router once with chat, Responses, embeddings, rerank, ASR, System One, or Anthropic Messages.",
+        description="Call BrighTO-Router once with chat, completions, Responses, embeddings, rerank, ASR, System One, or Anthropic Messages.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Environment fallback order:
   router URL: BRIGHTO_ROUTER_URL, then BASE_URL from .env, then http://127.0.0.1:18080
@@ -423,7 +438,7 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     parser.add_argument("--text", default="Reply OK in one short sentence.", help="Text input to send; in rerank mode this is the query unless --query is set")
     parser.add_argument("--query", help="Search query for --mode rerank. Friendly alias; overrides --text for rerank only")
     parser.add_argument("--question", help="System One yes/no question for --mode systemone")
-    parser.add_argument("--mode", choices=["chat", "responses", "embeddings", "rerank", "asr", "systemone", "messages"], default="chat", help="Request type")
+    parser.add_argument("--mode", choices=["chat", "completions", "responses", "embeddings", "rerank", "asr", "systemone", "messages"], default="chat", help="Request type")
     parser.add_argument("--image", action="append", default=[], help="Image file path, http URL, https URL, or data URL for OpenAI-style chat JSON")
     parser.add_argument("--audio", action="append", default=[], help="Audio file path for OpenAI-style chat JSON")
     parser.add_argument("--document", action="append", default=[], help="Document text for --mode rerank; repeat for multiple documents")

@@ -164,7 +164,7 @@ For providers that do not expose a compatible `/models` endpoint, type the provi
 
 API model names are unique across normal routes and Model Groups because client apps use that single string in requests.
 
-A Model Group exposes one API model name backed by two or more existing tested routes of the same type. Use it when you want load balancing or failover behind one stable model name.
+A Model Group exposes one API model name backed by two or more existing tested routes of the same API shape. Use it when you want load balancing or failover behind one stable model name.
 
 Use the portal:
 
@@ -177,7 +177,7 @@ Use the portal:
 7. Add two or more existing tested routes from the compatible-route dropdown.
 8. Save enabled. Provider URLs and provider API keys are not entered in the group wizard; they stay on the source routes.
 
-1.1.0 Model Groups require all selected routes to match the same model type. Do not mix chat, embeddings, rerank, ASR, System One, or Anthropic Messages inside one group.
+1.1.0 Model Groups require all selected routes to match the same API shape. Do not mix Chat Completions (`/v1/chat/completions`), Completions (`/v1/completions`), Responses (`/v1/responses`), embeddings, rerank, ASR, System One, or Anthropic Messages inside one group.
 
 ## Test from the command line
 
@@ -190,12 +190,14 @@ python3 test_router.py --router http://127.0.0.1:18080 --api-key sk-brighto-... 
 If you use the generated local demo key, the script can read it from `.env`:
 
 ```bash
-python3 test_router.py --model <public-model-name> --text "Reply OK"
+python3 test_router.py --mode chat --model <public-chat-route> --text "Reply OK"
 ```
 
 Other quick modes:
 
 ```bash
+python3 test_router.py --mode completions --model <public-completions-route> --text "hello"
+python3 test_router.py --mode responses --model <public-responses-route> --text "hello"
 python3 test_router.py --mode embeddings --model <public-embedding-route> --text "hello"
 python3 test_router.py --mode rerank --model <public-rerank-route> --query "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
 python3 test_router.py --mode asr --model <public-asr-route> --file tests/fixtures/asr_smoke.wav

@@ -7,7 +7,7 @@
 //!   x-mock-status               : trả thẳng status này (503, 429, ...) không body
 //!   x-mock-no-usage             : không trả usage (test ước lượng)
 //!   x-mock-hang                 : nhận rồi im (test first-byte timeout)
-//! Endpoint: POST /v1/chat/completions, POST /v1/responses, /v1/embeddings, /v1/rerank, /v2/rerank,
+//! Endpoint: POST /v1/chat/completions, /v1/completions, /v1/responses, /v1/embeddings, /v1/rerank, /v2/rerank,
 //! POST /v1/audio/transcriptions, POST /v1/messages, POST /v1/systemone,
 //! POST /v1/decisions, GET /v1/models, GET /health
 //! Thống kê để test so sánh: GET /_stats → {"requests":N,"prompt_tokens_total":..,"completion_tokens_total":..}
@@ -58,6 +58,7 @@ async fn main() {
     let st: S = Arc::new(Stats::default());
     let app = Router::new()
         .route("/v1/chat/completions", post(openai))
+        .route("/v1/completions", post(completions))
         .route("/v1/responses", post(responses))
         .route("/v1/embeddings", post(embeddings))
         .route("/v1/rerank", post(rerank))
@@ -66,7 +67,7 @@ async fn main() {
         .route("/v1/messages", post(anthropic))
         .route("/v1/systemone", post(systemone))
         .route("/v1/decisions", post(systemone))
-        .route("/v1/models", get(|| async { Json(serde_json::json!({"object":"list","data":[{"id":"mock-model","object":"model","owned_by":"mock"},{"id":"mock-responses","object":"model","owned_by":"mock"},{"id":"mock-embedding","object":"model","owned_by":"mock"},{"id":"mock-rerank","object":"model","owned_by":"mock"},{"id":"mock-asr","object":"model","owned_by":"mock"},{"id":"mock-systemone","object":"model","owned_by":"mock"}],"models":[{"name":"mock-systemone"}]})) }))
+        .route("/v1/models", get(|| async { Json(serde_json::json!({"object":"list","data":[{"id":"mock-model","object":"model","owned_by":"mock"},{"id":"mock-responses","object":"model","owned_by":"mock"},{"id":"mock-completion","object":"model","owned_by":"mock"},{"id":"mock-embedding","object":"model","owned_by":"mock"},{"id":"mock-rerank","object":"model","owned_by":"mock"},{"id":"mock-asr","object":"model","owned_by":"mock"},{"id":"mock-systemone","object":"model","owned_by":"mock"}],"models":[{"name":"mock-systemone"}]})) }))
         .route("/health", get(|| async { "ok" }))
         .route("/_stats", get(|State(s): State<S>| async move {
             Json(serde_json::json!({"requests": s.requests.load(Ordering::Relaxed),
@@ -124,6 +125,24 @@ fn is_stream(body: &Bytes) -> bool {
     serde_json::from_slice::<P>(body)
         .map(|p| p.stream)
         .unwrap_or(false)
+}
+
+async fn completions(State(st): State<S>, headers: HeaderMap, body: Bytes) -> Response {
+    let (p, n, _, _, _, no_usage) = match common(&headers, &st, &body).await {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let mut j = serde_json::json!({
+        "id":"cmpl-mock",
+        "object":"text_completion",
+        "model":"mock-completion",
+        "choices":[{"index":0,"text":"OK","finish_reason":"stop"}]
+    });
+    if !no_usage {
+        j["usage"] =
+            serde_json::json!({"prompt_tokens":p,"completion_tokens":n,"total_tokens":p+n});
+    }
+    Json(j).into_response()
 }
 
 async fn responses(State(st): State<S>, headers: HeaderMap, body: Bytes) -> Response {

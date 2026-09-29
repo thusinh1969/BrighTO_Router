@@ -3,6 +3,7 @@
 
 Covers the public API families without paid provider keys:
   - OpenAI-compatible chat:        /v1/chat/completions
+  - OpenAI legacy completions:    /v1/completions
   - OpenAI Responses:              /v1/responses
   - Anthropic Messages:            /v1/messages
   - Embeddings:                    /v1/embeddings
@@ -154,6 +155,8 @@ def validate(kind: str, response: requests.Response) -> bool:
     data = response.json()
     if kind == "chat":
         return bool(data.get("choices"))
+    if kind == "completions":
+        return bool(data.get("choices"))
     if kind == "responses":
         return bool(data.get("output") or data.get("output_text"))
     if kind == "messages":
@@ -274,6 +277,18 @@ def main() -> int:
                 "json": {"model": "matrix-openai-chat", "messages": [{"role": "user", "content": "Say OK."}], "max_tokens": 8, "stream": False},
             },
             {
+                "name": "openai completions",
+                "kind": "completions",
+                "model": "matrix-openai-completions",
+                "provider_model": "mock-completion",
+                "protocol": "openai_completions",
+                "backend_id": openai_backend,
+                "dialect": "openai",
+                "auth_mode": "none",
+                "endpoint": "/v1/completions",
+                "json": {"model": "matrix-openai-completions", "prompt": "Say OK.", "max_tokens": 8, "stream": False},
+            },
+            {
                 "name": "openai responses",
                 "kind": "responses",
                 "model": "matrix-openai-responses",
@@ -358,6 +373,8 @@ def main() -> int:
         check(checks, "endpoint guard chat rejects embeddings", guard.status_code == 400 and "OpenAI Chat" in guard.text, guard.status_code)
         guard2 = requests.post(base + "/v1/chat/completions", headers=user_headers, json={"model": "matrix-openai-responses", "messages": [{"role": "user", "content": "wrong endpoint"}]}, timeout=30)
         check(checks, "endpoint guard responses rejects chat", guard2.status_code == 400 and "OpenAI Responses" in guard2.text, guard2.status_code)
+        guard3 = requests.post(base + "/v1/chat/completions", headers=user_headers, json={"model": "matrix-openai-completions", "messages": [{"role": "user", "content": "wrong endpoint"}]}, timeout=30)
+        check(checks, "endpoint guard completions rejects chat", guard3.status_code == 400 and "OpenAI Completions" in guard3.text, guard3.status_code)
 
         ok = all(checks)
         print("RESULT " + ("PASS" if ok else "FAIL"))

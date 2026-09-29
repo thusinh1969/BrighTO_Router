@@ -154,7 +154,7 @@ Check the stack at any time:
 
 Open **Models & Routes → Add model route** in the Portal.
 
-1. Choose **Task type**: Chat / LLM, Embedding, Rerank, ASR / transcription, or System One / Decision.
+1. Choose **Task type**. The Portal shows the endpoint shape explicitly: **Chat Completions (`/v1/chat/completions`)**, **Completions (`/v1/completions`)**, **Responses API (`/v1/responses`)**, Embedding, Rerank, ASR / transcription, or System One / Decision.
 2. Choose a provider preset such as OpenAI, Anthropic, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Jina AI, Voyage AI, Cohere, **Ollaya System One**, or **Custom LLM**.
 3. Accept the default Base URL or enter your own.
 4. Paste the provider API key when the endpoint requires one. Leave it blank when the matching `.env` key is already set, or when **Custom LLM** points to a local/no-auth endpoint such as llama.cpp or local Ollaya.
@@ -254,7 +254,7 @@ OLLAYA_API_KEY="test-systemone-key" ./smoke/systemone/run_ollaya_laya.sh
 
 API model names are unique across normal model routes and Model Groups. This is the value clients send in JSON as `model`; a future display label can be decorative, but this API name must not collide.
 
-Use a Model Group when you want one API model name to spread traffic across several existing tested routes of the same type. The client does not change its API call. It still sends `model: "<api-model-group-name>"` to the same endpoint for that type.
+Use a Model Group when you want one API model name to spread traffic across several existing tested routes of the same API shape. The client does not change its API call. It still sends `model: "<api-model-group-name>"` to the same endpoint for that type. Chat Completions, Completions, and Responses are separate shapes and are not mixed in one group.
 
 If an endpoint returns a retryable failure before a response is committed, the router tries another healthy endpoint in the group. After three consecutive failures, that backend opens a circuit and is checked again after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; set it in `.env` when you need faster or slower recovery probes.
 
@@ -271,10 +271,16 @@ Round robin rotates evenly and does not ask for weights. Weighted round robin sh
 
 Use `test_router.py` as the simplest client example. It reads `.env` by default, so a fresh local install can use the seeded demo client key. Pass `--api-key` when testing with a key created in the Portal.
 
-Text chat:
+Chat Completions route:
 
 ```bash
-python3 test_router.py --model <public-model-name> --text "Reply OK in one short sentence."
+python3 test_router.py --mode chat --model <public-chat-route> --text "Reply OK in one short sentence."
+```
+
+Legacy Completions route:
+
+```bash
+python3 test_router.py --mode completions --model <public-completions-route> --text "Reply OK in one short sentence."
 ```
 
 Text chat from plain Python, without any BrighTO helper code:
@@ -300,7 +306,7 @@ resp.raise_for_status()
 print(resp.json()["choices"][0]["message"]["content"])
 ```
 
-Responses API through a configured Responses route:
+Responses API route:
 
 ```bash
 python3 test_router.py --mode responses --model <public-responses-route> --text "Reply OK in one short sentence."

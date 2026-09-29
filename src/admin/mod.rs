@@ -1591,8 +1591,8 @@ async fn post_json_probe(
     Ok((status, json))
 }
 
-/// 1-token completion để chứng minh key + model thật sự hoạt động. Trả status (None = lỗi network).
-async fn test_completion(
+/// 1-token chat/messages probe to prove key + model really work.
+async fn test_chat_completion(
     state: &Arc<AdminState>,
     base_url: &str,
     dialect: &str,
@@ -1611,6 +1611,22 @@ async fn test_completion(
         serde_json::json!({"model": model, "max_tokens": 1, "stream": false, "messages": [{"role":"user","content":"ping"}]})
     };
     post_json_probe(state, base_url, route, dialect, key, body, 20).await
+}
+
+async fn test_text_completion(
+    state: &Arc<AdminState>,
+    base_url: &str,
+    dialect: &str,
+    key: &str,
+    model: &str,
+) -> Result<(u16, Option<serde_json::Value>), String> {
+    let body = serde_json::json!({
+        "model": model,
+        "prompt": "ping",
+        "max_tokens": 1,
+        "stream": false
+    });
+    post_json_probe(state, base_url, "/v1/completions", dialect, key, body, 20).await
 }
 
 async fn test_responses(
@@ -1888,6 +1904,11 @@ async fn test_connection(
                 .await
                 .map(|(status, _)| (status, status < 400, "responses OK".to_string()))
         }
+        ProviderProtocol::OpenAiCompletions => {
+            test_text_completion(&state, &base_url, dialect, &key, model)
+                .await
+                .map(|(status, _)| (status, status < 400, "completions OK".to_string()))
+        }
         ProviderProtocol::OpenAiEmbeddings => {
             test_embedding(&state, &base_url, dialect, &key, model).await
         }
@@ -1904,9 +1925,9 @@ async fn test_connection(
         ProviderProtocol::SystemOne => {
             test_systemone(&state, &base_url, dialect, &key, model).await
         }
-        _ => test_completion(&state, &base_url, dialect, &key, model)
+        _ => test_chat_completion(&state, &base_url, dialect, &key, model)
             .await
-            .map(|(status, _)| (status, status < 400, "model completion OK".to_string())),
+            .map(|(status, _)| (status, status < 400, "chat/messages OK".to_string())),
     };
     let latency_ms = started.elapsed().as_millis() as u64;
     match tested {
@@ -3824,6 +3845,26 @@ mod tests {
             "model route and Model Group names must share one unique client-facing API namespace"
         );
         Ok(())
+    }
+
+    #[test]
+    fn model_group_protocol_families_keep_endpoint_shapes_separate() {
+        assert_eq!(protocol_family("openai_chat"), "openai_chat");
+        assert_eq!(protocol_family("local_openai_chat"), "openai_chat");
+        assert_eq!(protocol_family("openai_completions"), "openai_completions");
+        assert_eq!(protocol_family("openai_responses"), "openai_responses");
+        assert_ne!(
+            protocol_family("openai_chat"),
+            protocol_family("openai_completions")
+        );
+        assert_ne!(
+            protocol_family("openai_chat"),
+            protocol_family("openai_responses")
+        );
+        assert_ne!(
+            protocol_family("openai_completions"),
+            protocol_family("openai_responses")
+        );
     }
 
     #[test]

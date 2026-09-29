@@ -122,7 +122,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         }}
 
         function expectedProtocolForTask(task) {{
-          return {{ chat: 'local_openai_chat', responses: 'openai_responses', embedding: 'openai_embeddings', rerank: 'openai_rerank', asr: 'openai_audio_transcriptions', systemone: 'systemone' }}[task] || 'openai_chat';
+          return {{ chat: 'local_openai_chat', completion: 'openai_completions', responses: 'openai_responses', embedding: 'openai_embeddings', rerank: 'openai_rerank', asr: 'openai_audio_transcriptions', systemone: 'systemone' }}[task] || 'openai_chat';
         }}
 
         async function createCustomRoute(page, task, providerModel, publicName, baseUrl = mockURL) {{
@@ -274,7 +274,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           expect(payload).toBeTruthy();
           await page.unroute('**/admin/routes');
           const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'audit-systemone-group' }}).first();
-          await expect(row).toContainText('System One / Decision Model Group');
+          await expect(row).toContainText('System One / Decision (/v1/systemone) Model Group');
           await expect(row).toContainText('2 endpoints');
         }}
 
@@ -282,7 +282,11 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         async function auditProviderTaskChoices(page) {{
           const modal = await openAddModel(page);
           const selects = modal.locator('select');
-          await expect(selects.nth(0).locator('option[value="responses"]')).toHaveCount(1);
+          await expect(selects.nth(0).locator('option[value="chat"]')).toContainText('/v1/chat/completions');
+          await expect(selects.nth(0).locator('option[value="completion"]')).toContainText('/v1/completions');
+          await expect(selects.nth(0).locator('option[value="responses"]')).toContainText('/v1/responses');
+          await selects.nth(0).selectOption('completion');
+          await expect(modal).toContainText('Completions calls /v1/completions');
           await selects.nth(0).selectOption('responses');
           await expect(modal).toContainText('Responses API calls /v1/responses');
           await selects.nth(0).selectOption('rerank');
@@ -362,6 +366,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         async function auditRoutes(page) {{
           await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat');
           await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat-b', mockURL + '/');
+          await createCustomRoute(page, 'completion', 'mock-completion', 'audit-completions', mockURL + '/v1');
           await createCustomRoute(page, 'responses', 'mock-responses', 'audit-responses', mockURL + '/v1');
           await createCustomRoute(page, 'embedding', 'mock-embedding', 'audit-embedding');
           await createCustomRoute(page, 'rerank', 'mock-rerank', 'audit-rerank');
@@ -374,7 +379,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await page.reload({{ waitUntil: 'domcontentloaded' }});
           await expect(page.locator('#app-view')).toBeVisible();
           await nav(page, 'models', 'Models');
-          for (const name of ['audit-chat', 'audit-chat-b', 'audit-responses', 'audit-embedding', 'audit-rerank', 'audit-asr', 'audit-systemone', 'audit-systemone-b', 'audit-model-group', 'audit-systemone-group']) {{
+          for (const name of ['audit-chat', 'audit-chat-b', 'audit-completions', 'audit-responses', 'audit-embedding', 'audit-rerank', 'audit-asr', 'audit-systemone', 'audit-systemone-b', 'audit-model-group', 'audit-systemone-group']) {{
             await expect(page.locator('#content')).toContainText(name);
           }}
 

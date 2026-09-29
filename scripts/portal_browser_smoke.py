@@ -361,7 +361,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await page.unroute('**/admin/routes');
           await expect(page.locator('#content')).toContainText('browser-systemone-group', {{ timeout: 15000 }});
           const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'browser-systemone-group' }}).first();
-          await expect(row).toContainText('System One / Decision Model Group');
+          await expect(row).toContainText('System One / Decision (/v1/systemone) Model Group');
           await expect(row).toContainText('2 endpoints');
         }}
 
@@ -424,6 +424,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await createCustomRoute(page, 'asr', 'mock-asr', 'browser-asr');
             await createCustomRoute(page, 'systemone', 'mock-systemone', 'browser-systemone-a');
             await createCustomRoute(page, 'systemone', 'mock-systemone', 'browser-systemone-b', mockURL + '/');
+            await createCustomRoute(page, 'completion', 'mock-completion', 'browser-completion');
             await createCustomRoute(page, 'chat', 'mock-model', 'browser-chat-a');
             await createCustomRoute(page, 'chat', 'mock-model', 'browser-chat-b', mockURL + '/');
             await assertDuplicateModelRouteNameBlocked(page);
@@ -447,6 +448,11 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await login(page);
             const modal = await openAddModel(page);
             const selects = modal.locator('select');
+            await expect(selects.nth(0).locator('option[value="chat"]')).toContainText('/v1/chat/completions');
+            await expect(selects.nth(0).locator('option[value="completion"]')).toContainText('/v1/completions');
+            await expect(selects.nth(0).locator('option[value="responses"]')).toContainText('/v1/responses');
+            await selects.nth(0).selectOption('completion');
+            await expect(modal).toContainText('Completions calls /v1/completions');
             await selects.nth(0).selectOption('rerank');
             const providerSelect = selects.nth(1);
             await expect(providerSelect.locator('option[value="jina"]')).toHaveCount(1);
