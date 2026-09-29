@@ -1613,6 +1613,22 @@ async fn test_completion(
     post_json_probe(state, base_url, route, dialect, key, body, 20).await
 }
 
+async fn test_responses(
+    state: &Arc<AdminState>,
+    base_url: &str,
+    dialect: &str,
+    key: &str,
+    model: &str,
+) -> Result<(u16, Option<serde_json::Value>), String> {
+    let body = serde_json::json!({
+        "model": model,
+        "input": "ping",
+        "max_output_tokens": 1,
+        "stream": false
+    });
+    post_json_probe(state, base_url, "/v1/responses", dialect, key, body, 20).await
+}
+
 async fn test_embedding(
     state: &Arc<AdminState>,
     base_url: &str,
@@ -1867,6 +1883,11 @@ async fn test_connection(
         });
     let started = std::time::Instant::now();
     let tested = match protocol {
+        ProviderProtocol::OpenAiResponses => {
+            test_responses(&state, &base_url, dialect, &key, model)
+                .await
+                .map(|(status, _)| (status, status < 400, "responses OK".to_string()))
+        }
         ProviderProtocol::OpenAiEmbeddings => {
             test_embedding(&state, &base_url, dialect, &key, model).await
         }
@@ -1949,6 +1970,7 @@ fn protocol_family(protocol: &str) -> &'static str {
         ProviderProtocol::OpenAiChat
         | ProviderProtocol::LocalOpenAiChat
         | ProviderProtocol::CustomOpenAiChat => "openai_chat",
+        ProviderProtocol::OpenAiResponses => "openai_responses",
         ProviderProtocol::OpenAiCompletions => "openai_completions",
         ProviderProtocol::OpenAiEmbeddings => "openai_embeddings",
         ProviderProtocol::OpenAiRerank
@@ -3717,6 +3739,10 @@ mod tests {
         assert_eq!(
             join_provider_url("https://api.moonshot.ai/v1", "/v1/models"),
             "https://api.moonshot.ai/v1/models"
+        );
+        assert_eq!(
+            join_provider_url("https://api.openai.com/v1", "/v1/responses"),
+            "https://api.openai.com/v1/responses"
         );
         assert_eq!(
             join_provider_url(

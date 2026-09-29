@@ -138,6 +138,22 @@ const SSE_NO_USAGE: &str =
 async fn spawn_adapter_backend() -> String {
     let app = axum::Router::new()
         .route(
+            "/v1/responses",
+            axum::routing::post(|body: Bytes| async move {
+                let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(body["model"], "mock-responses");
+                assert_eq!(body["input"], "hello responses");
+                axum::Json(serde_json::json!({
+                    "id":"resp-test",
+                    "object":"response",
+                    "model":"mock-responses",
+                    "output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}],
+                    "output_text":"OK",
+                    "usage":{"input_tokens":6,"output_tokens":2,"total_tokens":8}
+                }))
+            }),
+        )
+        .route(
             "/v1/embeddings",
             axum::routing::post(|body: Bytes| async move {
                 let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
@@ -469,6 +485,46 @@ async fn model_group_large_rewrite_preserves_exact_content_length(pool: PgPool) 
         captured.transfer_encoding.is_none(),
         "Model Group rewrite must not switch to chunked transfer: {captured:?}"
     );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn responses_proxy_accepts_sdk_v1_base_url_and_records_usage(pool: PgPool) {
+    let backend_base = format!("{}/v1", spawn_adapter_backend().await);
+    let (state, mut ledger_rx) = build_state_for_route(
+        pool,
+        backend_base,
+        "public-responses",
+        "mock-responses",
+        "openai_responses",
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/responses")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"public-responses","input":"hello responses","stream":false}"#,
+        ))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = to_bytes(resp.into_body(), 10 * 1024 * 1024).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["object"], "response");
+    assert_eq!(json["output_text"], "OK");
+
+    let ev = tokio::time::timeout(Duration::from_secs(2), ledger_rx.recv())
+        .await
+        .expect("ledger event within 2s")
+        .expect("ledger event present");
+    assert_eq!(ev.model, "public-responses");
+    assert_eq!(ev.input_tokens, 6);
+    assert_eq!(ev.output_tokens, 2);
+    assert!(!ev.estimated);
 }
 
 #[sqlx::test(migrations = "./migrations")]

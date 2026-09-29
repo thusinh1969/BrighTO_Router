@@ -53,7 +53,7 @@ Honest read: Model Groups add routing choice, per-endpoint model rewrite, Postgr
 
 | Capability | Current 1.1.0 status |
 |---|---|
-| Chat and completions | OpenAI-compatible `/v1/chat/completions` and `/v1/completions`. |
+| Chat, completions, and Responses | OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, and `/v1/responses`. |
 | Anthropic Messages | `/v1/messages` with Anthropic-compatible upstreams. |
 | Embeddings | `/v1/embeddings` pass-through with usage logging. |
 | Rerank | `/v1/rerank` adapters for Qwen/DashScope, Jina, Voyage, Cohere, and OpenAI-compatible/custom endpoints. |
@@ -300,6 +300,12 @@ resp.raise_for_status()
 print(resp.json()["choices"][0]["message"]["content"])
 ```
 
+Responses API through a configured Responses route:
+
+```bash
+python3 test_router.py --mode responses --model <public-responses-route> --text "Reply OK in one short sentence."
+```
+
 Embeddings through an OpenAI-compatible embedding route:
 
 ```bash
@@ -507,7 +513,7 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 ## What teams get in 1.1.0
 
 - One internal endpoint for multiple model providers.
-- OpenAI-style routes: `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`.
+- OpenAI-style routes: `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/models`.
 - Anthropic Messages route: `/v1/messages`.
 - Adapter routes: `/v1/rerank`, `/v1/audio/transcriptions`, `/v1/systemone`, and `/v1/decisions` are implemented, Portal task-aware, mock/integration tested, and live-smoked with OpenAI, Qwen/DashScope, Jina, Voyage, Cohere, and Ollaya/Laya.
 - Multimodal LLM JSON pass-through when the selected backend supports that request shape.
@@ -542,11 +548,12 @@ If a customer needs full transcript auditing, that should be an explicit enterpr
 
 ## Multimodal and media support
 
-BrighTO-Router 1.1.0 routes LLM, embeddings, rerank, System One decisions, and OpenAI-compatible ASR/transcription requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
+BrighTO-Router 1.1.0 routes LLM, OpenAI Responses, embeddings, rerank, System One decisions, and OpenAI-compatible ASR/transcription requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
 
 | Capability | 1.1.0 status | What it means |
 |---|---|---|
 | Text chat/completions | Yes | Supported through OpenAI-style `/v1/chat/completions` and `/v1/completions`. |
+| OpenAI Responses | Proxy yes | Supported through `/v1/responses` when the backend exposes the Responses API. Useful for Codex-style clients. |
 | Embeddings | Proxy yes | Supported through OpenAI-style `/v1/embeddings` when the backend provides embeddings. BrighTO-Router forwards the request and returns the vector response unchanged. |
 | Anthropic Messages | Yes | Supported through `/v1/messages` for Anthropic-compatible backends. |
 | Image input inside LLM chat JSON | Conditional yes | Passed through when the selected backend accepts that JSON shape and the request stays under `MAX_BODY_BYTES`. |
@@ -563,6 +570,8 @@ BrighTO-Router 1.1.0 routes LLM, embeddings, rerank, System One decisions, and O
 The practical rule is simple: if a provider exposes a model through a supported JSON LLM endpoint or the System One decision contract, BrighTO-Router can route it. If the provider needs a separate image/audio/video/rerank API, multipart upload flow, realtime session, or provider-specific media protocol, that belongs in a future adapter.
 
 ### Embeddings and reranking scope
+
+`/v1/responses` is a proxy route, not an agent runtime. The backend implements Responses semantics. BrighTO-Router authenticates, selects the route, forwards the JSON body, returns the provider response unchanged, and logs usage metadata when usage is present.
 
 `/v1/embeddings` is a proxy route, not an embedding engine. The backend creates the vector. BrighTO-Router only applies authentication, model-route policy, budget checks, provider credential handling, response forwarding, and usage logging. It does not store vectors, build a vector index, run semantic search, or convert one provider's embedding format into another.
 

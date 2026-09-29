@@ -32,6 +32,7 @@ pub enum BackendFormat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderProtocol {
     OpenAiChat,
+    OpenAiResponses,
     OpenAiCompletions,
     OpenAiEmbeddings,
     OpenAiRerank,
@@ -50,6 +51,7 @@ impl ProviderProtocol {
     /// Parse giá trị lưu trong DB; unknown/empty -> OpenAiChat (backward-compat).
     pub fn parse(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
+            "openai_responses" | "responses" => ProviderProtocol::OpenAiResponses,
             "openai_completions" | "completions" => ProviderProtocol::OpenAiCompletions,
             "openai_embeddings" | "embeddings" => ProviderProtocol::OpenAiEmbeddings,
             "openai_rerank" | "rerank" | "custom_rerank" => ProviderProtocol::OpenAiRerank,
@@ -73,6 +75,7 @@ impl ProviderProtocol {
     pub fn as_str(self) -> &'static str {
         match self {
             ProviderProtocol::OpenAiChat => "openai_chat",
+            ProviderProtocol::OpenAiResponses => "openai_responses",
             ProviderProtocol::OpenAiCompletions => "openai_completions",
             ProviderProtocol::OpenAiEmbeddings => "openai_embeddings",
             ProviderProtocol::OpenAiRerank => "openai_rerank",
@@ -94,6 +97,7 @@ impl ProviderProtocol {
             ProviderProtocol::OpenAiChat
             | ProviderProtocol::LocalOpenAiChat
             | ProviderProtocol::CustomOpenAiChat => "/v1/chat/completions",
+            ProviderProtocol::OpenAiResponses => "/v1/responses",
             ProviderProtocol::OpenAiCompletions => "/v1/completions",
             ProviderProtocol::OpenAiEmbeddings => "/v1/embeddings",
             ProviderProtocol::OpenAiRerank
@@ -116,6 +120,7 @@ impl ProviderProtocol {
     pub fn label(self) -> &'static str {
         match self {
             ProviderProtocol::OpenAiChat => "OpenAI Chat Completions",
+            ProviderProtocol::OpenAiResponses => "OpenAI Responses",
             ProviderProtocol::OpenAiCompletions => "OpenAI Completions",
             ProviderProtocol::OpenAiEmbeddings => "OpenAI Embeddings",
             ProviderProtocol::OpenAiRerank => "OpenAI-compatible Rerank",
@@ -414,6 +419,10 @@ mod tests {
             ProviderProtocol::OpenAiChat
         );
         assert_eq!(
+            ProviderProtocol::parse("OPENAI_RESPONSES"),
+            ProviderProtocol::OpenAiResponses
+        );
+        assert_eq!(
             ProviderProtocol::parse("OPENAI_COMPLETIONS"),
             ProviderProtocol::OpenAiCompletions
         );
@@ -468,6 +477,10 @@ mod tests {
             "/v1/chat/completions"
         );
         assert_eq!(
+            ProviderProtocol::OpenAiResponses.incoming_path(),
+            "/v1/responses"
+        );
+        assert_eq!(
             ProviderProtocol::OpenAiCompletions.incoming_path(),
             "/v1/completions"
         );
@@ -491,6 +504,10 @@ mod tests {
         assert_eq!(
             ProviderProtocol::OpenAiChat.label(),
             "OpenAI Chat Completions"
+        );
+        assert_eq!(
+            ProviderProtocol::OpenAiResponses.label(),
+            "OpenAI Responses"
         );
         assert_eq!(ProviderProtocol::SystemOne.label(), "System One Decisions");
         assert_eq!(

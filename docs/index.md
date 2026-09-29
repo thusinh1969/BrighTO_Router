@@ -18,7 +18,7 @@ Most teams do not need a large hosted AI platform to start. They need a fast, un
 
 ## Core features
 
-- OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`
+- OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`
 - Anthropic-compatible `/v1/messages`
 - System One decisions through `/v1/systemone` and `/v1/decisions`
 - Rerank and ASR adapter routes

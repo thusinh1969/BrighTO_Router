@@ -121,7 +121,41 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(picker).toHaveCount(0);
         }}
 
+        function expectedProtocolForTask(task) {{
+          return {{ chat: 'local_openai_chat', responses: 'openai_responses', embedding: 'openai_embeddings', rerank: 'openai_rerank', asr: 'openai_audio_transcriptions', systemone: 'systemone' }}[task] || 'openai_chat';
+        }}
+
         async function createCustomRoute(page, task, providerModel, publicName, baseUrl = mockURL) {{
+          const expectedProtocol = expectedProtocolForTask(task);
+          let testPayload = null;
+          let savePayload = null;
+          await page.route('**/admin/test-connection', async route => {{
+            if (route.request().method() === 'POST') {{
+              const body = route.request().postDataJSON();
+              if (body.provider_model_name === providerModel && body.base_url === baseUrl) {{
+                testPayload = body;
+                expect(body.protocol).toBe(expectedProtocol);
+                expect(body.auth_mode).toBe('none');
+                expect(body.provider_key).toBeUndefined();
+                expect(body.provider_key_ref).toBeUndefined();
+              }}
+            }}
+            await route.continue();
+          }});
+          await page.route('**/admin/routes', async route => {{
+            if (route.request().method() === 'POST') {{
+              const body = route.request().postDataJSON();
+              if (body.model_name === publicName) {{
+                savePayload = body;
+                expect(body.protocol).toBe(expectedProtocol);
+                expect(body.provider_model_name).toBe(providerModel);
+                expect(body.auth_mode).toBe('none');
+                expect(body.provider_key).toBeUndefined();
+                expect(body.provider_key_ref).toBeUndefined();
+              }}
+            }}
+            await route.continue();
+          }});
           const modal = await openAddModel(page);
           const selects = modal.locator('select');
           await selects.nth(0).selectOption(task);
@@ -133,8 +167,12 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await inputs.nth(3).fill(publicName);
           await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
           await expect(modal.locator('.connection-status')).toContainText('Connected', {{ timeout: 15000 }});
+          expect(testPayload).toBeTruthy();
           await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
           await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+          expect(savePayload).toBeTruthy();
+          await page.unroute('**/admin/test-connection');
+          await page.unroute('**/admin/routes');
           await expect(page.locator('#content')).toContainText(publicName, {{ timeout: 15000 }});
         }}
 
@@ -244,6 +282,9 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         async function auditProviderTaskChoices(page) {{
           const modal = await openAddModel(page);
           const selects = modal.locator('select');
+          await expect(selects.nth(0).locator('option[value="responses"]')).toHaveCount(1);
+          await selects.nth(0).selectOption('responses');
+          await expect(modal).toContainText('Responses API calls /v1/responses');
           await selects.nth(0).selectOption('rerank');
           const providerSelect = selects.nth(1);
           for (const key of ['jina', 'voyage', 'cohere', 'qwen']) {{
@@ -321,6 +362,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         async function auditRoutes(page) {{
           await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat');
           await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat-b', mockURL + '/');
+          await createCustomRoute(page, 'responses', 'mock-responses', 'audit-responses', mockURL + '/v1');
           await createCustomRoute(page, 'embedding', 'mock-embedding', 'audit-embedding');
           await createCustomRoute(page, 'rerank', 'mock-rerank', 'audit-rerank');
           await createCustomRoute(page, 'asr', 'mock-asr', 'audit-asr');
@@ -332,7 +374,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await page.reload({{ waitUntil: 'domcontentloaded' }});
           await expect(page.locator('#app-view')).toBeVisible();
           await nav(page, 'models', 'Models');
-          for (const name of ['audit-chat', 'audit-chat-b', 'audit-embedding', 'audit-rerank', 'audit-asr', 'audit-systemone', 'audit-systemone-b', 'audit-model-group', 'audit-systemone-group']) {{
+          for (const name of ['audit-chat', 'audit-chat-b', 'audit-responses', 'audit-embedding', 'audit-rerank', 'audit-asr', 'audit-systemone', 'audit-systemone-b', 'audit-model-group', 'audit-systemone-group']) {{
             await expect(page.locator('#content')).toContainText(name);
           }}
 

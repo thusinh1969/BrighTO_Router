@@ -139,7 +139,8 @@ Embedding and rerank routes are not selected by changing only the provider. In *
 2. **Rerank** creates a route for `/v1/rerank`. The provider model must be a reranker such as Qwen `qwen3-rerank`, Jina reranker, Voyage reranker, or Cohere reranker.
 3. **ASR / transcription** creates a route for `/v1/audio/transcriptions` and tests with the small bundled WAV fixture.
 4. **System One / Decision** creates a route for `/v1/systemone` and `/v1/decisions`. It works with Ollaya/Laya, hosted Jev/System One, and compatible local services.
-5. **Chat / LLM** remains the normal `/v1/chat/completions` or Anthropic Messages flow.
+5. **Responses API** creates a route for `/v1/responses`. Use it when the upstream backend exposes OpenAI Responses semantics.
+6. **Chat / LLM** remains the normal `/v1/chat/completions` or Anthropic Messages flow.
 
 Provider endpoint templates in **Providers** are only Base URLs. A route becomes usable only after the task-specific **Test connection** passes and the route is saved enabled.
 

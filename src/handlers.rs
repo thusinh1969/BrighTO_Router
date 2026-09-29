@@ -331,6 +331,7 @@ fn find_string_end(data: &[u8], start: usize) -> Option<usize> {
 pub fn router(state: Arc<AppState>) -> Router {
     Router::<Arc<AppState>>::new()
         .route("/v1/chat/completions", post(chat_completions))
+        .route("/v1/responses", post(responses))
         .route("/v1/completions", post(completions))
         .route("/v1/embeddings", post(embeddings))
         .route("/v1/rerank", post(rerank))
@@ -353,6 +354,9 @@ async fn chat_completions(
     req: Request<Body>,
 ) -> Response<Body> {
     handle_generate(state, req, "/v1/chat/completions").await
+}
+async fn responses(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
+    handle_generate(state, req, "/v1/responses").await
 }
 async fn completions(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
     handle_generate(state, req, "/v1/completions").await
@@ -671,6 +675,7 @@ async fn handle_generate(
         request_id,
         stream,
         stream_options_present,
+        protocol,
         rewrite_model_in_proxy,
         reservation,
         concurrency,
@@ -839,6 +844,7 @@ async fn handle_multipart_adapter(
         request_id,
         stream: false,
         stream_options_present: true,
+        protocol,
         rewrite_model_in_proxy: false,
         reservation,
         concurrency,

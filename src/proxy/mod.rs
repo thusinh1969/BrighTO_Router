@@ -17,7 +17,7 @@ use http_body::{Frame, SizeHint};
 use serde_json::Value;
 
 use crate::budget::{BudgetReservation, ConcurrencyGuard};
-use crate::contract::{ApiKey, AppState, BackendFormat, ModelRoute, UsageEvent};
+use crate::contract::{ApiKey, AppState, BackendFormat, ModelRoute, ProviderProtocol, UsageEvent};
 use crate::route::{AcquireError, BackendExclusions, BackendLease};
 
 /// Quick check trước khi parse — tránh parse cả body 1MB. memchr, không cấp phát.
@@ -192,9 +192,11 @@ pub fn is_stream_request(body: &[u8]) -> bool {
 ///
 /// If base_url has no path, preserve the incoming path exactly:
 ///   https://api.openai.com + /v1/chat/completions -> https://api.openai.com/v1/chat/completions
+///   https://api.openai.com + /v1/responses -> https://api.openai.com/v1/responses
 /// If base_url already contains an API prefix, treat it like an OpenAI SDK base URL and strip
 /// the leading /v1 from the incoming route:
 ///   https://api.moonshot.ai/v1 + /v1/chat/completions -> https://api.moonshot.ai/v1/chat/completions
+///   https://api.openai.com/v1 + /v1/responses -> https://api.openai.com/v1/responses
 ///   https://example.com/compatible-mode/v1 + /v1/models -> https://example.com/compatible-mode/v1/models
 fn build_target_url(base_url: &str, uri: &Uri) -> String {
     let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
@@ -470,8 +472,14 @@ fn parse_openai_usage_from_line(line: &[u8]) -> Option<(u64, u64)> {
     }
     let v: Value = serde_json::from_slice(data).ok()?;
     let usage = v.get("usage")?;
-    let pt = usage.get("prompt_tokens")?.as_u64()?;
-    let ct = usage.get("completion_tokens")?.as_u64()?;
+    let pt = usage
+        .get("prompt_tokens")
+        .or_else(|| usage.get("input_tokens"))?
+        .as_u64()?;
+    let ct = usage
+        .get("completion_tokens")
+        .or_else(|| usage.get("output_tokens"))?
+        .as_u64()?;
     Some((pt, ct))
 }
 
@@ -608,6 +616,7 @@ pub struct ProxyContext {
     pub request_id: String,
     pub stream: bool,
     pub stream_options_present: bool,
+    pub protocol: ProviderProtocol,
     /// True only when proxy must rewrite top-level JSON model after endpoint selection.
     pub rewrite_model_in_proxy: bool,
     pub reservation: Option<BudgetReservation>,
@@ -1137,6 +1146,7 @@ pub async fn proxy_forward(
                 if backend.format == BackendFormat::OpenAi
                     && stream_request
                     && !ctx.stream_options_present
+                    && ctx.protocol != ProviderProtocol::OpenAiResponses
                 {
                     let bytes = if let Some(chunks) = model_rewrite_chunks.take() {
                         materialize_chunks(chunks).map(Bytes::from)
@@ -1158,7 +1168,8 @@ pub async fn proxy_forward(
             ProxyRequestBody::Streaming { .. }
                 if backend.format == BackendFormat::OpenAi
                     && stream_request
-                    && !ctx.stream_options_present =>
+                    && !ctx.stream_options_present
+                    && ctx.protocol != ProviderProtocol::OpenAiResponses =>
             {
                 request_total_for(&ctx, &backend.name, 500);
                 return tag_router_headers(
@@ -1395,6 +1406,11 @@ mod tests {
             build_target_url("https://api.moonshot.ai/v1", &uri),
             "https://api.moonshot.ai/v1/chat/completions?stream=true"
         );
+        let responses_uri: Uri = "/v1/responses".parse().unwrap();
+        assert_eq!(
+            build_target_url("https://api.openai.com/v1", &responses_uri),
+            "https://api.openai.com/v1/responses"
+        );
         assert_eq!(
             build_target_url("https://dashscope.example.com/compatible-mode/v1", &uri),
             "https://dashscope.example.com/compatible-mode/v1/chat/completions?stream=true"
@@ -1590,6 +1606,16 @@ mod tests {
         assert!(acc.seen_usage);
         assert_eq!(acc.input_tokens, 10);
         assert_eq!(acc.output_tokens, 20);
+    }
+
+    #[test]
+    fn tap_reads_responses_sse_usage_names() {
+        let chunk = b"data: {\"type\":\"response.completed\",\"usage\":{\"input_tokens\":11,\"output_tokens\":7}}\n\n";
+        let mut acc = UsageAccumulator::default();
+        extract_usage_from_sse_chunk(chunk, BackendFormat::OpenAi, &mut acc);
+        assert!(acc.seen_usage);
+        assert_eq!(acc.input_tokens, 11);
+        assert_eq!(acc.output_tokens, 7);
     }
 
     #[test]

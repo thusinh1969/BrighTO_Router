@@ -4,6 +4,7 @@
 Examples:
   python3 test_router.py --model my-model --text "Reply OK"
   python3 test_router.py --router http://SERVER:18080 --api-key sk-brighto-... --model my-model --text "Reply OK"
+  python3 test_router.py --mode responses --model my-responses --text "Reply OK"
   python3 test_router.py --mode embeddings --model my-embedding --text "hello"
   python3 test_router.py --mode rerank --model my-reranker --text "search query" --document "doc one" --document "doc two"
   python3 test_router.py --mode asr --model my-asr --file ./sample.wav
@@ -173,6 +174,20 @@ def build_body(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
             body["temperature"] = args.temperature
         return "/v1/chat/completions", body
 
+    if args.mode == "responses":
+        if args.image or args.audio:
+            raise CliError("responses mode in this helper accepts text input only; use --mode chat for OpenAI-style image/audio JSON")
+        body = {
+            "model": args.model,
+            "input": args.text,
+            "stream": False,
+        }
+        if args.max_tokens is not None:
+            body["max_output_tokens"] = args.max_tokens
+        if args.temperature is not None:
+            body["temperature"] = args.temperature
+        return "/v1/responses", body
+
     if args.mode == "embeddings":
         if args.image or args.audio:
             raise CliError("embeddings mode accepts text only in this helper")
@@ -301,6 +316,23 @@ def print_chat(data: dict[str, Any]) -> None:
     print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
+def print_responses(data: dict[str, Any]) -> None:
+    if data.get("output_text"):
+        print(data["output_text"])
+        return
+    texts: list[str] = []
+    for item in data.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        for content in item.get("content") or []:
+            if isinstance(content, dict) and content.get("text"):
+                texts.append(str(content["text"]))
+    if texts:
+        print("\n".join(texts))
+    else:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+
+
 def print_embeddings(data: dict[str, Any]) -> None:
     rows = data.get("data") or []
     first = rows[0] if rows and isinstance(rows[0], dict) else {}
@@ -362,7 +394,7 @@ def print_messages(data: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Call BrighTO-Router once with chat, embeddings, rerank, ASR, System One, or Anthropic Messages.",
+        description="Call BrighTO-Router once with chat, Responses, embeddings, rerank, ASR, System One, or Anthropic Messages.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Environment fallback order:
   router URL: BRIGHTO_ROUTER_URL, then BASE_URL from .env, then http://127.0.0.1:18080
@@ -391,7 +423,7 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     parser.add_argument("--text", default="Reply OK in one short sentence.", help="Text input to send; in rerank mode this is the query unless --query is set")
     parser.add_argument("--query", help="Search query for --mode rerank. Friendly alias; overrides --text for rerank only")
     parser.add_argument("--question", help="System One yes/no question for --mode systemone")
-    parser.add_argument("--mode", choices=["chat", "embeddings", "rerank", "asr", "systemone", "messages"], default="chat", help="Request type")
+    parser.add_argument("--mode", choices=["chat", "responses", "embeddings", "rerank", "asr", "systemone", "messages"], default="chat", help="Request type")
     parser.add_argument("--image", action="append", default=[], help="Image file path, http URL, https URL, or data URL for OpenAI-style chat JSON")
     parser.add_argument("--audio", action="append", default=[], help="Audio file path for OpenAI-style chat JSON")
     parser.add_argument("--document", action="append", default=[], help="Document text for --mode rerank; repeat for multiple documents")
@@ -470,6 +502,8 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     print()
     if args.raw_response:
         print(json.dumps(data, ensure_ascii=False, indent=2))
+    elif args.mode == "responses":
+        print_responses(data)
     elif args.mode == "embeddings":
         print_embeddings(data)
     elif args.mode == "rerank":

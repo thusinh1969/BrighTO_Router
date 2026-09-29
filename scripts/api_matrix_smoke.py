@@ -3,6 +3,7 @@
 
 Covers the public API families without paid provider keys:
   - OpenAI-compatible chat:        /v1/chat/completions
+  - OpenAI Responses:              /v1/responses
   - Anthropic Messages:            /v1/messages
   - Embeddings:                    /v1/embeddings
   - Rerank:                        /v1/rerank
@@ -153,6 +154,8 @@ def validate(kind: str, response: requests.Response) -> bool:
     data = response.json()
     if kind == "chat":
         return bool(data.get("choices"))
+    if kind == "responses":
+        return bool(data.get("output") or data.get("output_text"))
     if kind == "messages":
         return bool(data.get("content"))
     if kind == "embeddings":
@@ -271,6 +274,18 @@ def main() -> int:
                 "json": {"model": "matrix-openai-chat", "messages": [{"role": "user", "content": "Say OK."}], "max_tokens": 8, "stream": False},
             },
             {
+                "name": "openai responses",
+                "kind": "responses",
+                "model": "matrix-openai-responses",
+                "provider_model": "mock-responses",
+                "protocol": "openai_responses",
+                "backend_id": openai_backend,
+                "dialect": "openai",
+                "auth_mode": "none",
+                "endpoint": "/v1/responses",
+                "json": {"model": "matrix-openai-responses", "input": "Say OK.", "max_output_tokens": 8, "stream": False},
+            },
+            {
                 "name": "anthropic messages",
                 "kind": "messages",
                 "model": "matrix-anthropic",
@@ -341,6 +356,8 @@ def main() -> int:
         # One cross-endpoint guard proves route protocol cannot silently forward a wrong request shape.
         guard = requests.post(base + "/v1/embeddings", headers=user_headers, json={"model": "matrix-openai-chat", "input": "wrong endpoint"}, timeout=30)
         check(checks, "endpoint guard chat rejects embeddings", guard.status_code == 400 and "OpenAI Chat" in guard.text, guard.status_code)
+        guard2 = requests.post(base + "/v1/chat/completions", headers=user_headers, json={"model": "matrix-openai-responses", "messages": [{"role": "user", "content": "wrong endpoint"}]}, timeout=30)
+        check(checks, "endpoint guard responses rejects chat", guard2.status_code == 400 and "OpenAI Responses" in guard2.text, guard2.status_code)
 
         ok = all(checks)
         print("RESULT " + ("PASS" if ok else "FAIL"))
