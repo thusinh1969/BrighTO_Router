@@ -11,7 +11,7 @@ Use it as a free, open-source LiteLLM or Bifrost alternative when you want a nar
 </p>
 
 
-Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
+Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [API examples](docs/API_EXAMPLES.md) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
 
 - Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 - Official Docker image: `thusinh1969/brighto_airouter:v1.1.0`
@@ -283,28 +283,20 @@ Legacy Completions route:
 python3 test_router.py --mode completions --model <public-completions-route> --text "Reply OK in one short sentence."
 ```
 
-Text chat from plain Python, without any BrighTO helper code:
+Every Portal route has two client-facing facts: the **API model name** clients send as `model`, and the **API shape** clients call. The endpoint must match the shape because request and response JSON are different.
 
-```python
-import os
-import requests
+| Portal task | Client endpoint | Body shape |
+|---|---|---|
+| Chat Completions | `/v1/chat/completions` | `messages` |
+| Completions | `/v1/completions` | `prompt` |
+| Responses API | `/v1/responses` | `input` |
+| Embeddings | `/v1/embeddings` | `input` |
+| Rerank | `/v1/rerank` | `query`, `documents` |
+| ASR / transcription | `/v1/audio/transcriptions` | multipart `file` |
+| System One / Decision | `/v1/systemone` or `/v1/decisions` | `state`, `questions` |
+| Anthropic Messages | `/v1/messages` | Anthropic `messages` |
 
-router = os.getenv("BRIGHTO_ROUTER_URL", "http://127.0.0.1:18080")
-api_key = os.environ["BRIGHTO_API_KEY"]
-
-resp = requests.post(
-    f"{router}/v1/chat/completions",
-    headers={"Authorization": f"Bearer {api_key}"},
-    json={
-        "model": "<public-model-name>",
-        "messages": [{"role": "user", "content": "Reply OK in one short sentence."}],
-        "stream": False,
-    },
-    timeout=60,
-)
-resp.raise_for_status()
-print(resp.json()["choices"][0]["message"]["content"])
-```
+Full copy-paste Python examples for every type are in [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md).
 
 Responses API route:
 
@@ -334,6 +326,12 @@ System One / Decision through an Ollaya, Laya, Jev, or compatible route:
 
 ```bash
 python3 test_router.py --mode systemone --model <public-systemone-route> --text "I was charged twice for one order."
+```
+
+Anthropic Messages route:
+
+```bash
+python3 test_router.py --mode messages --model <public-anthropic-route> --text "Reply OK in one short sentence."
 ```
 
 Live provider smoke tests for adapter keys and endpoints:

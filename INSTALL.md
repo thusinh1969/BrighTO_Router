@@ -181,7 +181,7 @@ Use the portal:
 
 ## Test from the command line
 
-After saving a model route and creating a client API key, run one request with the helper script:
+After saving a model route and creating a client API key, run one request with the helper script. Full Python client examples for every supported API shape are in [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md).
 
 ```bash
 python3 test_router.py --router http://127.0.0.1:18080 --api-key sk-brighto-... --model <public-model-name> --text "Reply OK"
@@ -202,6 +202,7 @@ python3 test_router.py --mode embeddings --model <public-embedding-route> --text
 python3 test_router.py --mode rerank --model <public-rerank-route> --query "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
 python3 test_router.py --mode asr --model <public-asr-route> --file tests/fixtures/asr_smoke.wav
 python3 test_router.py --mode systemone --model <public-systemone-route> --text "Choose refund or replacement."
+python3 test_router.py --mode messages --model <public-anthropic-route> --text "Reply OK"
 python3 test_router.py --provider qwen --mode embeddings --text "hello"
 python3 test_router.py --provider qwen --mode rerank --query "router speed"
 python3 test_router.py --provider jina --mode embeddings --text "hello"

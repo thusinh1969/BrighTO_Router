@@ -44,6 +44,7 @@ http://127.0.0.1:18080/
 
 - [v1.1.0 architecture](architecture/brighto-router-workflow.html) — Portal, Admin API, PostgreSQL snapshot, Rust hot path, adapters, Model Groups, SystemOne, ledger, and release gates.
 - [PostgreSQL data flow](postgresql-data-flow.html) — durable control plane, Model Group counters, usage ledger, and JSONL fallback.
+- [API examples](API_EXAMPLES.md) — Python calls for Chat Completions, Completions, Responses, embeddings, rerank, ASR, System One, and Anthropic Messages.
 - [Load-balancing test notes](REAL_LOAD_BALANCING_TESTS.md) — round-robin and weighted Model Group validation.
 
 ## Repository and Docker image
