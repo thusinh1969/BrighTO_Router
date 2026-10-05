@@ -141,3 +141,9 @@ Useful provider key placeholders are present in `.env.example`:
 - `OLLAYA_API_KEY`
 
 See [ADAPTERS.md](ADAPTERS.md) for current adapter endpoints and smoke commands.
+
+Client applications use the public route or Model Group name with the matching
+[Python SDK method](docs/API_EXAMPLES.md#method-reference). Provider credentials
+stay in the router; clients use their BrighTO API key. For an independent
+decision backend, the [Quyết setup example](docs/API_EXAMPLES.md#quyet-system-one-backend)
+serves Quyet-1.0-Small through **System One / Decision → Custom LLM**.

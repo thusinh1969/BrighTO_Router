@@ -30,3 +30,9 @@ __pycache__/
 *.pem
 *.p12
 AGENT.md
+AGENTS.md
+SKILL.md
+audits/
+.venv*/
+backups/
+_launch/

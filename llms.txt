@@ -11,6 +11,10 @@ Author: Nguyễn Anh Nguyên, BrighTO AI, nguyen@hatto.com
 
 BrighTO-Router gives teams one stable API endpoint for OpenAI-compatible, Anthropic-compatible, cloud, local, Ollaya/Laya, and JEV/DJEV-style System One backends. It supports Chat Completions, legacy Completions, OpenAI Responses, Anthropic Messages, embeddings, rerank, ASR/transcription, SystemOne decisions, team API keys, token budgets, usage logging, and NGINX-style Model Groups for round-robin or weighted load balancing.
 
+The single-file brighto.py Python SDK covers every public inference endpoint. test_router.py uses the same SDK for command-line checks. Setup and method examples: https://thusinh1969.github.io/BrighTO_Router/API_EXAMPLES.html
+
+Quyết by Chinh Nguyen (https://github.com/ncchinh/quyet) is an independent decision-model runtime with the System One response contract. An optional external HTTP example serves it behind BrighTO; it is not bundled into the Rust router image.
+
 ## Why it exists
 
 The goal is a narrow, fast, understandable self-hosted LLM traffic path: one Rust binary, one Docker image, PostgreSQL as the durable control-plane and usage store, and no Redis requirement for version 1.1.0.

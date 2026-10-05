@@ -1,4 +1,23 @@
-# System One Ollaya/Laya smoke
+# System One backend examples
+
+Use [Quyết](https://github.com/ncchinh/quyet) for an independent Python decision
+backend, or Ollaya/Laya for the Docker smoke below. Both use the same BrighTO
+System One route type and Python SDK.
+
+## Quyết-1.0-Small
+
+The [Quyết setup and Python client example](../../docs/API_EXAMPLES.md#quyet-system-one-backend)
+includes environment setup, model download, optional backend authentication,
+Portal configuration, and inference calls. [quyet_server.py](quyet_server.py)
+adds an optional HTTP interface around upstream `predict(state, questions)`;
+inference remains outside the Rust router.
+
+For multiple GPUs, run one Small replica per GPU, create one tested route for
+each replica, then create a System One Model Group. The client calls the group
+name. Small is not a chat model and its context limit is independent of the
+Router's large-context chat benchmarks.
+
+## Ollaya/Laya smoke
 
 This smoke test proves BrighTO-Router can route TypeSafe/Jev-compatible System One decision traffic through a real local Ollaya server running Laya.
 

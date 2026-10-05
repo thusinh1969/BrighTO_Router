@@ -1,6 +1,6 @@
 # Script catalog
 
-This folder contains developer and release-support scripts. End users normally need only `./start.sh`, `./install.sh`, and `./test_router.py` from the repository root.
+This folder contains developer and release-support scripts. End users normally use `./start.sh` and `./install.sh`. Python applications use the single-file `brighto.py` SDK; the `test_router.py` command-line client uses that same SDK and requires `requests`.
 
 Keep scripts here small, explicit, and single-purpose. Put user-facing smoke tests under `smoke/<feature>/` when they create real routes or require external services.
 
@@ -9,6 +9,7 @@ Keep scripts here small, explicit, and single-purpose. Put user-facing smoke tes
 | Script | Purpose | Typical command |
 |---|---|---|
 | `rebuild_docker_local.sh` | Rebuild the Rust release binary, build a local Docker image, update `.env` to use it with pull policy `never`, and restart the router. | `./scripts/rebuild_docker_local.sh my-brighto-router:dev` |
+| `docker_multiarch_release.sh` | Build both architectures, run HTTP/HTTPS API and Playwright checks on each, then publish the multi-architecture tag. Set `PUSH_LATEST=1` to also update `latest`. | `PUSH_LATEST=1 ./scripts/docker_multiarch_release.sh v1.1.0` |
 | `tls_smoke.sh` | Check HTTP/HTTPS router health and TLS behavior. | `./scripts/tls_smoke.sh` |
 | `test_postgres.sh` | Run PostgreSQL-backed integration checks. | `./scripts/test_postgres.sh` |
 
@@ -22,6 +23,7 @@ These scripts are release gates for Portal/admin/API behavior. They should be ru
 | `portal_full_audit.py` | Broader Portal audit covering screens, create/edit/delete flows, route/group behavior, and edge cases. |
 | `portal_smoke.py` | Older/basic Portal smoke retained for compatibility with existing local workflows. |
 | `api_matrix_smoke.py` | Deterministic mock coverage for supported API shapes. |
+| `../smoke/python_sdk/run.py` | SDK and command-line coverage against the Docker image over HTTP and verified HTTPS, including real Playwright route/group creation. |
 | `hotpath_guard.py` | Guards large-payload hot-path behavior against accidental full-body parsing. |
 
 ## Live provider smoke

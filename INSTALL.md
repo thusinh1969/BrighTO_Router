@@ -35,12 +35,34 @@ cd BrighTO_Router
 
 A failed Model Group backend is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; change it in `.env`, then run `./start.sh restart`. `ROUTER_WORKER_THREADS` is blank by default, which means the router uses all available CPU threads; set it only when you want to cap CPU use.
 
-BrighTO-Router 1.1.0 uses `thusinh1969/brighto_airouter:v1.1.0` by default. Existing local `.env` files from older installs should include:
+BrighTO-Router 1.1.0 uses `thusinh1969/brighto_airouter:v1.1.0` by default. The published tag includes `linux/amd64` and `linux/arm64`; Docker selects the image matching your host. Existing local `.env` files from older installs should include:
 
 ```bash
 BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.1.0
 BACKEND_CIRCUIT_OPEN_SECONDS=30
 ```
+
+### Supported install environments
+
+The installer needs Bash, Python 3.9+, Git, and `curl`, in addition to Docker
+with its Compose plugin. Python is only for installation/client scripts;
+the Rust router does not need a Python runtime in its image.
+
+Docker Desktop users need version 4.34 or later with **Settings → Resources →
+Network → Enable host networking** selected and Linux containers enabled.
+Run Windows install commands inside a WSL2 Linux terminal. The supplied Compose
+configuration uses host networking so the router can reach localhost PostgreSQL
+and local model servers. See [Docker's host-networking guide](https://docs.docker.com/engine/network/drivers/host/#docker-desktop).
+
+| Environment | How it runs |
+|---|---|
+| Ubuntu/Debian on x86_64 servers | Docker pulls the `linux/amd64` image. |
+| Ubuntu/Debian on ARM64 servers such as GB10 | Docker pulls the `linux/arm64` image. |
+| macOS Intel | Docker Desktop runs the Linux `amd64` container. |
+| macOS Apple Silicon | Docker Desktop runs the Linux `arm64` container. |
+| Windows x86_64 | Docker Desktop with WSL2 runs the Linux `amd64` container. |
+
+Native Windows `.exe` and macOS `.app` releases are not part of 1.1.0. Docker Compose is the install path. Both image architectures pass HTTP/HTTPS API and browser checks; ARM64 runtime verification uses QEMU emulation, not a native GB10 or Apple Silicon benchmark. For custom builds, use [the local Docker build instructions](README.md#portal-front-end-development).
 
 What happens:
 
@@ -181,9 +203,10 @@ Use the portal:
 
 ## Test from the command line
 
-After saving a model route and creating a client API key, run one request with the helper script. Full Python client examples for every supported API shape are in [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md).
+After saving a model route and creating a client API key, use `test_router.py`, which calls the single-file `brighto.py` SDK. Keep both files together. Python 3.9+ and `requests` are required for these clients; the Docker router does not need Python. Full SDK examples for every API shape are in [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md).
 
 ```bash
+python3 -m pip install requests
 python3 test_router.py --router http://127.0.0.1:18080 --api-key sk-brighto-... --model <public-model-name> --text "Reply OK"
 ```
 

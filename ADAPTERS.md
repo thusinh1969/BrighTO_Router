@@ -9,7 +9,7 @@ Implemented and tested in 1.1.0:
 | Embeddings | `/v1/embeddings` | `openai_embeddings` | OpenAI-compatible JSON | Mock/integration tested; live OpenAI, Qwen, Jina, and Voyage smoke passed |
 | Rerank | `/v1/rerank` | `openai_rerank`, `qwen_rerank`, `cohere_rerank`, `voyage_rerank`, `jina_rerank` | JSON with `model`, `query`, `documents`, optional `top_n` | Mock/integration tested; live Qwen, Jina, Voyage, and Cohere smoke passed |
 | ASR / speech-to-text | `/v1/audio/transcriptions` | `openai_audio_transcriptions` | OpenAI-compatible multipart form upload | Mock/integration tested; live OpenAI smoke passed with repo WAV fixtures |
-| System One / decisions | `/v1/systemone`, `/v1/decisions` | `systemone` | TypeSafe/Jev-compatible JSON with `model`, `state`, and typed `questions` | Mock/integration tested; live Ollaya/Laya smoke passed with no-auth and Bearer-key mode |
+| System One / decisions | `/v1/systemone`, `/v1/decisions` | `systemone` | TypeSafe/Jev-compatible JSON with `model`, `state`, and typed `questions` | Mock/integration tested; live Ollaya/Laya and Quyet-1.0-Small smoke passed |
 | Model Groups | Same endpoint as selected route type | `model_group_<type>` | Normal request shape for chat, embeddings, rerank, System One, or ASR using the public group model name | Mock/integration tested; Portal browser smoke creates source routes, saves a group from existing routes, and lists it |
 
 The router still does not run models. It forwards to a configured provider or local service, applies client-key auth, route policy, budget/concurrency limits, and usage logging. It does not store vectors, rerank documents, audio files, transcripts, prompts, or provider response bodies.
@@ -57,7 +57,7 @@ OLLAYA_API_KEY="test-systemone-key" ./smoke/systemone/run_ollaya_laya.sh
 
 ## Client smoke tests through BrighTO-Router
 
-These commands call BrighTO-Router as a client app. They require a BrighTO client API key and a public model route that already exists.
+These commands use `test_router.py` and the single-file `brighto.py` SDK. Keep both files together and install `requests` with `python3 -m pip install requests`. They require a BrighTO client API key and an existing public route. [SDK examples](docs/API_EXAMPLES.md) cover embeddings, rerank, audio transcription, and System One decisions, including Quyết.
 
 Embeddings:
 

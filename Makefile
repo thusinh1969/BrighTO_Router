@@ -3,7 +3,7 @@ export PATH := $(HOME)/.cargo/bin:$(PATH)
 -include .env
 export
 
-.PHONY: install start stop status logs restart migrate seed k8s migrate-new prepare dev build test check audit gate gate-smoke bench-gate bench-gate-smoke clean image up down help
+.PHONY: install start stop status logs restart migrate seed k8s migrate-new prepare dev build test check audit gate gate-smoke bench-gate bench-gate-smoke clean image image-multiarch up down help
 
 help:
 	@grep -h -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "}; {printf "%-20s %s\n", $$1, $$2}'
@@ -76,8 +76,11 @@ bench-gate-smoke:  ## short benchmark smoke; does not enforce release thresholds
 clean:             ## remove Rust build artifacts
 	cargo clean
 
-image:             ## build Docker image
-	DOCKER_BUILDKIT=1 docker build -t thusinh1969/brighto_airouter:v1 .
+image:             ## build local Docker image for the current machine architecture
+	DOCKER_BUILDKIT=1 docker build -t $${IMAGE:-thusinh1969/brighto_airouter:local-dev} .
+
+image-multiarch:   ## publish multi-arch Docker image; usage: make image-multiarch TAG=v1.1.0
+	./scripts/docker_multiarch_release.sh $${TAG:-v1.1.0}
 
 up:                ## alias for start
 	./start.sh start

@@ -1,0 +1,102 @@
+name: Docker multi-arch release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Docker tag to publish, for example v1.1.0
+        required: true
+        default: v1.1.0
+      push_latest:
+        description: Also publish latest
+        type: boolean
+        required: true
+        default: false
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: docker-multiarch-${{ github.ref }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install client-test dependency
+        run: python3 -m pip install requests
+
+      - name: Install Chromium for runtime browser checks
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import sys
+          sys.path.insert(0, 'scripts')
+          import portal_browser_smoke as smoke
+          cli = smoke.ensure_playwright(dict(os.environ))
+          subprocess.run([str(cli), 'install', '--with-deps', 'chromium'], check=True)
+          PY
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute tags
+        id: meta
+        shell: bash
+        env:
+          RELEASE_INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_INPUT_LATEST: ${{ inputs.push_latest }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$RELEASE_INPUT_TAG"
+            push_latest="$RELEASE_INPUT_LATEST"
+          else
+            tag="${GITHUB_REF_NAME}"
+            push_latest="false"
+          fi
+
+          [[ "$tag" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$ ]] || exit 2
+
+          {
+            echo "tag=$tag"
+            echo "push_latest=$push_latest"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build, browser-test, and publish both platforms
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          PUSH_LATEST: ${{ steps.meta.outputs.push_latest == 'true' && '1' || '0' }}
+        run: ./scripts/docker_multiarch_release.sh "$RELEASE_TAG"
+
+      - name: Inspect release manifest
+        run: docker buildx imagetools inspect thusinh1969/brighto_airouter:${{ steps.meta.outputs.tag }}
+
+      - name: Inspect latest manifest
+        if: steps.meta.outputs.push_latest == 'true'
+        run: docker buildx imagetools inspect thusinh1969/brighto_airouter:latest

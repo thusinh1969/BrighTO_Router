@@ -11,10 +11,10 @@ Use it as a free, open-source LiteLLM or Bifrost alternative when you want a nar
 </p>
 
 
-Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [API examples](docs/API_EXAMPLES.md) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
+Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Python SDK](#single-file-python-sdk) · [API examples](docs/API_EXAMPLES.md) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
 
 - Official repository: `https://github.com/thusinh1969/BrighTO_Router`
-- Official Docker image: `thusinh1969/brighto_airouter:v1.1.0`
+- Official Docker image: `thusinh1969/brighto_airouter:v1.1.0` (`linux/amd64` and `linux/arm64`)
 - Search keywords: open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, SystemOne router, System One decisions, JEV router, DJEV router, Ollaya router, Laya model, LiteLLM alternative
 - Release version: `1.1.0`
 
@@ -73,7 +73,7 @@ Honest read: Model Groups add routing choice, per-endpoint model rewrite, Postgr
 
 ## Quick start
 
-Prerequisites: Linux, Docker, Docker Compose plugin, Git, and `curl`.
+Prerequisites: Docker Engine or Docker Desktop with the Compose plugin, Bash, Python 3.9+, Git, and `curl`. Python is used by the install/client scripts; the router runs as a Rust binary. Docker Desktop users must enable host networking; Windows users run the installer inside WSL2. See [platform support](INSTALL.md#supported-install-environments).
 
 One-line install:
 
@@ -99,7 +99,7 @@ cd BrighTO_Router
 ./start.sh install
 ```
 
-This 1.1.0 line pulls `thusinh1969/brighto_airouter:v1.1.0` by default. If you already have an old `.env`, make sure it contains `BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.1.0`, then run `./start.sh restart`.
+This 1.1.0 line pulls `thusinh1969/brighto_airouter:v1.1.0` by default. Docker automatically selects the matching `linux/amd64` or `linux/arm64` image. If you already have an old `.env`, make sure it contains `BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.1.0`, then run `./start.sh restart`.
 
 Open the Portal on the server:
 
@@ -165,78 +165,55 @@ Open **Models & Routes → Add model route** in the Portal.
 
 The provider API key belongs to the model route. Client applications do not receive provider keys. They call BrighTO-Router with a client API key issued from the **API Keys** screen.
 
-## System One / Decision routes
+## Single-file Python SDK
 
-BrighTO-Router 1.1.0 adds System One decision routing for endpoints that speak the TypeSafe/Jev-compatible `/v1/systemone` protocol. The router also accepts `/v1/decisions` as an alias. This works with self-hosted Ollaya/Laya, local or hosted Laya-compatible services, and hosted Jev/System One endpoints when they use the same JSON contract.
-
-A client calls BrighTO exactly like any other route: it uses a BrighTO client API key, not the provider key. The provider key, if required, stays on the model route.
+Copy [brighto.py](brighto.py) next to your application. It needs Python 3.9+ and one dependency:
 
 ```bash
-curl -k https://<router-host>:18443/v1/systemone \
-  -H "Authorization: Bearer $BRIGHTO_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "ollaya-laya",
-    "state": {"message": "I was charged twice for one order."},
-    "questions": {
-      "duplicate_charge": {"type": "noul", "instructions": "Duplicate charge?"},
-      "team": {
-        "type": "choice",
-        "instructions": "Which team should handle this?",
-        "criteria": {"billing": "payments and refunds", "support": "technical support"}
-      }
-    }
-  }'
+python3 -m pip install requests
+export BRIGHTO_API_KEY="<client-api-key-from-the-portal>"
+export BRIGHTO_ROUTER_URL="http://127.0.0.1:18080"
 ```
-
-Equivalent helper call:
-
-```bash
-python3 test_router.py \
-  --router https://<router-host>:18443 \
-  --insecure \
-  --api-key "$BRIGHTO_API_KEY" \
-  --mode systemone \
-  --model ollaya-laya \
-  --text "I was charged twice for one order."
-```
-
-Plain Python System One call:
 
 ```python
-import os
-import requests
+from brighto import Router
 
-router = os.getenv("BRIGHTO_ROUTER_URL", "https://<router-host>:18443")
-api_key = os.environ["BRIGHTO_API_KEY"]
+with Router(model="<public-chat-route-or-group>") as client:
+    print(client.ask("Reply OK in one short sentence."))
+```
 
-resp = requests.post(
-    f"{router}/v1/systemone",
-    headers={"Authorization": f"Bearer {api_key}"},
-    json={
-        "model": "ollaya-laya",
-        "state": {"message": "I was charged twice for one order."},
-        "questions": {
+Use the **API model name** from the Portal, including a Model Group name when you want load balancing. The URL may be the router root or end in `/v1`; the SDK handles the prefix. Your BrighTO client key authenticates the application; provider keys stay on the router.
+
+The same file covers chat and streaming, legacy completions, Responses, Anthropic Messages, embeddings, rerank, audio transcription, and System One decisions. [Python examples for every type](docs/API_EXAMPLES.md) show the matching method, return value, HTTPS configuration, multimodal inputs, and error handling. `test_router.py` uses this SDK too.
+
+## System One / Decision routes
+
+BrighTO-Router routes TypeSafe/Jev-compatible decision requests through `/v1/systemone` or `/v1/decisions`. Backends can include Ollaya/Laya, hosted Jev-compatible services, or [Quyết by Chinh Nguyen](https://github.com/ncchinh/quyet), served through its compatible decision interface.
+
+For a tested System One route or Model Group named `quyet-small`:
+
+```python
+from brighto import Router
+
+with Router(model="quyet-small") as client:
+    result = client.systemone(
+        state={"message": "I was charged twice for one order."},
+        questions={
             "duplicate_charge": {
                 "type": "noul",
-                "instructions": "Is this a duplicate charge?",
+                "instructions": "The customer reports a duplicate charge.",
             },
             "team": {
                 "type": "choice",
                 "instructions": "Which team should handle this?",
-                "criteria": {
-                    "billing": "payments and refunds",
-                    "support": "technical support",
-                },
+                "criteria": {"billing": "payments and refunds", "support": "technical help"},
             },
         },
-    },
-    timeout=60,
-    verify=False,  # remove this when using a trusted TLS certificate
-)
-resp.raise_for_status()
-print(resp.json()["answers"])
+    )
+    print(result["answers"])
 ```
+
+`noul` returns the probability that a statement is true; `choice` selects from named options. `client.decisions(...)` sends the same contract through `/v1/decisions`. The [Quyết setup example](docs/API_EXAMPLES.md#quyet-system-one-backend) explains how to serve its Python runtime and connect it to the router.
 
 To self-test with Ollaya and Laya locally, run:
 
@@ -269,136 +246,24 @@ Round robin rotates evenly and does not ask for weights. Weighted round robin sh
 
 ## Test a route from the command line
 
-Use `test_router.py` as the simplest client example. It reads `.env` by default, so a fresh local install can use the seeded demo client key. Pass `--api-key` when testing with a key created in the Portal.
-
-Chat Completions route:
+Keep [test_router.py](test_router.py) and [brighto.py](brighto.py) together and install `requests`. The helper reads `.env` for local installation defaults and reports HTTP status, elapsed time, and the router request ID.
 
 ```bash
-python3 test_router.py --mode chat --model <public-chat-route> --text "Reply OK in one short sentence."
+python3 -m pip install requests
+python3 test_router.py --model <public-chat-route-or-group> --text "Reply OK"
+python3 test_router.py --model <public-chat-route-or-group> --text "Reply OK" --stream
+python3 test_router.py --mode rerank --model <public-rerank-route> --query "router speed" --document "fast Rust gateway" --document "unrelated text" --top-n 1
 ```
 
-Legacy Completions route:
+Choose `--mode chat`, `completions`, `responses`, `messages`, `embeddings`, `rerank`, `asr`, or `systemone` to match the route's Portal task. Model Groups use the same mode as their member routes. [All SDK and command-line examples](docs/API_EXAMPLES.md) include embeddings, audio uploads, decisions, and multimodal chat.
+
+For HTTPS with your own certificate:
 
 ```bash
-python3 test_router.py --mode completions --model <public-completions-route> --text "Reply OK in one short sentence."
+python3 test_router.py --router https://<router-host>:18443/v1 --ca ssl/cert.pem --model <public-chat-route> --text "Reply OK"
 ```
 
-Every Portal route has two client-facing facts: the **API model name** clients send as `model`, and the **API shape** clients call. The endpoint must match the shape because request and response JSON are different.
-
-| Portal task | Client endpoint | Body shape |
-|---|---|---|
-| Chat Completions | `/v1/chat/completions` | `messages` |
-| Completions | `/v1/completions` | `prompt` |
-| Responses API | `/v1/responses` | `input` |
-| Embeddings | `/v1/embeddings` | `input` |
-| Rerank | `/v1/rerank` | `query`, `documents` |
-| ASR / transcription | `/v1/audio/transcriptions` | multipart `file` |
-| System One / Decision | `/v1/systemone` or `/v1/decisions` | `state`, `questions` |
-| Anthropic Messages | `/v1/messages` | Anthropic `messages` |
-
-Full copy-paste Python examples for every type are in [docs/API_EXAMPLES.md](docs/API_EXAMPLES.md).
-
-Responses API route:
-
-```bash
-python3 test_router.py --mode responses --model <public-responses-route> --text "Reply OK in one short sentence."
-```
-
-Embeddings through an OpenAI-compatible embedding route:
-
-```bash
-python3 test_router.py --mode embeddings --model <public-embedding-route> --text "BrighTO embedding smoke test"
-```
-
-Rerank through a configured rerank route:
-
-```bash
-python3 test_router.py --mode rerank --model <public-rerank-route> --query "router speed" --document "fast Rust gateway" --document "slow proxy" --top-n 1
-```
-
-ASR / transcription through a configured multipart route:
-
-```bash
-python3 test_router.py --mode asr --model <public-asr-route> --file tests/fixtures/asr_smoke.wav
-```
-
-System One / Decision through an Ollaya, Laya, Jev, or compatible route:
-
-```bash
-python3 test_router.py --mode systemone --model <public-systemone-route> --text "I was charged twice for one order."
-```
-
-Anthropic Messages route:
-
-```bash
-python3 test_router.py --mode messages --model <public-anthropic-route> --text "Reply OK in one short sentence."
-```
-
-Live provider smoke tests for adapter keys and endpoints:
-
-```bash
-python3 scripts/adapter_smoke.py --provider qwen --task embedding
-python3 scripts/adapter_smoke.py --provider qwen --task rerank
-python3 scripts/adapter_smoke.py --provider jina --task embedding
-python3 scripts/adapter_smoke.py --provider jina --task rerank
-```
-
-Provider shortcut tests through BrighTO-Router, using standard public route names such as `qwen-embedding`, `qwen-rerank`, `jina-embedding`, `jina-rerank`, `voyage-embedding`, `voyage-rerank`, and `cohere-rerank`:
-
-```bash
-python3 test_router.py --list-presets
-python3 test_router.py --provider qwen --mode embeddings --text "hello"
-python3 test_router.py --provider qwen --mode rerank --query "router speed"
-python3 test_router.py --provider jina --mode embeddings --text "hello"
-python3 test_router.py --provider jina --mode rerank --query "router speed"
-python3 test_router.py --provider voyage --mode embeddings --text "hello"
-python3 test_router.py --provider voyage --mode rerank --query "router speed"
-python3 test_router.py --provider cohere --mode rerank --query "router speed"
-```
-
-Use `--model <your-public-route>` instead of `--provider` when your Portal route has a custom public name. In rerank mode, `--query` and `--text` both work; `--query` is clearer and takes priority.
-
-Deterministic API matrix smoke with no paid provider keys. It starts temporary PostgreSQL, a temporary router, and the local mock upstream, then tests OpenAI-compatible chat, Anthropic Messages, embeddings, rerank, ASR multipart, and one protocol guard:
-
-```bash
-python3 scripts/api_matrix_smoke.py
-```
-
-Live router smoke through Admin API and public client endpoints, using whichever provider keys exist in `.env`. It covers OpenAI chat, OpenAI embeddings, OpenAI ASR, Qwen embeddings/rerank, Jina embeddings/rerank, Voyage embeddings/rerank, and Cohere rerank when the matching keys are present:
-
-```bash
-python3 scripts/adapter_router_smoke.py
-```
-
-Anthropic Messages live smoke is separate so teams can run it only when `ANTHROPIC_API_KEY` is available:
-
-```bash
-python3 scripts/anthropic_smoke.py
-```
-
-BrighTO-Router 1.1.0 smoke examples:
-
-```bash
-./smoke/model_group/run_mock.sh
-./smoke/model_group/run_live_openai_chat.sh
-./smoke/systemone/run_ollaya_laya.sh
-```
-
-The model-group mock smoke always runs locally and verifies weighted round-robin across three OpenAI-compatible chat endpoints. The System One smoke starts Ollaya, pulls Laya, creates routes, and verifies no-auth or auth-key mode end to end.
-
-Image input through an OpenAI-style multimodal chat route:
-
-```bash
-python3 test_router.py --model <vision-model-route> --text "Describe this image." --image ./photo.jpg
-```
-
-Audio input through an OpenAI-style multimodal chat route:
-
-```bash
-python3 test_router.py --model <audio-model-route> --text "Summarize this audio." --audio tests/fixtures/asr_smoke.wav
-```
-
-For HTTPS with a self-signed certificate, add `--insecure`. The image and audio examples are JSON pass-through examples; the selected backend model must support that payload shape.
+`--insecure` is available for local self-signed testing. `--dry-run` shows the request without sending it, and `--raw-response` prints complete JSON. Provider shortcuts remain available through `--list-presets`; custom names always use `--model`.
 
 ## What install creates
 
@@ -719,6 +584,18 @@ Pass a tag if you want a custom local image name:
 ```
 
 The script builds the release binary, builds the Docker image, updates `.env` to use that local image with `BRIGHTO_ROUTER_PULL_POLICY=never`, restarts the router, and prints `./start.sh status`.
+
+For an official multi-architecture Docker release, publish a manifest that contains both common server platforms:
+
+```bash
+PUSH_LATEST=1 ./scripts/docker_multiarch_release.sh v1.1.0
+docker buildx imagetools inspect thusinh1969/brighto_airouter:v1.1.0
+docker buildx imagetools inspect thusinh1969/brighto_airouter:latest
+```
+
+That release path publishes Linux containers for `linux/amd64` and `linux/arm64`. Windows and macOS are supported through Docker Desktop or WSL2; native `.exe` and `.app` binaries are a separate release channel and are not needed for the one-line Docker install.
+
+Maintainers need Docker registry login, the Rust toolchain, Python with `requests`, Node.js, OpenSSL, and Chromium for release verification. Non-native runtime tests require QEMU; Docker Desktop includes it. The script builds both images locally and runs the HTTP/HTTPS SDK and Playwright checks on each before publishing a shared tag. Add `--check` after the tag to build and test without publishing. ARM validation under emulation is a functional check, not a native hardware performance benchmark.
 
 Developer and release-support scripts are cataloged in [scripts/README.md](scripts/README.md). User-facing feature smoke tests live under `smoke/<feature>/` so the root install path stays simple.
 

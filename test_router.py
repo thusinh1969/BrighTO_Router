@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Tiny BrighTO-Router smoke client.
+"""BrighTO-Router smoke client using the single-file brighto.py SDK.
+
+Keep brighto.py beside this script. Dependency: python3 -m pip install requests
 
 Examples:
   python3 test_router.py --model my-model --text "Reply OK"
@@ -26,13 +28,17 @@ import base64
 import json
 import mimetypes
 import os
-import ssl
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
+
+try:
+    from brighto import Router, RouterError
+except ModuleNotFoundError as exc:
+    if exc.name == "requests":
+        raise SystemExit("Install the client dependency: python3 -m pip install requests") from exc
+    raise
 
 DEFAULT_ROUTER = "http://127.0.0.1:18080"
 
@@ -257,62 +263,6 @@ def build_body(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
     raise CliError(f"unknown mode: {args.mode}")
 
 
-def post_multipart_asr(url: str, api_key: str, model: str, file_path: str, timeout: int, verify_tls: bool) -> tuple[int, dict[str, str], bytes]:
-    path = Path(file_path)
-    if not path.exists() or not path.is_file():
-        raise CliError(f"file not found: {file_path}")
-    boundary = "----brighto-router-test-boundary"
-    mime = guess_media_type(path, "application/octet-stream")
-    file_bytes = path.read_bytes()
-    parts = [
-        f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n{model}\r\n".encode("utf-8"),
-        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name}\"\r\nContent-Type: {mime}\r\n\r\n".encode("utf-8"),
-        file_bytes,
-        f"\r\n--{boundary}--\r\n".encode("utf-8"),
-    ]
-    data = b"".join(parts)
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "authorization": f"Bearer {api_key}",
-            "content-type": f"multipart/form-data; boundary={boundary}",
-            "accept": "application/json",
-        },
-    )
-    ctx = None if verify_tls else ssl._create_unverified_context()
-    try:
-        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
-            return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read()
-    except urllib.error.HTTPError as exc:
-        return exc.code, {k.lower(): v for k, v in exc.headers.items()}, exc.read()
-    except urllib.error.URLError as exc:
-        raise CliError(f"cannot reach router: {exc}") from exc
-
-
-def post_json(url: str, api_key: str, body: dict[str, Any], timeout: int, verify_tls: bool) -> tuple[int, dict[str, str], bytes]:
-    data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "authorization": f"Bearer {api_key}",
-            "content-type": "application/json",
-            "accept": "application/json",
-        },
-    )
-    ctx = None if verify_tls else ssl._create_unverified_context()
-    try:
-        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
-            return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read()
-    except urllib.error.HTTPError as exc:
-        return exc.code, {k.lower(): v for k, v in exc.headers.items()}, exc.read()
-    except urllib.error.URLError as exc:
-        raise CliError(f"cannot reach router: {exc}") from exc
-
-
 def print_chat(data: dict[str, Any]) -> None:
     choices = data.get("choices") or []
     if choices:
@@ -449,6 +399,8 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     parser.add_argument("--timeout", type=int, default=120, help="HTTP timeout seconds")
     parser.add_argument("--env-file", default=".env", help="Env file to read for local defaults")
     parser.add_argument("--insecure", action="store_true", help="Allow self-signed HTTPS certificates for local smoke tests")
+    parser.add_argument("--ca", help="Trust this CA/certificate PEM file for HTTPS")
+    parser.add_argument("--stream", action="store_true", help="Stream text from a Chat Completions route")
     parser.add_argument("--raw-response", action="store_true", help="Print full JSON response")
     parser.add_argument("--dry-run", action="store_true", help="Print the request that would be sent, with media bytes redacted")
     args = parser.parse_args()
@@ -457,7 +409,7 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
         return 0
 
     env_file_values = parse_env_file(Path(args.env_file))
-    router = (args.router or first_env(["BRIGHTO_ROUTER_URL", "BASE_URL"], env_file_values) or DEFAULT_ROUTER).rstrip("/")
+    router = args.router or first_env(["BRIGHTO_ROUTER_URL", "BRIGHTO_BASE_URL", "BASE_URL"], env_file_values) or DEFAULT_ROUTER
     api_key = args.api_key or first_env(["BRIGHTO_ROUTER_API_KEY", "ROUTER_API_KEY", "BRIGHTO_API_KEY"], env_file_values)
     model = args.model or (preset_model_name(args.provider, args.mode) if args.provider else "") or first_env(["BRIGHTO_MODEL"], env_file_values)
     if not api_key:
@@ -470,23 +422,23 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     if not model:
         raise CliError("missing model. Pass --model <public-model-route>, use --provider with a supported --mode, or set BRIGHTO_MODEL in .env")
     args.model = model
+    if args.ca and args.insecure:
+        raise CliError("Choose --ca or --insecure, not both")
+    if args.stream and args.mode != "chat":
+        raise CliError("--stream supports chat mode; use SDK events() for other streaming APIs")
 
     if args.mode == "asr":
         if not args.file:
             raise CliError("--mode asr requires --file ./audio.wav")
         path = "/v1/audio/transcriptions"
-        url = router + path
         if args.dry_run:
             print("router:", router)
             print("endpoint:", path)
             print("model:", model)
             print("file:", args.file)
             return 0
-        started = time.perf_counter()
-        status, headers, raw = post_multipart_asr(url, api_key, model, args.file, args.timeout, verify_tls=not args.insecure)
     else:
         path, body = build_body(args)
-        url = router + path
         if args.dry_run:
             print("router:", router)
             print("endpoint:", path)
@@ -494,25 +446,42 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
             print("body:")
             print(json.dumps(redact_large_media(body), ensure_ascii=False, indent=2))
             return 0
-        started = time.perf_counter()
-        status, headers, raw = post_json(url, api_key, body, args.timeout, verify_tls=not args.insecure)
-    elapsed_ms = (time.perf_counter() - started) * 1000
-
-    print(f"status: {status}")
-    print(f"elapsed_ms: {elapsed_ms:.1f}")
+    try:
+        client = Router(base_url=router, api_key=api_key, model=model, timeout=args.timeout,
+                        verify=args.ca or not args.insecure)
+    except ValueError as exc:
+        raise CliError(str(exc)) from exc
+    started = time.perf_counter()
+    with client:
+        try:
+            if args.mode == "asr":
+                data = client.transcription(args.file)
+            elif args.stream:
+                for piece in client.stream(body["messages"], max_tokens=args.max_tokens,
+                                           **({"temperature": args.temperature} if args.temperature is not None else {})):
+                    print(piece, end="", flush=True)
+                print()
+                data = None
+            else:
+                data = client.post(path, body)
+        except RouterError as exc:
+            if exc.status_code is not None:
+                print(f"status: {exc.status_code}")
+            print(f"elapsed_ms: {(time.perf_counter() - started) * 1000:.1f}")
+            if exc.request_id:
+                print(f"x-router-request-id: {exc.request_id}")
+            print(str(exc))
+            return 1
+        except (ValueError, OSError) as exc:
+            raise CliError(str(exc)) from exc
+    print(f"status: {client.last_status_code}")
+    print(f"elapsed_ms: {(time.perf_counter() - started) * 1000:.1f}")
+    headers = {k.lower(): v for k, v in client.last_headers.items()}
     for name in ["x-router-request-id", "x-router-backend", "x-router-overhead-ms"]:
         if headers.get(name):
             print(f"{name}: {headers[name]}")
-
-    try:
-        data = json.loads(raw.decode("utf-8"))
-    except Exception:
-        print(raw.decode("utf-8", errors="replace"))
-        return 0 if 200 <= status < 300 else 1
-
-    if not (200 <= status < 300):
-        print(json.dumps(data, ensure_ascii=False, indent=2))
-        return 1
+    if data is None:
+        return 0
 
     print()
     if args.raw_response:

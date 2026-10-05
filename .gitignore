@@ -30,6 +30,7 @@ docs/**/*.visual-check.*
 .wtest
 __pycache__/
 *.pyc
+.venv*/
 
 # local auditor watcher output
 swarm/
