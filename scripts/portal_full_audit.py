@@ -22,9 +22,10 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         const baseURL = {base_url!r};
         const adminKey = {admin_key!r};
         const mockURL = {mock_url!r};
+        const pageErrors = [];
 
         function attachPageDiagnostics(page) {{
-          page.on('pageerror', err => console.error('PAGEERROR ' + (err.stack || err.message)));
+          page.on('pageerror', err => {{ pageErrors.push(err.stack || err.message); console.error('PAGEERROR ' + (err.stack || err.message)); }});
           page.on('console', msg => {{
             if (['error', 'warning'].includes(msg.type())) console.error('BROWSER ' + msg.type() + ' ' + msg.text());
           }});
@@ -122,7 +123,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         }}
 
         function expectedProtocolForTask(task) {{
-          return {{ chat: 'local_openai_chat', completion: 'openai_completions', responses: 'openai_responses', embedding: 'openai_embeddings', rerank: 'openai_rerank', asr: 'openai_audio_transcriptions', systemone: 'systemone' }}[task] || 'openai_chat';
+          return {{ chat: 'local_openai_chat', completion: 'openai_completions', responses: 'openai_responses', messages: 'anthropic_messages', embedding: 'openai_embeddings', rerank: 'openai_rerank', asr: 'openai_audio_transcriptions', systemone: 'systemone' }}[task] || 'openai_chat';
         }}
 
         async function createCustomRoute(page, task, providerModel, publicName, baseUrl = mockURL) {{
@@ -205,6 +206,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await selects.nth(2).selectOption('audit-chat');
           await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
           await expect(modal.locator('.route-picker-row')).toHaveCount(1);
+          await expect(selects.nth(2).locator('option[value="audit-chat-shared"]')).toHaveCount(0);
           await expect(modal.getByRole('button', {{ name: /^Save enabled$/ }})).toBeDisabled();
           await selects.nth(2).selectOption('audit-chat-b');
           await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
@@ -351,23 +353,95 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await modal.getByRole('button', {{ name: /^Done$/ }}).click();
           await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
           await expect(page.locator('#content')).toContainText('audit@example.com');
+          const issued = (await adminFetch('/admin/keys')).find(k => k.owner === 'audit@example.com');
+          const originalKey = (await adminFetch('/admin/keys/' + issued.id + '/reveal')).key;
+          let keyRow = page.locator('.key-list-table tbody tr').filter({{ hasText: 'audit@example.com' }}).first();
+          await keyRow.getByRole('button', {{ name: /^Edit$/ }}).click();
+          modal = page.locator('#modal-overlay .modal').last();
+          await modal.locator('input').first().fill('audit-renamed@example.com');
+          await modal.getByRole('button', {{ name: /^Save$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+          expect((await adminFetch('/admin/keys/' + issued.id + '/reveal')).key).toBe(originalKey);
+          keyRow = page.locator('.key-list-table tbody tr').filter({{ hasText: 'audit-renamed@example.com' }}).first();
+          await keyRow.getByRole('button', {{ name: /^Disable$/ }}).click();
+          await expect(keyRow.getByRole('button', {{ name: /^Enable$/ }})).toBeVisible();
+          const userStatus = async () => (await fetch(baseURL + '/portal/me', {{headers: {{authorization: 'Bearer ' + originalKey}}}})).status;
+          await expect.poll(userStatus, {{ timeout: 15000 }}).toBe(401);
+          await keyRow.getByRole('button', {{ name: /^Enable$/ }}).click();
+          await expect(keyRow.getByRole('button', {{ name: /^Disable$/ }})).toBeVisible();
+          await expect.poll(userStatus, {{ timeout: 15000 }}).toBe(200);
         }}
 
         async function auditProviderEndpointUi(page) {{
           await nav(page, 'providers', 'Providers');
           await page.getByRole('button', {{ name: /Advanced endpoint/i }}).click();
-          const modal = page.locator('#modal-overlay .modal').last();
-          await expect(modal).toBeVisible();
-          await expect(modal).toContainText(/endpoint|Provider/i);
-          await modal.getByRole('button', {{ name: /^Cancel$/ }}).click();
+          let modal = page.locator('#modal-overlay .modal').last();
+          await modal.locator('select').first().selectOption('anthropic');
+          await modal.locator('input').nth(0).fill('audit-private-messages');
+          await modal.locator('input').nth(1).fill(mockURL + '/v1');
+          await modal.getByRole('button', {{ name: /^Prepare endpoint$/ }}).click();
           await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+          let row = page.locator('.provider-list-table tbody tr').filter({{ hasText: 'audit-private-messages' }}).first();
+          await row.getByRole('button', {{ name: /^Edit$/ }}).click();
+          modal = page.locator('#modal-overlay .modal').last();
+          await expect(modal.locator('select').first()).toHaveValue('anthropic');
+          await modal.locator('input').nth(0).fill('audit-private-messages-renamed');
+          const saved = page.waitForRequest(req => req.url().includes('/admin/backends/') && req.method() === 'PATCH');
+          await modal.getByRole('button', {{ name: /^Save$/ }}).click();
+          expect((await saved).postDataJSON().format).toBe('anthropic');
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+          row = page.locator('.provider-list-table tbody tr').filter({{ hasText: 'audit-private-messages-renamed' }}).first();
+          await expect(row).toContainText('Anthropic Messages');
+          await row.getByRole('button', {{ name: /^Route$/ }}).click();
+          modal = page.locator('#modal-overlay .modal').last();
+          await expect(modal.locator('select').first()).toHaveValue('messages');
+          await expect(modal.locator('input').first()).toHaveValue(mockURL + '/v1');
+          await modal.getByRole('button', {{ name: /^Cancel$/ }}).click();
+          await row.getByRole('button', {{ name: /^Disable$/ }}).click();
+          await expect(row.getByRole('button', {{ name: /^Enable$/ }})).toBeVisible();
+          await row.getByRole('button', {{ name: /^Enable$/ }}).click();
+          await expect(row.getByRole('button', {{ name: /^Disable$/ }})).toBeVisible();
+          await row.getByRole('button', {{ name: /^Delete$/ }}).click();
+          await expect(row).toHaveCount(0);
+        }}
+
+
+        async function auditMessagesGroup(page) {{
+          const modal = await openCreateModelGroup(page);
+          const selects = modal.locator('select');
+          await expect(selects.nth(0).locator('option[value="messages"]')).toContainText('/v1/messages');
+          await selects.nth(0).selectOption('messages');
+          const choices = await selects.nth(2).locator('option').evaluateAll(items => items.map(x => x.value));
+          expect(choices).toContain('audit-messages');
+          expect(choices).toContain('audit-messages-b');
+          expect(choices).not.toContain('audit-chat');
+          expect(choices).not.toContain('audit-responses');
+          await modal.locator('input').first().fill('audit-messages-group');
+          for (const name of ['audit-messages', 'audit-messages-b']) {{
+            await selects.nth(2).selectOption(name);
+            await modal.getByRole('button', {{ name: /^Add route to group$/ }}).click();
+          }}
+          const saved = page.waitForRequest(req => req.url().endsWith('/admin/routes') && req.method() === 'POST');
+          await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
+          const payload = (await saved).postDataJSON();
+          expect(payload.protocol).toBe('anthropic_messages');
+          for (const ep of payload.endpoints) expect(ep.protocol).toBe('anthropic_messages');
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+          const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'audit-messages-group' }}).first();
+          await row.getByRole('button', {{ name: /^Edit$/ }}).click();
+          await expect(page.locator('#modal-overlay .modal select').first()).toHaveValue('messages');
+          await page.locator('#modal-overlay').getByRole('button', {{ name: /^Cancel$/ }}).click();
         }}
 
         async function auditRoutes(page) {{
           await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat');
+          await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat-shared');
           await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat-b', mockURL + '/');
           await createCustomRoute(page, 'completion', 'mock-completion', 'audit-completions', mockURL + '/v1');
           await createCustomRoute(page, 'responses', 'mock-responses', 'audit-responses', mockURL + '/v1');
+          await createCustomRoute(page, 'messages', 'mock-model', 'audit-messages', mockURL + '/v1');
+          await createCustomRoute(page, 'messages', 'mock-model', 'audit-messages-b', mockURL + '/v1/');
+          await auditMessagesGroup(page);
           await createCustomRoute(page, 'embedding', 'mock-embedding', 'audit-embedding');
           await createCustomRoute(page, 'rerank', 'mock-rerank', 'audit-rerank');
           await createCustomRoute(page, 'asr', 'mock-asr', 'audit-asr');
@@ -395,9 +469,10 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(page.locator('#content')).toContainText('audit-chat-renamed');
         }}
 
-        async function auditProviderKeyFilePath() {{
+        async function auditProviderKeyFilePath(page) {{
           const backends = await adminFetch('/admin/backends');
-          const backend = backends.find(b => b.name === 'custom-llm') || backends[0];
+          const backend = backends.find(b => b.base_url === mockURL);
+          if (!backend) throw new Error('mock backend missing for credential edit test');
           const routeName = 'audit-provider-key-file';
           await adminFetch('/admin/routes', 'POST', {{
             model_name: routeName,
@@ -412,6 +487,47 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           const routes = await adminFetch('/admin/routes');
           const route = routes.find(r => r.model_name === routeName);
           if (!route) throw new Error('provider-key file route not saved');
+          await page.reload({{ waitUntil: 'domcontentloaded' }});
+          await nav(page, 'models', 'Models');
+          const row = page.locator('.route-list-table tbody tr').filter({{ hasText: routeName }}).first();
+          await row.getByRole('button', {{ name: /^Edit$/ }}).click();
+          const modal = page.locator('#modal-overlay .modal').last();
+          await expect(modal.locator('.provider-key-field input')).toHaveValue('');
+          await expect(modal).toContainText('Stored provider key');
+          const loadRequest = page.waitForRequest(r => r.url().endsWith('/admin/routes/preview-models') && r.method() === 'POST');
+          await modal.getByRole('button', {{ name: /^Load models$/ }}).click();
+          const loadBody = (await loadRequest).postDataJSON();
+          expect(loadBody.auth_mode).toBe('bearer');
+          expect(loadBody.provider_key_ref).toBe(route.provider_key_ref);
+          const picker = page.locator('.picker-overlay .modal').last();
+          await expect(picker).toBeVisible();
+          await picker.getByRole('button', {{ name: /^Cancel$/ }}).click();
+          const testRequest = page.waitForRequest(r => r.url().endsWith('/admin/test-connection') && r.method() === 'POST');
+          await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
+          const testBody = (await testRequest).postDataJSON();
+          expect(testBody.auth_mode).toBe('bearer');
+          expect(testBody.provider_key_ref).toBe(route.provider_key_ref);
+          expect(testBody.provider_key).toBeUndefined();
+          await expect(modal.locator('.connection-status')).toContainText('Connected', {{ timeout: 15000 }});
+          const saved = page.waitForRequest(r => r.url().includes('/admin/routes/') && r.method() === 'PATCH');
+          await modal.getByRole('button', {{ name: /^Save draft$/ }}).click();
+          const savedBody = (await saved).postDataJSON();
+          expect(savedBody.auth_mode).toBe('bearer');
+          expect(savedBody.provider_key).toBeUndefined();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+          const updated = (await adminFetch('/admin/routes')).find(r => r.model_name === routeName);
+          expect(updated.provider_key_ref).toBe(route.provider_key_ref);
+          await row.getByRole('button', {{ name: /^Edit$/ }}).click();
+          const changed = page.locator('#modal-overlay .modal').last();
+          await changed.locator('input').first().fill(mockURL + '/changed-target/v1');
+          await expect(changed).not.toContainText('Stored provider key');
+          const changedRequest = page.waitForRequest(r => r.url().endsWith('/admin/test-connection') && r.method() === 'POST');
+          await changed.getByRole('button', {{ name: /^Test connection$/ }}).click();
+          const changedBody = (await changedRequest).postDataJSON();
+          expect(changedBody.auth_mode).toBe('none');
+          expect(changedBody.provider_key_ref).toBeUndefined();
+          expect(changedBody.provider_key).toBeUndefined();
+          await changed.getByRole('button', {{ name: /^Cancel$/ }}).click();
           await adminFetch('/admin/routes/' + encodeURIComponent(routeName), 'DELETE');
         }}
 
@@ -484,7 +600,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await auditProviderTaskChoices(page);
             await auditRoutes(page);
             await auditTeamAndKeyUi(page);
-            await auditProviderKeyFilePath();
+            await auditProviderKeyFilePath(page);
             await nav(page, 'usage', 'Usage');
             await nav(page, 'settings', 'Settings');
             await auditResponsivePortal(browser);
@@ -494,6 +610,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         }}
 
         run().then(() => {{
+          if (pageErrors.length) throw new Error('Uncaught Portal JavaScript errors: ' + pageErrors.join('\\n'));
           console.log('RESULT PASS full portal audit');
         }}).catch((err) => {{
           console.error(err && err.stack ? err.stack : err);

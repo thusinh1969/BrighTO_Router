@@ -15,6 +15,8 @@ The single-file brighto.py Python SDK covers every public inference endpoint. te
 
 Quyết by Chinh Nguyen (https://github.com/ncchinh/quyet) is an independent decision-model runtime with the System One response contract. An optional external HTTP example serves it behind BrighTO; it is not bundled into the Rust router image.
 
+Native agent clients can use matching protocol routes: Claude Code through Anthropic Messages, Codex through OpenAI Responses, and Hermes/OpenClaw through Chat Completions. Streaming tool calls and results are forwarded without automatic protocol conversion; upstream compatibility is required. Configuration and verified-version scope: https://thusinh1969.github.io/BrighTO_Router/AGENT_CLIENTS.html
+
 ## Why it exists
 
 The goal is a narrow, fast, understandable self-hosted LLM traffic path: one Rust binary, one Docker image, PostgreSQL as the durable control-plane and usage store, and no Redis requirement for version 1.1.0.

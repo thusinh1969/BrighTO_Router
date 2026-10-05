@@ -528,6 +528,132 @@ async fn responses_proxy_accepts_sdk_v1_base_url_and_records_usage(pool: PgPool)
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn responses_connection_probe_uses_valid_token_limit_and_exposes_provider_error(
+    pool: PgPool,
+) {
+    let mock = axum::Router::new().route(
+        "/v1/responses",
+        axum::routing::post(|axum::Json(body): axum::Json<serde_json::Value>| async move {
+            if body["max_output_tokens"].as_u64().unwrap_or(0) < 16 {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    axum::Json(serde_json::json!({"error":{"message":"max_output_tokens must be at least 16"}})),
+                );
+            }
+            if body["model"] == "missing-model" {
+                return (
+                    axum::http::StatusCode::NOT_FOUND,
+                    axum::Json(serde_json::json!({"error":{"message":"The requested Responses model does not exist"}})),
+                );
+            }
+            (
+                axum::http::StatusCode::OK,
+                axum::Json(serde_json::json!({"object":"response","output":[],"usage":{"input_tokens":1,"output_tokens":1}})),
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}/v1", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+    let (state, _) = build_state(pool, base_url.clone()).await;
+    let app = brighto_router::handlers::router(state);
+    for (model, expected_ok) in [("valid-model", true), ("missing-model", false)] {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri("/admin/test-connection")
+            .header("x-admin-key", "test-admin")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "base_url":base_url,"protocol":"openai_responses","dialect":"openai",
+                    "auth_mode":"none","provider_model_name":model
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        request.extensions_mut().insert(axum::extract::ConnectInfo(
+            "127.0.0.1:12345".parse::<std::net::SocketAddr>().unwrap(),
+        ));
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), 200);
+        let body = to_bytes(response.into_body(), 8192).await.unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(result["ok"], expected_ok, "{result}");
+        if !expected_ok {
+            assert!(
+                result["detail"]
+                    .as_str()
+                    .unwrap()
+                    .contains("does not exist"),
+                "{result}"
+            );
+            assert!(!result["detail"].as_str().unwrap().contains("OK"));
+        }
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn responses_stream_preserves_tool_events_and_records_terminal_usage(pool: PgPool) {
+    const SSE: &str = concat!(
+        "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"read_file\",\"arguments\":\"\"}}\n\n",
+        "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"item_id\":\"fc_1\",\"delta\":\"{}\"}\n\n",
+        "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"usage\":{\"input_tokens\":23,\"output_tokens\":7}}}\n\n"
+    );
+    let mock = axum::Router::new().route(
+        "/v1/responses",
+        axum::routing::post(
+            |axum::Json(body): axum::Json<serde_json::Value>| async move {
+                assert_eq!(body["model"], "native-responses");
+                assert_eq!(body["input"][0]["call_id"], "call_previous");
+                assert_eq!(body["tools"][0]["name"], "read_file");
+                assert!(body.get("stream_options").is_none());
+                let chunks: Vec<_> = SSE
+                    .as_bytes()
+                    .chunks(7)
+                    .map(|chunk| Ok::<_, std::convert::Infallible>(Bytes::copy_from_slice(chunk)))
+                    .collect();
+                axum::response::Response::builder()
+                    .status(200)
+                    .header("content-type", "text/event-stream")
+                    .body(Body::from_stream(futures::stream::iter(chunks)))
+                    .unwrap()
+            },
+        ),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}/v1", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+    let (state, mut ledger_rx) = build_state_for_route(
+        pool,
+        base_url,
+        "public-responses",
+        "native-responses",
+        "openai_responses",
+    )
+    .await;
+    let request = Request::builder().method("POST").uri("/v1/responses")
+        .header("authorization", "Bearer test-key").header("content-type", "application/json")
+        .body(Body::from(r#"{"model":"public-responses","stream":true,"input":[{"type":"function_call_output","call_id":"call_previous","output":"OK"}],"tools":[{"type":"function","name":"read_file","parameters":{"type":"object"}}]}"#)).unwrap();
+    let response = brighto_router::handlers::router(state)
+        .oneshot(request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let body = to_bytes(response.into_body(), 8192).await.unwrap();
+    assert_eq!(
+        body.as_ref(),
+        SSE.as_bytes(),
+        "native tool events must be byte-identical"
+    );
+    let usage = tokio::time::timeout(Duration::from_secs(2), ledger_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!((usage.input_tokens, usage.output_tokens), (23, 7));
+    assert!(!usage.estimated);
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn embeddings_adapter_proxies_and_records_usage(pool: PgPool) {
     let backend_base = spawn_adapter_backend().await;
     let (state, mut ledger_rx) = build_state_for_route(

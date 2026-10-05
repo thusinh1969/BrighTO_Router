@@ -11,7 +11,7 @@ Use it as a free, open-source LiteLLM or Bifrost alternative when you want a nar
 </p>
 
 
-Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Python SDK](#single-file-python-sdk) · [API examples](docs/API_EXAMPLES.md) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
+Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Python SDK](#single-file-python-sdk) · [API examples](docs/API_EXAMPLES.md) · [Agent clients](docs/AGENT_CLIENTS.md) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
 
 - Official repository: `https://github.com/thusinh1969/BrighTO_Router`
 - Official Docker image: `thusinh1969/brighto_airouter:v1.1.0` (`linux/amd64` and `linux/arm64`)
@@ -70,6 +70,12 @@ Honest read: Model Groups add routing choice, per-endpoint model rewrite, Postgr
 | Many team users with small and medium prompts | Fast Rust hot path: authenticate, check policy, choose route, forward stream, write usage asynchronously. |
 | Vibe-coding and agent traffic with huge contexts | Large JSON bodies stay pass-through; the router avoids storing prompt content and keeps memory behavior visible. |
 | Multiple local and cloud backends | Model Groups can balance one client-facing model name across compatible endpoints while clients keep the same request. |
+
+## Agent clients
+
+Claude Code, Codex, Hermes, and OpenClaw can use the router directly with a BrighTO client key and a matching native API route. Choose **Anthropic Messages** for Claude Code, **OpenAI Responses** for Codex, or **Chat** for Hermes and OpenClaw. Streaming and tool payloads are forwarded; the upstream must support that protocol and tool calling.
+
+[Client configuration and HTTPS trust](docs/AGENT_CLIENTS.md) · [Repeatable native CLI tool tests](smoke/agents/README.md)
 
 ## Quick start
 

@@ -1,198 +1,103 @@
-# HTTPS with custom PEM files on Ubuntu
+# HTTPS setup
 
-This guide shows the simple direct-HTTPS setup for a self-hosted BrighTO-Router server.
+BrighTO-Router can serve HTTPS directly or run behind an existing HTTPS reverse proxy. Direct HTTPS needs a certificate chain and its matching private key in `ssl/`. This folder stays outside Git.
 
-Default BrighTO-Router can run behind any existing HTTPS load balancer or reverse proxy. If you want the router itself to serve HTTPS, use custom PEM files and mount them into the Docker container.
+## First install
 
-The 1.0 Docker image supports direct TLS through `TLS_CERT_PATH` and `TLS_KEY_PATH`. If you already terminate HTTPS in a load balancer or reverse proxy, leave these settings empty and keep the router on HTTP behind that proxy.
-
-## What you will create
-
-On the Ubuntu host:
-
-```text
-BrighTO_Router/
-  .env
-  docker-compose.yml
-  ssl/
-    fullchain.pem
-    privkey.pem
-```
-
-`ssl/` is local-only and must never be committed to Git.
-
-## 1. Install basics on Ubuntu
+For a private server without a public certificate, replace `llm-host.local` with the hostname your clients will open:
 
 ```bash
-sudo apt update
-sudo apt install -y git curl openssl docker.io docker-compose-plugin
-sudo usermod -aG docker "$USER"
-```
-
-Log out and log in again if Docker was just installed.
-
-## 2. Pull the repo
-
-```bash
-git clone https://github.com/thusinh1969/BrighTO_Router.git
-cd BrighTO_Router
-```
-
-## 3. Create custom PEM files
-
-For a private LAN or first test, create a self-signed certificate.
-
-Replace `<SERVER_IP>` with the server IP that browsers will use.
-
-```bash
-mkdir -p ssl
-
-openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
-  -keyout ssl/privkey.pem \
-  -out ssl/fullchain.pem \
-  -subj "/CN=<SERVER_IP>" \
-  -addext "subjectAltName=IP:<SERVER_IP>,DNS:localhost,IP:127.0.0.1"
-
-chmod 644 ssl/privkey.pem
-chmod 644 ssl/fullchain.pem
-```
-
-For a real domain, copy your real certificate files instead:
-
-```bash
-mkdir -p ssl
-cp /path/to/fullchain.pem ssl/fullchain.pem
-cp /path/to/privkey.pem ssl/privkey.pem
-chmod 644 ssl/privkey.pem
-chmod 644 ssl/fullchain.pem
-```
-
-## 4. Configure `.env` for HTTPS
-
-Create `.env` if it does not exist:
-
-```bash
-cp -n .env.example .env
-```
-
-Edit these values:
-
-```bash
-LISTEN_ADDR=0.0.0.0:18443
-BASE_URL=https://<SERVER_IP>:18443
-TLS_CERT_PATH=/certs/fullchain.pem
-TLS_KEY_PATH=/certs/privkey.pem
-ADMIN_MASTER_KEY=<generated-admin-key-from-.env>
-ADMIN_ALLOW_CIDR=0.0.0.0/0,::/0
-```
-
-The first-run default works from the browser URL printed by the installer because `ADMIN_MASTER_KEY` is random. For production, restrict `ADMIN_ALLOW_CIDR` to your office, VPN, or reverse-proxy range.
-
-If you want standard HTTPS port 443:
-
-```bash
-LISTEN_ADDR=0.0.0.0:443
-BASE_URL=https://your-domain.example
-```
-
-Port 443 may already be used by another service. Use `18443` for the simplest first test.
-
-## 5. Mount `ssl/` into Docker
-
-In `docker-compose.yml`, the router service must mount `ssl/` read-only:
-
-```yaml
-services:
-  router:
-    volumes:
-      - router-data:/var/lib/brighto-router
-      - ./ssl:/certs:ro
-```
-
-The cert paths in `.env` are container paths, so they must be `/certs/fullchain.pem` and `/certs/privkey.pem`, not host paths.
-
-## 6. Start or restart
-
-```bash
-./start.sh install
-./start.sh restart
+./start.sh install --https --host llm-host.local
 ./start.sh status
 ```
 
-If you already installed before, this is enough:
+The installer generates a local certificate authority (CA), signs a server certificate for that hostname, and enables HTTPS. It prints the Portal URL and creates a random admin key in `.env`. Log in with username `admin` and that key. Restrict `ADMIN_ALLOW_CIDR` to your office or VPN network; [installation and admin access](INSTALL.md) explain the settings.
+
+## Enable HTTPS on an existing install
 
 ```bash
-./start.sh restart
+./start.sh make-self-signed-cert llm-host.local
+./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host llm-host.local --port 18443
+./start.sh status
 ```
 
-## 7. Test HTTPS
+The helper creates these files:
 
-Self-signed certificate test:
+| File | Purpose |
+|---|---|
+| `ssl/fullchain.pem` | Server certificate followed by the local CA certificate; mounted into Docker. |
+| `ssl/privkey.pem` | Server private key; keep it on the server. |
+| `ssl/ca.pem` | Public CA certificate; distribute it to clients that must trust this server. |
+
+The temporary CA private key is removed after signing. Running the helper again creates a new CA; clients must trust the new `ca.pem`. A hostname or IP used by clients must appear in the server certificate. Use the same hostname in the helper, Portal URL, and client configuration.
+
+The `tls` command copies PEM files into `ssl/`, updates `.env`, and recreates the router. Compose already mounts this folder read-only. Container paths are `/certs/fullchain.pem` and `/certs/privkey.pem`.
+
+## Use a publicly trusted certificate
+
+Use the full chain and matching key supplied by your certificate issuer:
 
 ```bash
-curl -k https://127.0.0.1:18443/healthz
-curl -k https://<SERVER_IP>:18443/readyz
+./start.sh tls --cert /path/to/fullchain.pem --key /path/to/privkey.pem --host router.example.com --port 18443
 ```
 
-Real trusted certificate test:
+Clients normally trust the issuer without an extra CA setting. Certificate renewal is managed by your issuer or existing certificate tooling; restart the router after replacing its PEM files. If a reverse proxy already handles HTTPS, leave `TLS_CERT_PATH` and `TLS_KEY_PATH` empty and run the router on HTTP behind it.
+
+## Trust a local CA
+
+Browsers show a warning until the local CA is trusted. Import `ssl/ca.pem` into the client device's trusted certificate store. Give clients only this public certificate, never `privkey.pem`.
+
+Verify both certificate trust and the hostname:
 
 ```bash
-curl https://your-domain.example/healthz
-curl https://your-domain.example/readyz
+curl --cacert ssl/ca.pem https://llm-host.local:18443/healthz
+curl --cacert ssl/ca.pem https://llm-host.local:18443/readyz
 ```
 
-Open the portal:
+Python and agent clients can use a CA bundle directly. Preserve public certificate trust if the same client also downloads tools or accesses public HTTPS services:
 
-```text
-https://<SERVER_IP>:18443/
+```bash
+python3 - <<'PYTHON'
+from pathlib import Path
+import ssl
+
+roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+pem = "".join(ssl.DER_cert_to_PEM_cert(root) for root in roots)
+Path("ssl/client-ca-bundle.pem").write_text(pem + "\n" + Path("ssl/ca.pem").read_text())
+PYTHON
+
+export SSL_CERT_FILE=/absolute/path/to/client-ca-bundle.pem
+export REQUESTS_CA_BUNDLE=/absolute/path/to/client-ca-bundle.pem
+export NODE_EXTRA_CA_CERTS=/absolute/path/to/client-ca-bundle.pem
+export CODEX_CA_CERTIFICATE=/absolute/path/to/client-ca-bundle.pem
 ```
 
-With a self-signed certificate, the browser will show a warning. That is expected. For production, use a certificate trusted by browsers.
+`NODE_EXTRA_CA_CERTS` applies to Node-based clients such as Claude Code and OpenClaw. `CODEX_CA_CERTIFICATE` applies to Codex. See [agent client configuration](docs/AGENT_CLIENTS.md) for protocol and model settings. Do not disable certificate verification in production.
 
-## 8. Firewall
+## Firewall and admin access
 
-If Ubuntu firewall is enabled:
+If Ubuntu's firewall is enabled:
 
 ```bash
 sudo ufw allow 18443/tcp
-sudo ufw status
 ```
 
-For port 443:
+Network reachability and admin permission are separate. A reachable Portal can still reject an admin request outside `ADMIN_ALLOW_CIDR`. Add the client's office/VPN range to that setting and restart; do not change the admin key to solve an IP restriction. The active protocol and listener port are reported by `./start.sh status`. The direct listener serves either HTTP or HTTPS; it does not serve both protocols on the same port.
 
-```bash
-sudo ufw allow 443/tcp
-```
+## Switch back to HTTP
 
-## 9. How to switch back to HTTP
-
-Remove or blank these two lines from `.env`:
-
-```bash
-TLS_CERT_PATH=
-TLS_KEY_PATH=
-```
-
-Set the URL back to HTTP:
-
-```bash
-LISTEN_ADDR=0.0.0.0:18080
-BASE_URL=http://<SERVER_IP>:18080
-```
-
-Restart:
+Clear `TLS_CERT_PATH` and `TLS_KEY_PATH` in `.env`, set `LISTEN_ADDR=0.0.0.0:18080` and `BASE_URL=http://llm-host.local:18080`, then run:
 
 ```bash
 ./start.sh restart
 ```
 
-## 10. Troubleshooting
+## Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| Router does not start | `./start.sh logs` and verify both PEM files exist inside `ssl/`. |
-| `curl http://...` fails | HTTPS listener expects `https://`, not `http://`. |
-| Browser warning | Self-signed certificates are not trusted by default. Use a real certificate for production. |
-| `permission denied` reading key | Check `ssl/privkey.pem` owner and permissions. |
-| Docker cannot see cert | Confirm `./ssl:/certs:ro` is mounted in `docker-compose.yml`. |
-| Healthcheck still uses HTTP | The image/start script must support HTTPS healthcheck when TLS env vars are set. |
+| Certificate rejected by an agent | Trust `ssl/ca.pem`, check hostname coverage, and use a server certificate signed by that CA. |
+| Admin says `ip not allowed` | Check `ADMIN_ALLOW_CIDR` against the client's actual IP or trusted proxy setup. |
+| Router cannot read a PEM file | Run `./start.sh logs`; check filenames and Docker read permissions. The helper sets the permissions expected by the non-root image. |
+| HTTP fails on the HTTPS port | Use `https://` for this listener; switch the configuration back to HTTP if needed. |
+| Docker cannot see the certificate | Keep `./ssl:/certs:ro` mounted and use `/certs/...` paths in `.env`. |

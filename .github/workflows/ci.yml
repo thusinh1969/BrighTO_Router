@@ -50,13 +50,12 @@ jobs:
           python-version: '3.11'
 
       - name: Python syntax
-        run: python3 -m py_compile brighto.py test_router.py smoke/python_sdk/run.py smoke/systemone/quyet_server.py scripts/bench_real.py benchmarks/make_payloads.py scripts/hotpath_guard.py
+        run: python3 -m py_compile brighto.py test_router.py smoke/agents/run.py smoke/python_sdk/run.py smoke/systemone/quyet_server.py scripts/bench_real.py benchmarks/make_payloads.py scripts/hotpath_guard.py
 
       - name: Python SDK and optional System One adapter tests
         run: |
           python3 -m pip install requests fastapi httpx
-          python3 -m unittest discover -s tests -p test_python_sdk.py -v
-          python3 -m unittest discover -s tests -p test_quyet_example.py -v
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Shell syntax
         run: bash -n start.sh scripts/test_postgres.sh benchmarks/gate.sh

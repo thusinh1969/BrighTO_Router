@@ -1639,7 +1639,8 @@ async fn test_responses(
     let body = serde_json::json!({
         "model": model,
         "input": "ping",
-        "max_output_tokens": 1,
+        // OpenAI Responses requires at least 16, including reasoning models.
+        "max_output_tokens": 16,
         "stream": false
     });
     post_json_probe(state, base_url, "/v1/responses", dialect, key, body, 20).await
@@ -1902,7 +1903,29 @@ async fn test_connection(
         ProviderProtocol::OpenAiResponses => {
             test_responses(&state, &base_url, dialect, &key, model)
                 .await
-                .map(|(status, _)| (status, status < 400, "responses OK".to_string()))
+                .map(|(status, data)| {
+                    let valid_response = data.as_ref().is_some_and(|body| {
+                        body.get("object").and_then(serde_json::Value::as_str) == Some("response")
+                            && body.get("output").is_some_and(serde_json::Value::is_array)
+                    });
+                    let ok = (200..300).contains(&status) && valid_response;
+                    let detail = if ok {
+                        "responses OK".to_string()
+                    } else {
+                        let message = data
+                            .as_ref()
+                            .and_then(|body| body.pointer("/error/message"))
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("endpoint did not return a valid Responses object");
+                        let safe_message = if key.is_empty() {
+                            message.to_string()
+                        } else {
+                            message.replace(&key, "[redacted]")
+                        };
+                        safe_message.chars().take(512).collect()
+                    };
+                    (status, ok, detail)
+                })
         }
         ProviderProtocol::OpenAiCompletions => {
             test_text_completion(&state, &base_url, dialect, &key, model)

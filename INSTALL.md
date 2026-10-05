@@ -258,25 +258,11 @@ For direct HTTPS from the router binary, place PEM files in `ssl/`, mount `./ssl
 If you do not have a real certificate yet, create a local self-signed certificate first:
 
 ```bash
-SERVER_IP=$(hostname -I | awk '{print $1}')
-mkdir -p ssl
-openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
-  -keyout ssl/privkey.pem \
-  -out ssl/fullchain.pem \
-  -subj "/CN=${SERVER_IP}" \
-  -addext "subjectAltName=IP:${SERVER_IP},IP:127.0.0.1,DNS:localhost,DNS:brighto-router"
-chmod 644 ssl/privkey.pem
-chmod 644 ssl/fullchain.pem
+./start.sh make-self-signed-cert llm-host.local
+./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host llm-host.local --port 18443
 ```
 
-Then set:
-
-```bash
-LISTEN_ADDR=0.0.0.0:18443
-BASE_URL=https://<SERVER_IP>:18443
-TLS_CERT_PATH=/certs/fullchain.pem
-TLS_KEY_PATH=/certs/privkey.pem
-```
+Replace `llm-host.local` with the hostname clients use. Trust the generated public `ssl/ca.pem` in clients; never distribute `ssl/privkey.pem`. The helper signs a server certificate with a local CA and removes the temporary CA private key.
 
 Full Ubuntu example: [HTTPS.md](HTTPS.md).
 

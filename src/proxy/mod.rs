@@ -471,7 +471,9 @@ fn parse_openai_usage_from_line(line: &[u8]) -> Option<(u64, u64)> {
         return None;
     }
     let v: Value = serde_json::from_slice(data).ok()?;
-    let usage = v.get("usage")?;
+    // Chat Completions puts usage at the event root; native Responses puts it
+    // inside the terminal response object. This tap never changes forwarded bytes.
+    let usage = v.get("usage").or_else(|| v.pointer("/response/usage"))?;
     let pt = usage
         .get("prompt_tokens")
         .or_else(|| usage.get("input_tokens"))?
@@ -542,6 +544,62 @@ pub fn extract_usage_from_sse_chunk(
         let line = line.strip_suffix(b"\r").unwrap_or(line);
         if line.starts_with(b"data:") {
             process_sse_line(line, format, acc);
+        }
+    }
+}
+
+/// SSE lines can span arbitrary HTTP frames, including the word "usage".
+/// Inspect complete lines in place; copy only a trailing partial line, bounded
+/// to the same 1 MiB ceiling as non-stream usage inspection. Oversized lines are
+/// skipped for accounting only; forwarding always keeps the original Bytes.
+#[derive(Default)]
+struct SseUsageTap {
+    pending: Vec<u8>,
+    skipping: bool,
+}
+
+impl SseUsageTap {
+    const LIMIT: usize = 1024 * 1024;
+
+    fn feed(&mut self, bytes: &[u8], format: BackendFormat, acc: &mut UsageAccumulator) {
+        let mut start = 0;
+        for end in memchr::memchr_iter(b'\n', bytes) {
+            let part = &bytes[start..end];
+            if !self.skipping {
+                if self.pending.is_empty() {
+                    Self::inspect(part, format, acc);
+                } else if self.pending.len().saturating_add(part.len()) <= Self::LIMIT {
+                    self.pending.extend_from_slice(part);
+                    Self::inspect(&self.pending, format, acc);
+                }
+            }
+            self.pending.clear();
+            self.skipping = false;
+            start = end + 1;
+        }
+        let tail = &bytes[start..];
+        if !self.skipping {
+            if self.pending.len().saturating_add(tail.len()) <= Self::LIMIT {
+                self.pending.extend_from_slice(tail);
+            } else {
+                self.pending.clear();
+                self.skipping = true;
+            }
+        }
+    }
+
+    fn inspect(line: &[u8], format: BackendFormat, acc: &mut UsageAccumulator) {
+        if line.len() <= Self::LIMIT && chunk_may_have_usage(line) {
+            let line = line.strip_suffix(b"\r").unwrap_or(line);
+            if line.starts_with(b"data:") {
+                process_sse_line(line, format, acc);
+            }
+        }
+    }
+
+    fn finish(&self, format: BackendFormat, acc: &mut UsageAccumulator) {
+        if !self.skipping {
+            Self::inspect(&self.pending, format, acc);
         }
     }
 }
@@ -857,6 +915,7 @@ async fn forward_backend_response(
         // Bounded(1): backpressure thật — client chậm thì backend-reader chặn, không buffer vô hạn.
         let (mut tx, rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(1);
         let mut acc = UsageAccumulator::default();
+        let mut tap = SseUsageTap::default();
         let mut stream = response.bytes_stream();
 
         tokio::spawn(async move {
@@ -866,9 +925,7 @@ async fn forward_backend_response(
                 let next = tokio::time::timeout(Duration::from_secs(60), stream.next()).await;
                 match next {
                     Ok(Some(Ok(bytes))) => {
-                        if chunk_may_have_usage(&bytes) {
-                            extract_usage_from_sse_chunk(&bytes, format, &mut acc);
-                        }
+                        tap.feed(&bytes, format, &mut acc);
                         if tx.send(Ok(bytes)).await.is_err() {
                             client_aborted = true;
                             break;
@@ -885,6 +942,7 @@ async fn forward_backend_response(
                     }
                 }
             }
+            tap.finish(format, &mut acc);
             let estimated = !acc.seen_usage;
             reporter.finish(
                 status.as_u16(),
@@ -1616,6 +1674,51 @@ mod tests {
         assert!(acc.seen_usage);
         assert_eq!(acc.input_tokens, 11);
         assert_eq!(acc.output_tokens, 7);
+    }
+
+    #[test]
+    fn tap_reads_native_responses_terminal_usage() {
+        for event_type in ["response.completed", "response.incomplete"] {
+            let chunk = format!(
+                "event: {event_type}\r\ndata: {{\"type\":\"{event_type}\",\"response\":{{\"id\":\"resp-native\",\"usage\":{{\"input_tokens\":19,\"output_tokens\":8}}}}}}\r\n\r\n"
+            );
+            let mut acc = UsageAccumulator::default();
+            extract_usage_from_sse_chunk(chunk.as_bytes(), BackendFormat::OpenAi, &mut acc);
+            assert!(
+                acc.seen_usage,
+                "native Responses usage missing: {event_type}"
+            );
+            assert_eq!(acc.input_tokens, 19);
+            assert_eq!(acc.output_tokens, 8);
+        }
+    }
+
+    #[test]
+    fn tap_handles_every_frame_boundary_and_recovers_after_oversized_line() {
+        let line = b"data: {\"usage\":{\"prompt_tokens\":19,\"completion_tokens\":8}}\r\n\n";
+        for split in 0..=line.len() {
+            let mut tap = SseUsageTap::default();
+            let mut acc = UsageAccumulator::default();
+            tap.feed(&line[..split], BackendFormat::OpenAi, &mut acc);
+            tap.feed(&line[split..], BackendFormat::OpenAi, &mut acc);
+            assert_eq!(
+                (acc.input_tokens, acc.output_tokens),
+                (19, 8),
+                "split {split}"
+            );
+        }
+        let mut tap = SseUsageTap::default();
+        let mut acc = UsageAccumulator::default();
+        tap.feed(
+            &vec![b'x'; SseUsageTap::LIMIT + 1],
+            BackendFormat::OpenAi,
+            &mut acc,
+        );
+        assert!(tap.pending.len() <= SseUsageTap::LIMIT);
+        assert!(tap.skipping);
+        tap.feed(b"\n", BackendFormat::OpenAi, &mut acc);
+        tap.feed(line, BackendFormat::OpenAi, &mut acc);
+        assert_eq!((acc.input_tokens, acc.output_tokens), (19, 8));
     }
 
     #[test]

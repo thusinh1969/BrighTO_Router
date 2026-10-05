@@ -99,9 +99,10 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
         const baseURL = {base_url!r};
         const adminKey = {admin_key!r};
         const mockURL = {mock_url!r};
+        const pageErrors = [];
 
         function attachPageDiagnostics(page) {{
-          page.on('pageerror', err => console.error('PAGEERROR ' + (err.stack || err.message))); 
+          page.on('pageerror', err => {{ pageErrors.push(err.stack || err.message); console.error('PAGEERROR ' + (err.stack || err.message)); }});
           page.on('console', msg => {{ if (['error', 'warning'].includes(msg.type())) console.error('BROWSER ' + msg.type() + ' ' + msg.text()); }});
         }}
 
@@ -488,6 +489,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await testedAdapterRoutes();
           console.log('PASS tested adapter route wizard');
           await providerTaskChoices();
+          if (pageErrors.length) throw new Error('Uncaught Portal JavaScript errors: ' + pageErrors.join('\\n'));
           console.log('PASS provider task choices');
         }})().catch((err) => {{
           console.error(err && err.stack ? err.stack : err);

@@ -2,13 +2,17 @@
 
 BrighTO-Router 1.1.0 keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, System One/Decision, and ASR/transcription.
 
+Chat, OpenAI Responses, and Anthropic Messages are distinct native protocols. Select the matching task in Portal; compatible Model Groups preserve that protocol. [Agent client setup](docs/AGENT_CLIENTS.md) covers Claude Code, Codex, Hermes, OpenClaw, and HTTPS trust.
+
 A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
+
+When editing an authenticated route, leaving the key field blank keeps its stored credential for the unchanged endpoint and task. Changing the endpoint or task requires configuring credentials for the new target.
 
 A **model route** is what clients use for one endpoint. It maps one API model name to one upstream provider model, with its task type, provider API key/reference, price, limits, and enabled/disabled state.
 
 The API model name must be unique across all model routes and Model Groups. It is not a decorative display label; it is the exact `model` string clients send.
 
-A **Model Group** is also what clients use, but it points one API model name at several existing tested routes of the same type. Clients still send one `model` value. The router chooses the source route by round robin or weighted round robin and skips unhealthy endpoints.
+A **Model Group** is also what clients use, but it points one API model name at several existing tested routes of the same type. Clients still send one `model` value. The router chooses the source route by round robin or weighted round robin and skips unhealthy endpoints. A group uses each provider endpoint record once; routes sharing that record cannot both be members.
 
 ## Provider catalog
 

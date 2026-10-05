@@ -864,13 +864,32 @@ cmd_make_self_signed_cert() {
       san="$san,IP:$lan_ip"
     fi
   fi
-  openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
-    -keyout ssl/privkey.pem -out ssl/fullchain.pem \
-    -subj "/CN=${host}" \
-    -addext "subjectAltName=${san}"
-  chmod 644 ssl/privkey.pem
-  chmod 644 ssl/fullchain.pem
-  say "Done. Enable with: ./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host $host --port 18443"
+  local cert_work_dir
+  cert_work_dir="$(mktemp -d)"
+  # OpenSSL 1.1.1 may append default CA extensions instead of replacing them.
+  # Use an explicit minimal config and sign a server leaf with a separate CA.
+  printf '[req]\ndistinguished_name=req_dn\n[req_dn]\n' > "$cert_work_dir/req.cnf"
+  if ! (
+    openssl req -config "$cert_work_dir/req.cnf" -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes \
+      -keyout "$cert_work_dir/ca-key.pem" -out ssl/ca.pem \
+      -subj "/CN=BrighTO Router local CA" \
+      -addext "basicConstraints=critical,CA:TRUE" \
+      -addext "keyUsage=critical,keyCertSign,cRLSign" &&
+    openssl req -config "$cert_work_dir/req.cnf" -new -newkey rsa:4096 -sha256 -nodes \
+      -keyout ssl/privkey.pem -out "$cert_work_dir/server.csr" -subj "/CN=${host}" &&
+    printf 'basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=%s\n' "$san" > "$cert_work_dir/server.ext" &&
+    openssl x509 -req -in "$cert_work_dir/server.csr" -CA ssl/ca.pem \
+      -CAkey "$cert_work_dir/ca-key.pem" -CAserial "$cert_work_dir/ca.srl" -CAcreateserial \
+      -days 3650 -sha256 -extfile "$cert_work_dir/server.ext" -out ssl/fullchain.pem &&
+    cat ssl/ca.pem >> ssl/fullchain.pem
+  ); then
+    rm -rf "$cert_work_dir"
+    fail "could not generate the local CA and server certificate"
+  fi
+  rm -rf "$cert_work_dir"
+  chmod 644 ssl/privkey.pem ssl/fullchain.pem ssl/ca.pem
+  say "Done. Trust ssl/ca.pem in clients. The temporary CA private key has been removed."
+  say "Enable with: ./start.sh tls --cert ssl/fullchain.pem --key ssl/privkey.pem --host $host --port 18443"
 }
 
 # Configure TLS: copy cert/key into ssl/, set .env (LISTEN_ADDR/BASE_URL/TLS_*), restart router.

@@ -1298,7 +1298,7 @@ function renderProviders(c){
   c.appendChild(p);
 }
 
-function openRouteModalFromConnection(b){ window.presetConnection=b; openRouteModal(null,{mode:"single"}); }
+function openRouteModalFromConnection(b){ window.presetConnection=b; openRouteModal({protocol:b.format==="anthropic"?"anthropic_messages":"openai_chat"},{mode:"single"}); }
 
 async function toggleBackend(b){
   try{
@@ -1330,7 +1330,8 @@ function openProviderModal(b){
   var psel=el("select");
   (catalog||[]).forEach(function(e){ var o=el("option",null, e.enabled===false ? e.label+" (coming soon)" : e.label); o.value=e.key; if(e.enabled===false) o.disabled=true; psel.appendChild(o); });
   if(!(catalog||[]).length){ var no=el("option",null,"Custom LLM"); no.value="custom"; psel.appendChild(no); }
-  var pre=(catalog||[]).find(function(e){ return b.name && (b.name===e.label || b.name.toLowerCase().indexOf(e.key)>=0); });
+  var pre=(catalog||[]).find(function(e){ return b.name && (b.name===e.label || b.name.toLowerCase().indexOf(e.key)>=0) && (!b.id || e.dialect===b.format); });
+  if(!pre && b.id) pre=(catalog||[]).find(function(e){ return e.enabled!==false && e.dialect===b.format; });
   if(pre) psel.value=pre.key;
   else if(b.name && (catalog||[]).length) psel.value=(catalog[0].key||"custom");
   fp.appendChild(psel); m.appendChild(fp);
@@ -1523,7 +1524,7 @@ function routeTask(protocol){
   return "chat";
 }
 function groupTypeLabel(task){ return ({chat:"Chat Completions (/v1/chat/completions)",completion:"Completions (/v1/completions)",responses:"Responses API (/v1/responses)",embedding:"Embedding (/v1/embeddings)",rerank:"Rerank (/v1/rerank)",asr:"ASR / transcription (/v1/audio/transcriptions)",systemone:"System One / Decision (/v1/systemone)",messages:"Anthropic Messages (/v1/messages)"})[task]||task; }
-function groupProtocolForTask(task){ return ({chat:"openai_chat",completion:"openai_completions",responses:"openai_responses",embedding:"openai_embeddings",rerank:"openai_rerank",asr:"openai_audio_transcriptions",systemone:"systemone"})[task]||"openai_chat"; }
+function groupProtocolForTask(task){ return ({chat:"openai_chat",completion:"openai_completions",responses:"openai_responses",embedding:"openai_embeddings",rerank:"openai_rerank",asr:"openai_audio_transcriptions",systemone:"systemone",messages:"anthropic_messages"})[task]||"openai_chat"; }
 function routingPolicyLabel(policy,short){
   var p=(policy||"round_robin").toLowerCase();
   if(p==="weighted_round_robin") return short?"weighted RR":"weighted round robin";
@@ -1565,12 +1566,11 @@ function openGroupModal(route){
   var banner=el("div","route-kind-banner group"); banner.appendChild(el("b",null,"Model Group")); banner.appendChild(el("span",null,"A group balances across existing tested model routes. Create provider URLs and API keys in Add model route first.")); m.appendChild(banner);
 
   var task=(route.protocol?routeTask(route.protocol):"chat");
-  if(["messages"].indexOf(task)>=0) task="chat";
   var selected=(route.endpoints||[]).map(endpointFromSavedForGroup);
 
   m.appendChild(el("div","section-title","Group definition"));
   var def=el("div","form-grid");
-  var ft=el("div","field"); ft.appendChild(el("label",null,"Model type")); var ts=el("select"); [["chat","Chat Completions (/v1/chat/completions)"],["completion","Completions (/v1/completions)"],["responses","Responses API (/v1/responses)"],["embedding","Embedding (/v1/embeddings)"],["rerank","Rerank (/v1/rerank)"],["asr","ASR / transcription (/v1/audio/transcriptions)"],["systemone","System One / Decision (/v1/systemone)"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; ts.appendChild(o); }); ts.value=task; ft.appendChild(ts); ft.appendChild(el("p","hint","Only existing routes with this type can be added.")); def.appendChild(ft);
+  var ft=el("div","field"); ft.appendChild(el("label",null,"Model type")); var ts=el("select"); [["chat","Chat Completions (/v1/chat/completions)"],["messages","Anthropic Messages (/v1/messages)"],["completion","Completions (/v1/completions)"],["responses","Responses API (/v1/responses)"],["embedding","Embedding (/v1/embeddings)"],["rerank","Rerank (/v1/rerank)"],["asr","ASR / transcription (/v1/audio/transcriptions)"],["systemone","System One / Decision (/v1/systemone)"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; ts.appendChild(o); }); ts.value=task; ft.appendChild(ts); ft.appendChild(el("p","hint","Only existing routes with this type can be added.")); def.appendChild(ft);
   var fp=el("div","field"); fp.appendChild(el("label",null,"Load balancing")); var policy=el("select"); [["round_robin","Round-robin"],["weighted_round_robin","Weighted round-robin"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; policy.appendChild(o); }); policy.value=(route.routing_policy&&route.routing_policy!=="least_loaded_weighted")?route.routing_policy:"round_robin"; fp.appendChild(policy); var policyHint=el("p","hint"); fp.appendChild(policyHint); def.appendChild(fp);
   var fn=el("div","field"); fn.appendChild(el("label",null,"API model group name")); var name=el("input"); name.placeholder="coding-fast"; name.value=route.model_name||""; fn.appendChild(name); fn.appendChild(el("p","hint","Clients send this single group name. Back-end routes stay private.")); def.appendChild(fn);
   m.appendChild(def);
@@ -1594,7 +1594,7 @@ function openGroupModal(route){
     return ready;
   }
   function refreshChoices(){
-    var keep=routeSel.value; routeSel.innerHTML=""; var used=selectedKeys(); var opts=candidates().filter(function(r){return !used[r.model_name];});
+    var keep=routeSel.value; routeSel.innerHTML=""; var used=selectedKeys(); var usedBackends={}; selected.forEach(function(ep){ usedBackends[ep.backend_id]=true; }); var opts=candidates().filter(function(r){return !used[r.model_name] && !usedBackends[(r.backend_ids||[])[0]];});
     if(!opts.length){ var o=el("option",null,"No compatible routes available"); o.value=""; routeSel.appendChild(o); routeSel.disabled=true; addBtn.disabled=true; return; }
     opts.forEach(function(r){ var b=backends.find(function(x){return Number(x.id)===Number((r.backend_ids||[])[0]);}); var o=el("option",null,r.model_name+" · "+protoLabel(r.protocol)+(b?" · "+providerDisplayName(b.name):"")); o.value=r.model_name; routeSel.appendChild(o); });
     routeSel.disabled=false; addBtn.disabled=false; if(keep && opts.some(function(r){return r.model_name===keep;})) routeSel.value=keep;
@@ -1614,7 +1614,7 @@ function openGroupModal(route){
     validateGroup();
   }
   function redraw(){ refreshChoices(); renderSelected(); }
-  addBtn.onclick=function(){ var r=(routes||[]).find(function(x){return x.model_name===routeSel.value;}); if(!r){ toast("Choose a compatible route first","err"); return; } var ep=endpointFromRouteForGroup(r); ep.weight=1; selected.push(ep); redraw(); };
+  addBtn.onclick=function(){ var r=(routes||[]).find(function(x){return x.model_name===routeSel.value;}); if(!r){ toast("Choose a compatible route first","err"); return; } var ep=endpointFromRouteForGroup(r); if(selected.some(function(x){return Number(x.backend_id)===Number(ep.backend_id);})){ toast("Choose a route using a different provider endpoint. A group uses each endpoint once.","err"); return; } ep.weight=1; selected.push(ep); redraw(); };
   ts.onchange=function(){ selected=[]; redraw(); };
   policy.onchange=renderSelected;
 
@@ -1666,6 +1666,7 @@ function openRouteModal(route,opts){
 
   function inferTaskFromProtocol(proto){
     proto=proto||"openai_chat";
+    if(proto.indexOf("messages")>=0 || proto.indexOf("anthropic")>=0) return "messages";
     if(proto.indexOf("response")>=0) return "responses";
     if(proto.indexOf("embedding")>=0) return "embedding";
     if(proto.indexOf("rerank")>=0) return "rerank";
@@ -1676,7 +1677,7 @@ function openRouteModal(route,opts){
   }
   var ft=el("div","field"); ft.appendChild(el("label",null,"Task type"));
   var ts=el("select");
-  [["chat","Chat Completions (/v1/chat/completions)"],["completion","Completions (/v1/completions)"],["responses","Responses API (/v1/responses)"],["embedding","Embedding (/v1/embeddings)"],["rerank","Rerank (/v1/rerank)"],["asr","ASR / transcription (/v1/audio/transcriptions)"],["systemone","System One / Decision (/v1/systemone)"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; ts.appendChild(o); });
+  [["chat","Chat Completions (/v1/chat/completions)"],["messages","Anthropic Messages (/v1/messages)"],["completion","Completions (/v1/completions)"],["responses","Responses API (/v1/responses)"],["embedding","Embedding (/v1/embeddings)"],["rerank","Rerank (/v1/rerank)"],["asr","ASR / transcription (/v1/audio/transcriptions)"],["systemone","System One / Decision (/v1/systemone)"]].forEach(function(x){ var o=el("option",null,x[1]); o.value=x[0]; ts.appendChild(o); });
   ts.value=inferTaskFromProtocol(route.protocol);
   var taskHint=el("p","hint","Choose the API shape this route will serve. Test Connection uses this exact endpoint.");
   ft.appendChild(ts); ft.appendChild(taskHint); providerGrid.appendChild(ft);
@@ -1693,7 +1694,8 @@ function openRouteModal(route,opts){
   function providerSupportsTask(e,task){
     var k=(e.key||"").toLowerCase();
     if(k==="custom" || k==="custom-llm") return true;
-    if(task==="chat" || task==="responses") return ["jina","voyage","cohere"].indexOf(k)<0;
+    if(task==="messages") return e.dialect==="anthropic";
+    if(task==="chat" || task==="responses") return ["anthropic","ollaya","jina","voyage","cohere"].indexOf(k)<0;
     if(task==="completion") return ["anthropic","jina","voyage","cohere","ollaya"].indexOf(k)<0;
     if(task==="embedding") return ["openai","jina","voyage","qwen","custom-llm"].indexOf(k)>=0;
     if(task==="rerank") return ["jina","voyage","cohere","qwen","custom-llm"].indexOf(k)>=0;
@@ -1756,6 +1758,19 @@ function openRouteModal(route,opts){
   var testState={ok:false};
   var endpointTest={ok:false,candidate:null};
 
+  function storedKeyRef(){
+    var original=backends.find(function(b){ return b.id===(route.backend_ids&&route.backend_ids[0]); });
+    return original && route.provider_key_ref && route.auth_mode!=="none" && url.value.trim()===original.base_url && ts.value===inferTaskFromProtocol(route.protocol) ? route.provider_key_ref : "";
+  }
+  function refreshKeyHint(){
+    var e=catEntry(ps.value); var providerKey=(e.key||"").toLowerCase();
+    if(storedKeyRef()) keyHint.textContent="Stored provider key — leave blank to keep it, or paste a replacement.";
+    else if(providerKey==="custom-llm" || providerKey==="custom") keyHint.textContent="Custom LLM may be no-auth. Leave blank for local/no-auth endpoints, or paste a provider key if your endpoint requires one.";
+    else if(e.key_set) keyHint.textContent="Using key from .env ("+e.key_env+") — leave blank to use it, or paste to override.";
+    else if(e.key_env) keyHint.textContent="No key in .env ("+e.key_env+") — paste the API key (stored per model, write-only).";
+    else keyHint.textContent="Paste a provider key when the endpoint requires one. Leave blank for local or no-auth endpoints.";
+  }
+
   function applyCat(resetUrl){
     var e=catEntry(ps.value);
     var task=ts.value;
@@ -1771,8 +1786,8 @@ function openRouteModal(route,opts){
       url.placeholder=e.base_url;
     }
     else { if(resetUrl) url.value=""; url.placeholder="https://…"; }
-    var taskName={chat:"chat completions",completion:"completions",responses:"Responses API",embedding:"embedding",rerank:"rerank",asr:"ASR",systemone:"System One"}[task]||task;
-    pHint.textContent = (e.dialect==="anthropic" ? "Anthropic Messages API" : "OpenAI-compatible API") + " · " + taskName + " route";
+    var taskName={chat:"chat completions",messages:"Anthropic Messages",completion:"completions",responses:"Responses API",embedding:"embedding",rerank:"rerank",asr:"ASR",systemone:"System One"}[task]||task;
+    pHint.textContent = task==="messages" ? "Native /v1/messages protocol" : (e.dialect==="anthropic" ? "Anthropic Messages API" : "OpenAI-compatible API") + " · " + taskName + " route";
     var sug=suggestedModels(e,task);
     if(typeof ms!=="undefined" && ms && typeof mi!=="undefined" && mi){
       var nextModel=sug.length?sug[0]:"";
@@ -1790,13 +1805,11 @@ function openRouteModal(route,opts){
       applyCat.oldProviderModel="";
       applyCat.oldPublicModel="";
     }
-    if(providerKey==="custom-llm" || providerKey==="custom") keyHint.textContent="Custom LLM may be no-auth. Leave blank for local/no-auth endpoints, or paste a provider key if your endpoint requires one.";
-    else if(e.key_set){ keyHint.textContent="Using key from .env ("+e.key_env+") — leave blank to use it, or paste to override."; }
-    else if(e.key_env){ keyHint.textContent="No key in .env ("+e.key_env+") — paste the API key (stored per model, write-only)."; }
-    else { keyHint.textContent="Paste a provider key when the endpoint requires one. Leave blank for local or no-auth endpoints."; }
+    refreshKeyHint();
     if(task==="rerank" && qwenRerank) taskHint.textContent="Qwen rerank calls BrighTO /v1/rerank, then adapts to DashScope rerank endpoints. Use https://dashscope-intl.aliyuncs.com or your workspace root; do not use /compatible-mode/v1.";
     else if(task==="rerank") taskHint.textContent="Rerank calls /v1/rerank with a query and candidate documents. Test uses three tiny documents.";
     else if(task==="completion") taskHint.textContent="Completions calls /v1/completions with one tiny prompt. Use only for legacy text-completion providers.";
+    else if(task==="messages") taskHint.textContent="Native /v1/messages for Claude Code and Anthropic clients. Tools require backend support.";
     else if(task==="responses") taskHint.textContent="Responses API calls /v1/responses with one short input. Use this for Codex-style Responses clients.";
     else if(task==="embedding") taskHint.textContent="Embedding calls /v1/embeddings with one short text. No vectors are stored.";
     else if(task==="asr") taskHint.textContent="ASR calls /v1/audio/transcriptions with the small bundled WAV fixture. Audio/transcript are not stored.";
@@ -1815,12 +1828,14 @@ function openRouteModal(route,opts){
   ts.onchange=function(){ markModelReset(); refreshProviderOptions(); applyCat(true); clearTest("Task changed — test connection again before saving enabled."); };
   routeModeSel.onchange=function(){ routeMode=routeModeSel.value; updateRouteModeUi(); refreshProviderOptions(); applyCat(true); clearTest(routeMode==="group"?"Test each endpoint, add at least two, then save the model group.":"Single endpoint mode — test connection before saving enabled."); };
   applyCat();
-  url.oninput=function(){ clearTest(""); };
-  pk.oninput=function(){ clearTest(""); };
+  url.oninput=function(){ refreshKeyHint(); clearTest(""); };
+  pk.oninput=function(){ refreshKeyHint(); clearTest(""); };
   if(window.presetConnection){
     var pc=window.presetConnection; window.presetConnection=null;
     var ck=(catalog||[]).find(function(e){ return pc.name===e.label || pc.name.toLowerCase().indexOf(e.key)>=0; });
-    if(ck && ck.enabled!==false){ ps.value=ck.key; applyCat(); }
+    if(ck && ck.enabled!==false && providerSupportsTask(ck,ts.value)){ ps.value=ck.key; }
+    else { ps.value="custom-llm"; }
+    applyCat();
     url.value=pc.base_url||url.value;
   }
 
@@ -1836,7 +1851,7 @@ function openRouteModal(route,opts){
   modelGrid.appendChild(f1);
 
   var f=el("div","field"); f.appendChild(el("label",null,"API model name (shown to clients)"));
-  var mi=el("input"); mi.placeholder="gpt-4o-mini"; mi.value=route.model_name||""; f.appendChild(mi);
+  var mi=el("input"); mi.placeholder="team-model"; mi.value=route.model_name||""; f.appendChild(mi);
   f.appendChild(el("p","hint","The model name your apps send. Use the same name or a shorter team alias."));
 	  modelGrid.appendChild(f);
 	  m.appendChild(modelGrid);
@@ -1969,13 +1984,14 @@ function openRouteModal(route,opts){
     var task=ts.value;
     var local = isLocalUrl(url.value.trim());
     var noAuthCustom = ((e.key||"").toLowerCase()==="custom-llm" || (e.key||"").toLowerCase()==="custom") && !pk.value.trim();
-    var auth=((local || noAuthCustom) && !pk.value.trim())?"none":"bearer";
+    var auth=storedKeyRef() && !pk.value.trim() ? route.auth_mode : (((local || noAuthCustom) && !pk.value.trim())?"none":"bearer");
     if(task==="chat"){
       var anthropic=e.dialect==="anthropic";
       if(anthropic) return { dialect:"anthropic", auth:"anthropic", protocol:"anthropic_messages" };
       if(auth==="none") return { dialect:"openai", auth:"none", protocol:"local_openai_chat" };
       return { dialect:"openai", auth:"bearer", protocol:"openai_chat" };
     }
+    if(task==="messages") return { dialect:"anthropic", auth:auth==="none"?"none":"anthropic", protocol:"anthropic_messages" };
     if(task==="completion") return { dialect:"openai", auth:auth, protocol:"openai_completions" };
     if(task==="responses") return { dialect:"openai", auth:auth, protocol:"openai_responses" };
     if(task==="embedding") return { dialect:"openai", auth:auth, protocol:"openai_embeddings" };
@@ -1991,6 +2007,7 @@ function openRouteModal(route,opts){
   function keyPayload(){
     var e=catEntry(ps.value);
     if(pk.value.trim()) return {provider_key:pk.value.trim()};
+    if(storedKeyRef()) return {provider_key_ref:storedKeyRef()};
     // Only auto-apply the .env key to non-local, non-custom cloud URLs.
     var k=(e.key||"").toLowerCase();
     if(e.key_env && e.key_set && !isLocalUrl(url.value.trim()) && k!=="custom-llm" && k!=="custom") return {provider_key_ref:"env:"+e.key_env};
@@ -2007,7 +2024,7 @@ function openRouteModal(route,opts){
     var da=dialAuth(); var e=catEntry(ps.value); var sug=suggestedModels(e,ts.value);
     if(sug.length){ pickModelModal(sug, applyPickedModel); return; }
     if(!url.value.trim()){ toast("Enter a Base URL first","err"); return; }
-    if(da.auth!=="none" && !pk.value.trim() && !catEntry(ps.value).key_set){ toast("Enter an API key, or choose Custom LLM for a no-auth local endpoint","err"); return; }
+    if(da.auth!=="none" && !pk.value.trim() && !storedKeyRef() && !catEntry(ps.value).key_set){ toast("Enter an API key, or choose Custom LLM for a no-auth local endpoint","err"); return; }
     loadBtn.disabled=true; loadBtn.textContent="Loading…";
     try{
       var payload=Object.assign({base_url:url.value.trim(), protocol:da.dialect, auth_mode:da.auth}, keyPayload());
@@ -2068,7 +2085,7 @@ function openRouteModal(route,opts){
           var ge=groupEndpoints[gi];
           var backendId=ge.backend_id;
           if(!backendId){
-            var existing=backends.find(function(b){ return b.base_url===ge.base_url; });
+            var existing=backends.find(function(b){ return b.base_url===ge.base_url && b.format===(ge.dialect||"openai"); });
             if(existing){ backendId=existing.id; }
             else{
               var created=await api("/admin/backends","POST",{name:ge.provider_label||"Model Group endpoint",base_url:ge.base_url,api_key_ref:"env:NONE",weight:1,max_inflight:0,format:ge.dialect||"openai",enabled:true});
@@ -2084,7 +2101,7 @@ function openRouteModal(route,opts){
         }
         payload={model_name:name,backend_ids:backendIds,chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:name,enabled:enabledFlag,auth_mode:"bearer",protocol:"openai_chat",routing_policy:policySel.value,endpoints:endpointPayload};
       }else{
-        var backend=backends.find(function(b){ return b.base_url===url.value.trim(); });
+        var backend=backends.find(function(b){ return b.base_url===url.value.trim() && b.format===da.dialect; });
         var singleBackendId;
         if(backend){ singleBackendId=backend.id; }
         else{
@@ -2118,7 +2135,8 @@ function openRouteModal(route,opts){
     if(rb){
       url.value=rb.base_url;
       var ck=(catalog||[]).find(function(e){return rb.name===e.label || rb.name.toLowerCase().indexOf(e.key)>=0;});
-      if(ck){ ps.value=ck.key; applyCat(false); }
+      ps.value=ck && ck.enabled!==false && ck.dialect===rb.format && providerSupportsTask(ck,ts.value) ? ck.key : "custom-llm";
+      applyCat(false);
     }
     if(routeMode==="group" && groupEndpoints.length){
       var firstEp=groupEndpoints[0];

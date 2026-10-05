@@ -2,6 +2,8 @@
 
 This is the BrighTO-Router 1.1.0 adapter and routing scope: embeddings stay on the OpenAI-compatible route, rerank, System One, and ASR/transcription are task-specific adapters, and Model Groups add same-type route load balancing without changing the client API call.
 
+Chat, OpenAI Responses, and Anthropic Messages are distinct native protocols. Select the matching task in Portal; compatible Model Groups preserve that protocol. [Agent client setup](docs/AGENT_CLIENTS.md) covers Claude Code, Codex, Hermes, OpenClaw, and HTTPS trust.
+
 Implemented and tested in 1.1.0:
 
 | Task | Public BrighTO endpoint | Route protocol | Request shape | Status |

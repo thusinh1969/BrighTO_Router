@@ -14,9 +14,12 @@ TMP="$(mktemp -d)"
 cleanup(){ kill "${RPID:-0}" 2>/dev/null || true; rm -rf "$TMP"; }
 trap cleanup EXIT
 
-openssl req -x509 -newkey rsa:2048 -sha256 -days 1 -nodes \
-  -keyout "$TMP/key.pem" -out "$TMP/cert.pem" \
-  -subj "/CN=localhost" -addext "subjectAltName=IP:127.0.0.1,DNS:localhost" >/dev/null 2>&1
+# Exercise the actual installer helper in an isolated directory.
+cp "$ROOT/start.sh" "$TMP/start.sh"
+(cd "$TMP" && bash ./start.sh make-self-signed-cert localhost) >"$TMP/cert.log" 2>&1
+cp "$TMP/ssl/fullchain.pem" "$TMP/cert.pem"
+cp "$TMP/ssl/privkey.pem" "$TMP/key.pem"
+openssl verify -CAfile "$TMP/ssl/ca.pem" "$TMP/cert.pem" >/dev/null
 
 PORT=$(python3 -c "import socket;s=socket.socket();s.bind(('127.0.0.1',0));print(s.getsockname()[1]);s.close()")
 DB="${DATABASE_URL:-postgres://brighto_router:brighto_router_dev@127.0.0.1:55432/brighto_router}"
@@ -28,7 +31,7 @@ RPID=$!
 
 ok=""
 for _ in $(seq 1 40); do
-  if curl -sk -m 2 "https://127.0.0.1:$PORT/healthz" 2>/dev/null | grep -q ok; then ok=1; break; fi
+  if curl --cacert "$TMP/ssl/ca.pem" -s -m 2 "https://127.0.0.1:$PORT/healthz" 2>/dev/null | grep -q ok; then ok=1; break; fi
   sleep 0.5
 done
 [ -n "$ok" ] || { echo "FAIL: https healthz"; tail -20 "$TMP/log"; exit 1; }

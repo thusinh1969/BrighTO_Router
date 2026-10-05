@@ -20,6 +20,7 @@ Most teams do not need a large hosted AI platform to start. They need a fast, un
 
 - OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`
 - Anthropic-compatible `/v1/messages`
+- [Native agent client setup](AGENT_CLIENTS.md) for Claude Code, Codex, Hermes, and OpenClaw, using matching protocols and tool-capable backends
 - System One decisions through `/v1/systemone` and `/v1/decisions`
 - Single-file Python SDK for every public inference API, including Quyết-compatible System One decisions
 - Rerank and ASR adapter routes
