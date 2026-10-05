@@ -1,6 +1,6 @@
 # Python SDK and API examples
 
-[brighto.py](../brighto.py) is the single-file Python client for BrighTO-Router. Copy it beside your application. It requires Python 3.9+ and `requests`; the router itself does not need Python.
+[brighto.py](https://github.com/thusinh1969/BrighTO_Router/blob/main/brighto.py) is the single-file Python client for BrighTO-Router. Copy it beside your application. It requires Python 3.9+ and `requests`; the router itself does not need Python.
 
 ```bash
 python3 -m pip install requests
@@ -177,7 +177,7 @@ with Router() as client:
 
 ## Quyet System One backend
 
-[Quyết by Chinh Nguyen](https://github.com/ncchinh/quyet) is an independent open-source decision-model runtime. Its `predict(state, questions)` response follows the TypeSafe/System One contract. Upstream supplies Python inference; the optional [quyet_server.py](../smoke/systemone/quyet_server.py) example exposes HTTP for BrighTO. It is separate from the Rust router and is not bundled into the router Docker image.
+[Quyết by Chinh Nguyen](https://github.com/ncchinh/quyet) is an independent open-source decision-model runtime. Its `predict(state, questions)` response follows the TypeSafe/System One contract. Upstream supplies Python inference; the optional [quyet_server.py](https://github.com/thusinh1969/BrighTO_Router/blob/main/smoke/systemone/quyet_server.py) example exposes HTTP for BrighTO. It is separate from the Rust router and is not bundled into the router Docker image.
 
 Use a separate Python 3.10+ environment:
 
