@@ -69,8 +69,10 @@ What happens:
 1. `.env` is created from `.env.example` if it does not exist.
 2. Docker starts PostgreSQL 16.
 3. SQL migrations run.
-4. The default team and local demo client key are seeded.
+4. The unlimited `Default Team` and local demo client key are seeded. Set a budget in the Portal if needed.
 5. Docker pulls and starts `thusinh1969/brighto_airouter:v1.1.0`.
+
+On an existing PostgreSQL volume, install and upgrade preserve team and key budgets. To remove a cap, choose **Unlimited** on the team and **Inherit team budget** on each affected key. Token budgets enforce limits; configured money amounts are stored and shown but not enforced.
 
 Open on the same server:
 

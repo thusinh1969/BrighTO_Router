@@ -485,12 +485,109 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           }}
         }}
 
+        async function clearingAdvancedBudgetsReallyClearsThem() {{
+          const browser = await chromium.launch({{ executablePath: process.env.PLAYWRIGHT_CHROME_EXECUTABLE, headless: true, args: ['--no-sandbox'] }});
+          const page = await browser.newPage({{ viewport: {{ width: 1440, height: 1000 }} }});
+          attachPageDiagnostics(page);
+          try {{
+            await login(page);
+            const advanced = {{ period: 'month', max_tokens: 0, per_model: {{ 'mock-systemone': 10 }} }};
+            const headers = {{ 'x-admin-key': adminKey }};
+            const teamResponse = await page.request.post(baseURL + '/admin/teams', {{ headers, data: {{ name: 'Advanced Budget Team', budget: advanced, enabled: true }} }});
+            expect(teamResponse.ok()).toBeTruthy();
+            const teamId = (await teamResponse.json()).id;
+            const keyResponse = await page.request.post(baseURL + '/admin/keys', {{ headers, data: {{ team_id: teamId, owner: 'Advanced Budget Key', allowed_models: [], budget: advanced }} }});
+            expect(keyResponse.ok()).toBeTruthy();
+            const keyData = await keyResponse.json();
+            const keyId = keyData.id;
+            const inheritedResponse = await page.request.post(baseURL + '/admin/keys', {{ headers, data: {{ team_id: teamId, owner: 'Inherited Budget Key', allowed_models: [], budget: null }} }});
+            expect(inheritedResponse.ok()).toBeTruthy();
+            const inheritedKey = (await inheritedResponse.json()).key;
+            const decision = {{ model: 'browser-systemone-a', state: {{ message: 'Ready' }}, questions: {{ ready: {{ type: 'noul', instructions: 'Is this ready?' }} }} }};
+            async function callWith(key) {{
+              return page.request.post(baseURL + '/v1/systemone', {{ headers: {{ Authorization: 'Bearer ' + key }}, data: decision }});
+            }}
+            const budgetMetric = 'router_budget_remaining{{team="' + teamId + '",model="total"}}';
+            await expect.poll(async () => (await page.request.get(baseURL + '/metrics')).text(), {{ timeout: 12000 }}).toContain(budgetMetric);
+            let call = await callWith(inheritedKey);
+            expect(call.status()).toBe(429);
+            expect(await call.text()).toContain('budget exceeded');
+            call = await callWith(keyData.key);
+            expect(call.status()).toBe(429);
+            expect(await call.text()).toContain('budget exceeded');
+            await page.reload({{ waitUntil: 'domcontentloaded' }});
+            await page.click('#nav-teams');
+            const teamRow = page.locator('.team-list-table tbody tr').filter({{ hasText: 'Advanced Budget Team' }});
+            await teamRow.getByRole('button', {{ name: 'Edit' }}).click();
+            let modal = page.locator('#modal-overlay .modal').last();
+            const teamBudget = modal.locator('select:has(option[value="advanced"])');
+            await expect(teamBudget).toHaveValue('advanced');
+            await modal.getByRole('button', {{ name: 'Advanced budget rules', exact: true }}).click();
+            await teamBudget.selectOption('unlimited');
+            let saved = page.waitForRequest(r => r.method() === 'PATCH' && r.url().endsWith('/admin/teams/' + teamId));
+            await modal.getByRole('button', {{ name: /^Save$/ }}).click();
+            expect((await saved).postDataJSON().budget).toBeNull();
+            await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+            const clearedTeam = await page.request.get(baseURL + '/admin/teams', {{ headers }});
+            expect((await clearedTeam.json()).find(t => t.id === teamId).budget).toBeNull();
+            call = await callWith(inheritedKey);
+            expect(call.status()).toBe(200);
+            call = await callWith(keyData.key);
+            expect(call.status()).toBe(429);
+            expect(await call.text()).toContain('budget exceeded');
+            await page.click('#nav-keys');
+            const keyRow = page.locator('.key-list-table tbody tr').filter({{ hasText: 'Advanced Budget Key' }});
+            await keyRow.getByRole('button', {{ name: 'Edit' }}).click();
+            modal = page.locator('#modal-overlay .modal').last();
+            const keyBudget = modal.locator('select:has(option[value="advanced"])');
+            await expect(keyBudget).toHaveValue('advanced');
+            await modal.getByRole('button', {{ name: 'Advanced budget rules', exact: true }}).click();
+            await keyBudget.selectOption('inherit');
+            saved = page.waitForRequest(r => r.method() === 'PATCH' && r.url().endsWith('/admin/keys/' + keyId));
+            await modal.getByRole('button', {{ name: /^Save$/ }}).click();
+            expect((await saved).postDataJSON().budget).toBeNull();
+            await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+            const clearedKey = await page.request.get(baseURL + '/admin/keys', {{ headers }});
+            expect((await clearedKey.json()).find(k => k.id === keyId).budget).toBeNull();
+            call = await callWith(keyData.key);
+            expect(call.status()).toBe(200);
+            await page.waitForTimeout(17000);
+            expect((await (await page.request.get(baseURL + '/metrics')).text()).includes(budgetMetric)).toBeFalsy();
+            const tokenBudget = {{ period: 'month', max_tokens: 1000, per_model: {{ 'browser-systemone-a': 20 }} }};
+            const tokenTeamResponse = await page.request.post(baseURL + '/admin/teams', {{ headers, data: {{ name: 'Token Budget Team', budget: tokenBudget, enabled: true }} }});
+            expect(tokenTeamResponse.ok()).toBeTruthy();
+            const tokenTeamId = (await tokenTeamResponse.json()).id;
+            await page.reload({{ waitUntil: 'domcontentloaded' }});
+            await page.click('#nav-teams');
+            const tokenRow = page.locator('.team-list-table tbody tr').filter({{ hasText: 'Token Budget Team' }});
+            await tokenRow.getByRole('button', {{ name: 'Edit' }}).click();
+            modal = page.locator('#modal-overlay .modal').last();
+            const tokenMode = modal.locator('select:has(option[value="token"])').first();
+            await expect(tokenMode).toHaveValue('token');
+            await modal.getByRole('button', {{ name: /^Save$/ }}).click();
+            await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+            let tokenTeam = (await (await page.request.get(baseURL + '/admin/teams', {{ headers }})).json()).find(t => t.id === tokenTeamId);
+            expect(tokenTeam.budget.per_model).toEqual(tokenBudget.per_model);
+            await tokenRow.getByRole('button', {{ name: 'Edit' }}).click();
+            modal = page.locator('#modal-overlay .modal').last();
+            await modal.locator('select:has(option[value="token"])').first().selectOption('unlimited');
+            await modal.getByRole('button', {{ name: /^Save$/ }}).click();
+            await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+            tokenTeam = (await (await page.request.get(baseURL + '/admin/teams', {{ headers }})).json()).find(t => t.id === tokenTeamId);
+            expect(tokenTeam.budget).toBeNull();
+          }} finally {{
+            await browser.close();
+          }}
+        }}
+
         (async () => {{
           await testedAdapterRoutes();
           console.log('PASS tested adapter route wizard');
           await providerTaskChoices();
           if (pageErrors.length) throw new Error('Uncaught Portal JavaScript errors: ' + pageErrors.join('\\n'));
           console.log('PASS provider task choices');
+          await clearingAdvancedBudgetsReallyClearsThem();
+          console.log('PASS Unlimited team and inherited key budgets clear advanced caps');
         }})().catch((err) => {{
           console.error(err && err.stack ? err.stack : err);
           process.exit(1);

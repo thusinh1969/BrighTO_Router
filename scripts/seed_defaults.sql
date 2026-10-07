@@ -22,7 +22,7 @@ DECLARE
   ]'::jsonb;
 BEGIN
   INSERT INTO teams (name, budget, enabled)
-  SELECT 'Default Team', '{"period":"month","max_tokens":1000000,"per_model":{}}', TRUE
+  SELECT 'Default Team', NULL, TRUE
   WHERE NOT EXISTS (SELECT 1 FROM teams WHERE name = 'Default Team');
 
   -- Provider endpoints are templates only. They stay disabled until a tested model route uses them.

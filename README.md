@@ -63,6 +63,8 @@ Honest read: Model Groups add routing choice, per-endpoint model rewrite, Postgr
 | Fail-safe endpoint handling | A failed endpoint is skipped after repeated pre-response failures and retried after `BACKEND_CIRCUIT_OPEN_SECONDS`, default `30`. |
 | Teams, keys, budgets | Team budgets, visible client API keys, expiry, request-per-minute limits, concurrency limits, and usage dashboard. |
 
+Token budgets block requests when their limit is reached. A configured money amount is stored and shown in the Portal, but it is not enforced or compared with actual spend.
+
 ## Real workloads this targets
 
 | Workload | Why it fits |
@@ -279,11 +281,13 @@ Default records:
 
 | Record | Created value | Purpose |
 |---|---|---|
-| Team | `Default Team` | Lets an admin create client API keys immediately. |
+| Team | `Default Team`, unlimited by default | Lets an admin create client API keys immediately. Set a token budget in the Portal when needed. |
 | Demo client key | Random `sk-brighto-...` in `.env` | Local smoke testing only. Rotate, disable, or delete it before shared use. |
 | Model routes | None | You choose which provider models clients can call. |
 | Provider endpoints | OpenAI, Anthropic, Gemini, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Meta Muse, Custom LLM, Ollaya System One, Jina AI, Voyage AI, Cohere, Qwen Rerank | Friendly defaults for the Portal. They are endpoint templates, not usable routes until a tested model route is saved. |
 | Provider catalog | `PROVIDER_CATALOG` in `.env` | Controls the Add model route provider dropdown. |
+
+The unlimited team default applies to new installations. Upgrading preserves existing team and API-key budgets; select **Unlimited** for a team and **Inherit team budget** for its keys when you want to clear older caps.
 
 `./start.sh start`, `./start.sh restart`, Docker image pulls, and Docker image rebuilds do **not** wipe PostgreSQL. Local data is stored in the Docker named volume `brighto-airouter_pg-data`. Data is removed only when you explicitly delete the volume, run `docker compose down -v`, or manually reset the database.
 

@@ -75,4 +75,27 @@ else
   done
 fi
 
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+BEGIN;
+CREATE TEMP TABLE teams (name TEXT, budget TEXT, enabled BOOLEAN);
+CREATE TEMP TABLE backends (name TEXT, base_url TEXT, api_key_ref TEXT,
+                            weight BIGINT, max_inflight BIGINT, format TEXT, enabled BOOLEAN);
+\i scripts/seed_defaults.sql
+\i scripts/seed_defaults.sql
+DO $$ BEGIN
+  IF (SELECT COUNT(*) FROM teams WHERE name = 'Default Team' AND budget IS NULL) <> 1 THEN
+    RAISE EXCEPTION 'fresh Default Team must be unlimited and seeding must be idempotent';
+  END IF;
+END $$;
+UPDATE teams SET budget = '{"period":"month","max_tokens":50,"per_model":{}}'
+WHERE name = 'Default Team';
+\i scripts/seed_defaults.sql
+DO $$ BEGIN
+  IF (SELECT budget FROM teams WHERE name = 'Default Team') NOT LIKE '%"max_tokens":50%' THEN
+    RAISE EXCEPTION 'seeding must preserve an existing team budget';
+  END IF;
+END $$;
+ROLLBACK;
+SQL
+
 CARGO_INCREMENTAL=0 cargo test --locked --all-targets

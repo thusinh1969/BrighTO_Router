@@ -2252,7 +2252,8 @@ function budgetText(b){
   if(!b) return "Unlimited";
   var parts=[];
   if(b.max_tokens) parts.push(fmt(b.max_tokens)+" tokens");
-  if(b.max_usd_cents) parts.push(fmtCost(b.max_usd_cents/100));
+  else parts.push("0 tokens (blocks requests)");
+  if(b.max_usd_cents) parts.push(fmtCost(b.max_usd_cents/100)+" stored amount (not enforced)");
   return (parts.length?parts.join(" / "):"Configured")+" per "+(b.period||"period");
 }
 function budgetScopeText(b){
@@ -2271,7 +2272,7 @@ function openTeamModal(tm){
   var teamBudgetOpen=!!(tm.id&&hasTeamBudget);
   var budgetWrap=el("div","advanced-wrap");
   var budgetHead=el("button","advanced-toggle");
-  var budgetLabel=el("div"); budgetLabel.appendChild(el("b",null,"Optional team budget")); budgetLabel.appendChild(el("span",null,"Leave closed for unlimited team usage. Open for token, money, or per-model caps.")); budgetHead.appendChild(budgetLabel);
+  var budgetLabel=el("div"); budgetLabel.appendChild(el("b",null,"Optional team budget")); budgetLabel.appendChild(el("span",null,"Choose Unlimited for no token cap. Token and per-model limits block requests; money amounts are only stored and shown.")); budgetHead.appendChild(budgetLabel);
   var budgetChevron=el("span","chev",teamBudgetOpen?"Hide":"Show"); budgetHead.appendChild(budgetChevron); budgetWrap.appendChild(budgetHead);
   var budgetPanel=el("div","advanced-panel"+(teamBudgetOpen?"":" hidden"));
   function redrawTeamBudget(){ budgetPanel.classList.toggle("hidden",!teamBudgetOpen); budgetChevron.textContent=teamBudgetOpen?"Hide":"Show"; }
@@ -2280,7 +2281,8 @@ function openTeamModal(tm){
   var budgetGrid=el("div","form-grid");
   var f2=el("div","field"); f2.appendChild(el("label",null,"Budget type"));
   var bt=el("select"); var o1=el("option",null,"Unlimited"); o1.value="unlimited"; bt.appendChild(o1); var o2=el("option",null,"Token budget"); o2.value="token"; bt.appendChild(o2);
-  if(tm.budget && tm.budget.max_tokens>0) bt.value="token"; else bt.value="unlimited";
+  if(tm.budget && !tm.budget.max_tokens){ var o3=el("option",null,"Advanced budget (active)"); o3.value="advanced"; bt.appendChild(o3); }
+  if(tm.budget && tm.budget.max_tokens>0) bt.value="token"; else if(tm.budget) bt.value="advanced"; else bt.value="unlimited";
   f2.appendChild(bt); budgetGrid.appendChild(f2);
   var f2p=el("div","field"); f2p.appendChild(el("label",null,"Period"));
   var bp=el("select"); var p1=el("option",null,"Daily"); p1.value="day"; bp.appendChild(p1); var p2=el("option",null,"Monthly"); p2.value="month"; bp.appendChild(p2);
@@ -2295,7 +2297,7 @@ function openTeamModal(tm){
 	  var advBtn=el("button","linkbtn","Advanced budget rules");
 	  var bi=el("textarea"); bi.style.display="none"; bi.value=tm.budget?JSON.stringify(tm.budget):""; bi.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}';
 	  advBtn.onclick=function(){bi.style.display = bi.style.display==="none"?"block":"none";};
-	  f2d.appendChild(advBtn); f2d.appendChild(el("p","hint","Optional: use this only for money caps or per-model caps.")); f2d.appendChild(bi); budgetPanel.appendChild(f2d);
+	  f2d.appendChild(advBtn); f2d.appendChild(el("p","hint","Per-model token caps are enforced. Money amounts are stored and shown but never enforced. A zero total token limit blocks every request.")); f2d.appendChild(bi); budgetPanel.appendChild(f2d);
   budgetWrap.appendChild(budgetPanel); m.appendChild(budgetWrap);
   m.appendChild(el("div","section-title","State"));
   var f3=el("div","field"); var lab=el("label","switch-field"+(tm.enabled===false?"":" selected")); var cb=el("input"); cb.type="checkbox"; cb.checked=tm.enabled!==false; cb.onchange=function(){ lab.classList.toggle("selected", cb.checked); }; var copy=el("span"); copy.appendChild(el("b",null,"Enabled")); copy.appendChild(el("small",null,"Team can own API keys and usage.")); lab.appendChild(copy); lab.appendChild(cb); f3.appendChild(lab); m.appendChild(f3);
@@ -2304,7 +2306,8 @@ function openTeamModal(tm){
   save.onclick=async function(){
     var payload={name:ni.value.trim(),enabled:cb.checked};
     var prev=tm.budget||null;
-    if(bi.style.display!=="none"){
+    if(bt.value==="unlimited") payload.budget=null;
+    else if(bi.style.display!=="none"){
       // Advanced editor open: its content is authoritative (empty => clear budget).
       var aj=bi.value.trim();
       if(aj){ try{payload.budget=JSON.parse(aj);}catch(e){toast("Invalid budget JSON","err");return;} }
@@ -2316,11 +2319,8 @@ function openTeamModal(tm){
       if(prev){ if(prev.max_usd_cents) b.max_usd_cents=prev.max_usd_cents; if(prev.per_model) b.per_model=prev.per_model; }
       payload.budget=b;
     }
-    else {
-      // Unlimited + editor closed: keep money/per-model caps the simple UI can't display.
-      if(prev && (prev.max_usd_cents>0 || (prev.per_model && Object.keys(prev.per_model).length>0))) payload.budget=prev;
-      else payload.budget=null;
-    }
+    else if(bt.value==="advanced") payload.budget=prev;
+    else payload.budget=null;
     try{ if(tm.id){await api("/admin/teams/"+tm.id,"PATCH",payload);} else {await api("/admin/teams","POST",payload);}
       closeModal(); toast("Team saved"); teams=await api("/admin/teams","GET"); rerender(); }
     catch(e){ toast("Save failed: "+e.message,"err"); }
@@ -2470,7 +2470,8 @@ function openKeyModal(k){
   var f7=el("div","field"); f7.appendChild(el("label",null,"Budget"));
   var kbm=el("select");
   [["inherit","Inherit team budget"],["token","Token budget"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];kbm.appendChild(o);});
-  if(k.budget&&k.budget.max_tokens>0) kbm.value="token"; else kbm.value="inherit";
+  if(k.budget && !k.budget.max_tokens){ var advancedOption=el("option",null,"Advanced budget (active)"); advancedOption.value="advanced"; kbm.appendChild(advancedOption); }
+  if(k.budget&&k.budget.max_tokens>0) kbm.value="token"; else if(k.budget) kbm.value="advanced"; else kbm.value="inherit";
   f7.appendChild(kbm); budgetGrid.appendChild(f7);
   var f8=el("div","field"); f8.appendChild(el("label",null,"Period"));
   var kbp=el("select"); [["day","Daily"],["month","Monthly"]].forEach(function(x){var o=el("option",null,x[1]);o.value=x[0];kbp.appendChild(o);});
@@ -2482,7 +2483,7 @@ function openKeyModal(k){
 	  var advBtn=el("button","linkbtn","Advanced budget rules");
 	  var bud=el("textarea"); bud.style.display="none"; bud.placeholder='{"period":"month","max_tokens":1000000,"max_usd_cents":5000}'; if(k.budget) bud.value=JSON.stringify(k.budget);
 	  advBtn.onclick=function(){bud.style.display = bud.style.display==="none"?"block":"none";};
-	  f10.appendChild(advBtn); f10.appendChild(el("p","hint","Optional: use this only for money caps or per-model caps.")); f10.appendChild(bud); limitsPanel.appendChild(f10);
+	  f10.appendChild(advBtn); f10.appendChild(el("p","hint","Per-model token caps are enforced. Money amounts are stored and shown but never enforced. A zero total token limit blocks every request.")); f10.appendChild(bud); limitsPanel.appendChild(f10);
   limitsWrap.appendChild(limitsPanel); m.appendChild(limitsWrap);
   if(isEdit){ m.appendChild(el("div","section-title","State")); var f11=el("div","field"); var lab=el("label","switch-field"+(k.enabled!==false?" selected":"")); var ecb=el("input"); ecb.type="checkbox"; ecb.checked=k.enabled!==false; ecb.onchange=function(){ lab.classList.toggle("selected", ecb.checked); }; var copy=el("span"); copy.appendChild(el("b",null,"Enabled")); copy.appendChild(el("small",null,"Client key can call allowed routes.")); lab.appendChild(copy); lab.appendChild(ecb); f11.appendChild(lab); m.appendChild(f11); }
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal;
@@ -2496,7 +2497,8 @@ function openKeyModal(k){
     if(rpm.value) payload.rpm_limit=Number(rpm.value);
     if(conc.value) payload.concurrency_limit=Number(conc.value);
     var prev=k.budget||null;
-    if(bud.style.display!=="none"){
+    if(kbm.value==="inherit") payload.budget=null;
+    else if(bud.style.display!=="none"){
       var aj=bud.value.trim();
       if(aj){ try{payload.budget=JSON.parse(aj);}catch(e){toast("Invalid budget JSON","err");return;} }
       else { payload.budget=null; }
@@ -2507,10 +2509,8 @@ function openKeyModal(k){
       if(prev){ if(prev.max_usd_cents) b.max_usd_cents=prev.max_usd_cents; if(prev.per_model) b.per_model=prev.per_model; }
       payload.budget=b;
     }
-    else {
-      if(prev && (prev.max_usd_cents>0 || (prev.per_model && Object.keys(prev.per_model).length>0))) payload.budget=prev;
-      else payload.budget=null;
-    }
+    else if(kbm.value==="advanced") payload.budget=prev;
+    else payload.budget=null;
     if(isEdit) payload.enabled=ecb.checked;
     try{
       if(isEdit){

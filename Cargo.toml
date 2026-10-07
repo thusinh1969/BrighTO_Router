@@ -46,6 +46,7 @@ tracing             = "0.1.44"
 tracing-subscriber  = { version = "0.3.23", features = ["env-filter", "json", "fmt"] }
 metrics                     = "0.24.6"
 metrics-exporter-prometheus = { version = "0.18.3", default-features = false }   # /metrics is served through axum; no extra listener
+metrics-util                = { version = "0.20.4", default-features = false } # gauge idle expiry removes stale budget series after a cap is cleared
 
 # --- utilities ---
 sha2        = "0.11.0"                                   # API-key hashing

@@ -307,7 +307,7 @@ pub struct Team {
 pub struct Budget {
     pub period: String, // "day" | "month"
     pub max_tokens: u64,
-    /// Money budget (USD cents). Optional; khi có -> dùng cho dashboard/đơn vị tiền.
+    /// Optional amount in USD cents; stored and shown in Portal, not enforced.
     #[serde(default)]
     pub max_usd_cents: Option<u64>,
     #[serde(default)]
