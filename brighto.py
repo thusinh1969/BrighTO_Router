@@ -264,7 +264,7 @@ class Router:
         self,
         *,
         model: Optional[str],
-        max_tokens: int,
+        max_tokens: Optional[int],
         temperature: Optional[float],
         top_p: Optional[float],
         thinking: Optional[bool],
@@ -273,9 +273,10 @@ class Router:
         """Provider-neutral defaults; provider-specific thinking is opt-in."""
         out: Dict[str, Any] = {
             "model": model,
-            "max_tokens": max_tokens,
             "stream": False,
         }
+        if max_tokens is not None:
+            out["max_tokens"] = max_tokens
         if thinking is not None:
             out["chat_template_kwargs"] = {"enable_thinking": thinking}
         if reasoning_effort is not None:
@@ -293,7 +294,7 @@ class Router:
         *,
         model: Optional[str] = None,
         system: Optional[str] = None,
-        max_tokens: int = 512,
+        max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         thinking: Optional[bool] = None,
@@ -369,9 +370,11 @@ class Router:
         payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "max_tokens": kwargs.pop("max_tokens", 512),
             "stream": True,
         }
+        max_tokens = kwargs.pop("max_tokens", None)
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         payload.update(kwargs)
         if thinking is not None:
             payload["chat_template_kwargs"] = dict(payload.get("chat_template_kwargs") or {}, enable_thinking=thinking)
@@ -393,7 +396,7 @@ class Router:
         prompt: str,
         *,
         model: Optional[str] = None,
-        max_tokens: int = 512,
+        max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         **options: Any,
     ) -> Reply:
@@ -401,8 +404,9 @@ class Router:
         payload: Dict[str, Any] = {
             "model": model,
             "prompt": prompt,
-            "max_tokens": max_tokens,
         }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
         payload.update(options)
@@ -424,7 +428,7 @@ class Router:
         input_text: Any,
         *,
         model: Optional[str] = None,
-        max_tokens: int = 512,
+        max_tokens: Optional[int] = None,
         instructions: Optional[str] = None,
         **options: Any,
     ) -> Reply:
@@ -432,8 +436,9 @@ class Router:
         payload: Dict[str, Any] = {
             "model": model,
             "input": input_text,
-            "max_output_tokens": max_tokens,
         }
+        if max_tokens is not None:
+            payload["max_output_tokens"] = max_tokens
         if instructions is not None:
             payload["instructions"] = instructions
         payload.update(options)

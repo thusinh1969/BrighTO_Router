@@ -256,7 +256,7 @@ def build_body(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
             raise CliError("messages mode in this helper is text-only; use --mode chat for OpenAI-style image/audio JSON")
         return "/v1/messages", {
             "model": args.model,
-            "max_tokens": args.max_tokens or 128,
+            "max_tokens": args.max_tokens if args.max_tokens is not None else 128,
             "messages": [{"role": "user", "content": args.text}],
         }
 
@@ -394,7 +394,7 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     parser.add_argument("--document", action="append", default=[], help="Document text for --mode rerank; repeat for multiple documents")
     parser.add_argument("--top-n", type=int, help="Number of rerank results to return")
     parser.add_argument("--file", help="Audio file path for --mode asr multipart upload")
-    parser.add_argument("--max-tokens", type=int, default=128, help="Max output tokens for chat/messages")
+    parser.add_argument("--max-tokens", type=int, help="Optional output limit; Anthropic Messages defaults to 128 because its API requires one")
     parser.add_argument("--temperature", type=float, help="Optional chat temperature")
     parser.add_argument("--timeout", type=int, default=120, help="HTTP timeout seconds")
     parser.add_argument("--env-file", default=".env", help="Env file to read for local defaults")
@@ -404,6 +404,8 @@ Provider shortcuts use standard public route names created in the docs/smoke flo
     parser.add_argument("--raw-response", action="store_true", help="Print full JSON response")
     parser.add_argument("--dry-run", action="store_true", help="Print the request that would be sent, with media bytes redacted")
     args = parser.parse_args()
+    if args.max_tokens is not None and args.max_tokens <= 0:
+        raise CliError("--max-tokens must be a positive integer")
     if args.list_presets:
         print_presets()
         return 0

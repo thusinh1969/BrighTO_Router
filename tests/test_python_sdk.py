@@ -72,7 +72,7 @@ class SDKTests(unittest.TestCase):
         self.assertEqual(answer.text, " OK\n")
         self.assertEqual(answer.usage, {"total_tokens": 2})
         self.assertEqual(answer.finish_reason, "stop")
-        self.assertEqual(self.body(), {"model": "public-chat", "messages": [{"role": "user", "content": "Xin chào"}], "max_tokens": 512, "stream": False, "temperature": 0, "top_p": 0})
+        self.assertEqual(self.body(), {"model": "public-chat", "messages": [{"role": "user", "content": "Xin chào"}], "stream": False, "temperature": 0, "top_p": 0})
         self.assertEqual(self.server.calls[-1][1], "/v1/chat/completions")
         self.assertEqual(self.server.calls[-1][2]["Authorization"], "Bearer sk-brighto-test")
 
@@ -148,10 +148,26 @@ class SDKTests(unittest.TestCase):
         self.assertEqual(self.body()["model"], "vision-group")
         self.assertEqual(json.dumps(messages), before)
 
+    def test_output_limit_is_only_sent_when_caller_sets_it(self):
+        self.client.ask("OK", max_tokens=23)
+        self.assertEqual(self.body()["max_tokens"], 23)
+        self.reply({"choices": [{"text": "OK"}]})
+        self.client.complete("OK", max_tokens=24)
+        self.assertEqual(self.body()["max_tokens"], 24)
+        self.reply({"output": []})
+        self.client.respond("OK", max_tokens=25)
+        self.assertEqual(self.body()["max_output_tokens"], 25)
+        self.reply(b'data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n', content_type="text/event-stream")
+        self.assertEqual("".join(self.client.stream("OK", max_tokens=26)), "OK")
+        self.assertEqual(self.body()["max_tokens"], 26)
+        self.reply({"content": []})
+        self.client.messages([{"role": "user", "content": "OK"}])
+        self.assertEqual(self.body()["max_tokens"], 512)
+
     def test_each_api_helper_uses_its_own_endpoint_and_full_json(self):
         cases = [
-            ("completions", lambda: self.client.complete("prompt", model="completion").raw, {"prompt": "prompt", "model": "completion", "max_tokens": 512}, {"choices": [{"text": "OK"}], "extra": 1}),
-            ("responses", lambda: self.client.respond("prompt", model="responses").raw, {"input": "prompt", "model": "responses", "max_output_tokens": 512}, {"output": [], "extra": 2}),
+            ("completions", lambda: self.client.complete("prompt", model="completion").raw, {"prompt": "prompt", "model": "completion"}, {"choices": [{"text": "OK"}], "extra": 1}),
+            ("responses", lambda: self.client.respond("prompt", model="responses").raw, {"input": "prompt", "model": "responses"}, {"output": [], "extra": 2}),
             ("messages", lambda: self.client.messages([{"role": "user", "content": "x"}], model="anthropic", max_tokens=64).raw, {"messages": [{"role": "user", "content": "x"}], "max_tokens": 64, "model": "anthropic"}, {"content": [], "extra": 3}),
             ("rerank", lambda: self.client.rerank("query", ["doc1", "doc2"], model="rank", top_n=1), {"query": "query", "documents": ["doc1", "doc2"], "model": "rank", "top_n": 1}, {"results": [{"index": 0, "relevance_score": 0.9}], "extra": 4}),
             ("systemone", lambda: self.client.systemone({"x": 1}, {"flag": {"type": "noul"}}, model="decision"), {"state": {"x": 1}, "questions": {"flag": {"type": "noul"}}, "model": "decision"}, {"answers": {"flag": {"noul": 0.9}}, "extra": 5}),
@@ -187,6 +203,7 @@ class SDKTests(unittest.TestCase):
         self.assertEqual("".join(self.client.stream("hello", thinking=False)), "Xin chào 🌟!")
         self.assertEqual(self.body()["chat_template_kwargs"], {"enable_thinking": False})
         self.assertTrue(self.body()["stream"])
+        self.assertNotIn("max_tokens", self.body())
 
     def test_events_preserve_raw_data_and_support_multiline_sse(self):
         self.reply(b'data: {"type": "response.completed",\ndata: "usage": {"total_tokens": 3}}\n\ndata: [DONE]\n\n', content_type="text/event-stream")
@@ -210,6 +227,7 @@ class SDKTests(unittest.TestCase):
         self.assertEqual("".join(self.client.stream(messages, system="be brief")), "OK")
         self.assertEqual(self.body()["messages"], [{"role": "system", "content": "be brief"}] + messages)
         self.assertNotIn("chat_template_kwargs", self.body())
+        self.assertNotIn("max_tokens", self.body())
 
     def test_stream_errors_are_never_silently_swallowed(self):
         for raw, message in [(b'data: {"error":{"message":"quota exceeded"}}\n\n', "quota exceeded"), (b"data: invalid-json\n\n", "Invalid JSON"), (b'data: {"choices": []}', "incomplete event")]:
@@ -343,6 +361,18 @@ class SDKTests(unittest.TestCase):
         self.assertIn("sdk-test-id", result.stdout)
         self.assertEqual(self.server.calls[-1][1], "/v1/chat/completions")
         self.assertEqual(self.body()["messages"][0]["content"], "Xin chào")
+        self.assertNotIn("max_tokens", self.body())
+
+    def test_cli_only_sends_output_limit_when_requested(self):
+        result = self.cli("--dry-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn('"max_tokens"', result.stdout)
+        result = self.cli("--dry-run", "--max-tokens", "26")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('"max_tokens": 26', result.stdout)
+        result = self.cli("--dry-run", "--max-tokens", "0")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--max-tokens must be a positive integer", result.stderr)
 
     def test_cli_failure_and_dry_run_have_correct_exit_status(self):
         self.reply(b"circuit-open", status=503)

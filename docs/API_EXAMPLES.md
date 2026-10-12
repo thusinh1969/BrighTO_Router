@@ -42,6 +42,8 @@ URLs can use the router root or end in `/v1`. A repeated trailing `/v1/v1` is no
 
 Every inference method accepts `model=` to override the default, and extra keyword options are forwarded to the backend. `Reply` exposes `.text` / `.content`, `.reasoning`, `.tool_calls`, `.usage`, `.finish_reason`, and `.raw`. Printing it prints the text; `.raw` retains complete JSON, including additional provider fields. Your application executes returned tool calls.
 
+Chat, streaming chat, Completions, and Responses leave the output limit unset unless you pass `max_tokens=`. The SDK forwards your value (`max_output_tokens` for Responses); the router does not invent one. If a model requires another field such as `max_completion_tokens`, pass that field directly as an extra keyword argument. Anthropic Messages requires `max_tokens`, so `messages()` defaults to 512 unless you choose a value.
+
 For full JSON, use `client.post("/embeddings", input="hello", model="<embedding-route>")`. For streamed JSON, use `events()`. Reuse a client to reuse connections; the `with` block closes it.
 
 ## Chat and conversation history
