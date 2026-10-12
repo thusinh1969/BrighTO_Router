@@ -166,12 +166,12 @@ Open **Models & Routes → Add model route** in the Portal.
 2. Choose a provider preset such as OpenAI, Anthropic, DeepSeek, Kimi, Qwen, Z.AI, OpenRouter, Jina AI, Voyage AI, Cohere, **Ollaya System One**, or **Custom LLM**.
 3. Accept the default Base URL or enter your own.
 4. Paste the provider API key when the endpoint requires one. Leave it blank when the matching `.env` key is already set, or when **Custom LLM** points to a local/no-auth endpoint such as llama.cpp or local Ollaya.
-5. Click **Load models** when the provider supports it, or use the task-specific suggestions/manual model name.
+5. Click **Load models** for the provider's current list; if the provider has no model-list endpoint, use the labeled task-specific suggestions or enter a model name.
 6. Select one provider model and set the API model name your apps will call.
 7. Click **Test connection**.
 8. Save the route only after the test passes.
 
-The model form shows its context window: it uses provider `/models` metadata when available and labels the fallback when it is not. The fallback is 256K tokens for language models and 8,192 for System One; you can edit it. **Max output tokens is optional** and stays unset unless you choose a cap. BrighTO does not add an output cap to OpenAI-compatible gateway calls.
+The model form shows its context window: it uses provider `/models` metadata when available and labels the fallback when it is not. The fallback is 256K tokens for language models and 8,192 for System One; you can edit it. **Model output limit is optional metadata**, left blank unless you enter a provider-documented value. BrighTO does not add an output cap to OpenAI-compatible gateway calls; the caller controls request output-token parameters.
 
 The provider API key belongs to the model route. Client applications do not receive provider keys. They call BrighTO-Router with a client API key issued from the **API Keys** screen.
 

@@ -460,19 +460,31 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('262144');
             await selects.nth(1).selectOption('openai');
             await modal.locator('input').nth(1).fill('test-key');
+            let openaiModelListPayload = null;
+            let openaiModelListAttempts = 0;
             await page.route('**/admin/routes/preview-models', async route => {{
+              openaiModelListAttempts++;
+              if (openaiModelListAttempts === 1) {{ await route.abort('internetdisconnected'); return; }}
+              openaiModelListPayload = route.request().postDataJSON();
               await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{
                 models: ['gpt-6.1-sol'], model_limits: {{ 'gpt-6.1-sol': {{ context_tokens: 1050000, source: 'model documentation' }} }}
               }}) }});
             }});
             await modal.getByRole('button', {{ name: /Load models/i }}).click();
+            await expect(page.locator('.picker-overlay .modal').last()).toBeVisible();
+            expect(openaiModelListAttempts).toBe(2);
+            expect(openaiModelListPayload.provider_key).toBe('test-key');
+            expect(openaiModelListPayload.base_url).toBe('https://api.openai.com');
             await expect(page.getByRole('option').filter({{ hasText: 'gpt-6.1-sol' }})).toContainText('1,050,000 context');
             await choosePickerModel(page, 'gpt-6.1-sol');
             await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('1050000');
             await expect(modal).toContainText('published model documentation');
             await expect(modal.locator('.route-model-grid .field').nth(3).locator('input')).toHaveValue('');
             let probePayload = null;
+            let probeAttempts = 0;
             await page.route('**/admin/test-connection', async route => {{
+              probeAttempts++;
+              if (probeAttempts === 1) {{ await route.abort('internetdisconnected'); return; }}
               probePayload = route.request().postDataJSON();
               await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{
                 ok: false, status: 400, error: 'provider HTTP 400: exact upstream failure'
@@ -480,6 +492,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             }});
             await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
             await expect(modal.locator('.connection-status')).toContainText('exact upstream failure');
+            expect(probeAttempts).toBe(2);
             expect(probePayload.protocol).toBe('openai_chat');
             expect(probePayload.provider_model_name).toBe('gpt-6.1-sol');
             expect(probePayload.provider_key).toBe('test-key');
@@ -498,6 +511,12 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             expect((await checked.json()).find(b => b.base_url === 'https://api.openai.com').enabled).toBeTruthy();
             await page.unroute('**/admin/test-connection');
             await page.unroute('**/admin/routes/preview-models');
+            await page.locator('.route-list-table tbody tr').filter({{ hasText: 'gpt-6.1-sol' }}).first().getByRole('button', {{ name: /^Edit$/ }}).click();
+            modal = page.locator('#modal-overlay .modal').last();
+            await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('1050000');
+            await modal.locator('.route-model-grid .field').nth(0).locator('input').fill('different-cloud-model');
+            await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('262144');
+            await modal.getByRole('button', {{ name: /^Cancel$/ }}).click();
             modal = await openAddModel(page);
             selects = modal.locator('select');
             await selects.nth(0).selectOption('completion');
@@ -519,7 +538,25 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             const picker = page.locator('.picker-overlay .modal').last();
             await expect(picker).toContainText('rerank-v3.5');
             await expect(picker).not.toContainText('qwen3-rerank');
+            await expect(page.locator('#toast')).toContainText('suggestions only');
             await picker.getByRole('button', {{ name: 'Cancel' }}).click();
+            await selects.nth(0).selectOption('asr');
+            await providerSelect.selectOption('openai');
+            await modal.locator('input').nth(1).fill('test-key');
+            let asrModelListPayload = null;
+            await page.route('**/admin/routes/preview-models', async route => {{
+              asrModelListPayload = route.request().postDataJSON();
+              await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{
+                models: ['provider-current-asr'], model_limits: {{}}
+              }}) }});
+            }});
+            await modal.getByRole('button', {{ name: /Load models/i }}).click();
+            expect(asrModelListPayload.provider_key).toBe('test-key');
+            expect(asrModelListPayload.base_url).toBe('https://api.openai.com');
+            await expect(page.locator('.picker-overlay .modal').last()).toContainText('provider-current-asr');
+            await expect(page.locator('.picker-overlay .modal').last()).not.toContainText('whisper-1');
+            await page.locator('.picker-overlay .modal').last().getByRole('button', {{ name: 'Cancel' }}).click();
+            await page.unroute('**/admin/routes/preview-models');
             await selects.nth(0).selectOption('systemone');
             await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('8192');
             await expect(providerSelect.locator('option[value="ollaya"]')).toHaveCount(1);

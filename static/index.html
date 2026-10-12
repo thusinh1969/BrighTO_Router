@@ -750,14 +750,15 @@ function isNetworkFetchError(e){ var m=String((e&&e.message)||e||""); return /Fa
 async function api(path, method, body){
   method=method||"GET";
   var opts={method:method, headers:authHeaders(), body:body?JSON.stringify(body):undefined};
+  var retryable=method==="GET" || (method==="POST" && (path==="/admin/routes/preview-models" || path==="/admin/test-connection"));
   var res;
   try{
     res = await fetch(path, opts);
   }catch(e){
-    if(method==="GET" && isNetworkFetchError(e)){
+    if(retryable && isNetworkFetchError(e)){
       await sleep(300);
       try{ res = await fetch(path, opts); }
-      catch(e2){ throw new Error("Network changed while loading data. Please retry."); }
+      catch(e2){ throw new Error(method==="GET"?"Network changed while loading data. Please retry.":"Network changed before the request completed. Please retry."); }
     }else if(isNetworkFetchError(e)){
       throw new Error("Network changed before the request completed. Please retry.");
     }else throw e;
@@ -1820,6 +1821,7 @@ function openRouteModal(route,opts){
     if(typeof ms!=="undefined" && ms) applyCat.oldProviderModel=ms.value||"";
     if(typeof mi!=="undefined" && mi) applyCat.oldPublicModel=mi.value||"";
     applyCat.resetModel=true;
+    contextSource="fallback";
   }
   ps.onchange=function(){ markModelReset(); applyCat(true); refreshContextFallback(); clearTest("Provider changed — test connection again before saving enabled."); };
   ts.onchange=function(){ markModelReset(); refreshProviderOptions(); applyCat(true); refreshContextFallback(); clearTest("Task changed — test connection again before saving enabled."); };
@@ -1863,9 +1865,9 @@ function openRouteModal(route,opts){
 	    contextSource="fallback";
 	  }
 	  ct.oninput=function(){ contextSource="custom"; contextHint.textContent="Manually set model context. This is metadata, not an output cap."; };
-	  var fo=el("div","field"); fo.appendChild(el("label",null,"Max output tokens (optional)"));
+	  var fo=el("div","field"); fo.appendChild(el("label",null,"Model output limit (metadata, optional)"));
 	  var mo=el("input"); mo.type="number"; mo.min="1"; mo.value=route.max_output_tokens||""; fo.appendChild(mo);
-	  fo.appendChild(el("p","hint","Leave blank to let the caller and provider decide. BrighTO does not add a cap.")); modelGrid.appendChild(fo);
+	  fo.appendChild(el("p","hint","Informational only. Leave blank if unknown; BrighTO does not add an output cap to calls.")); modelGrid.appendChild(fo);
 	  m.appendChild(modelGrid);
 	  var modelMap=el("div","model-map");
 	  var clientBox=el("div","box"); clientBox.appendChild(el("span","k","Client sends")); var clientVal=el("span","v empty","Public name"); clientBox.appendChild(clientVal);
@@ -1884,7 +1886,7 @@ function openRouteModal(route,opts){
 	    clientVal.classList.toggle("empty",!publicName);
 	    providerVal.classList.toggle("empty",!providerName);
 	  }
-	  ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; refreshContextFallback(); clearTest(""); updateModelMap(); };
+	  ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; contextSource="fallback"; refreshContextFallback(); clearTest(""); updateModelMap(); };
 	  mi.oninput=function(){ clearTest(""); updateModelMap(); };
 	  updateModelMap();
 	  applyCat();
@@ -2028,22 +2030,32 @@ function openRouteModal(route,opts){
     ms.value=chosen;
     if(!mi.value) mi.value=chosen;
     if(limit && limit.context_tokens){ ct.value=limit.context_tokens; contextSource="provider"; contextHint.textContent="Context from "+(limit.source==="provider"?"provider model metadata":"published model documentation")+". Edit if needed; this does not cap output."; }
-    else refreshContextFallback();
+    else { contextSource="fallback"; refreshContextFallback(); }
     clearTest("Model chosen — run Test connection before saving enabled.");
     updateModelMap();
   }
   loadBtn.onclick=async function(){
     var da=dialAuth(); var e=catEntry(ps.value); var sug=suggestedModels(e,ts.value);
-    if(sug.length){ pickModelModal(sug, applyPickedModel); return; }
     if(!url.value.trim()){ toast("Enter a Base URL first","err"); return; }
-    if(da.auth!=="none" && !pk.value.trim() && !storedKeyRef() && !catEntry(ps.value).key_set){ toast("Enter an API key, or choose Custom LLM for a no-auth local endpoint","err"); return; }
+    if(da.auth!=="none" && !pk.value.trim() && !storedKeyRef() && !e.key_set){
+      if(sug.length){ toast("Enter an API key to load current models; showing suggestions only."); pickModelModal(sug,applyPickedModel); }
+      else toast("Enter an API key, or choose Custom LLM for a no-auth local endpoint","err");
+      return;
+    }
     loadBtn.disabled=true; loadBtn.textContent="Loading…";
     try{
       var payload=Object.assign({base_url:url.value.trim(), protocol:da.dialect, auth_mode:da.auth}, keyPayload());
       var data=await api("/admin/routes/preview-models","POST",payload);
-      if(!data.models || !data.models.length){ toast("No models returned — type the provider model name manually","err"); return; }
+      if(!data.models || !data.models.length){
+        if(sug.length){ toast("Provider returned no model list; showing suggestions only."); pickModelModal(sug,applyPickedModel); }
+        else toast("Provider returned no models — type the provider model name manually","err");
+        return;
+      }
       pickModelModal(data.models, function(chosen){ applyPickedModel(chosen,(data.model_limits||{})[chosen]); }, data.model_limits||{});
-    }catch(e){ toast("Load models: "+e.message,"err"); }
+    }catch(err){
+      if(sug.length){ toast("Could not load current models ("+err.message+"); showing suggestions only."); pickModelModal(sug,applyPickedModel); }
+      else toast("Load models: "+err.message,"err");
+    }
     finally{ loadBtn.disabled=false; loadBtn.textContent="Load models"; }
   };
 

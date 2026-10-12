@@ -577,8 +577,15 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await page.screenshot({{ path: outDir + '/' + cfg.name + '-models.png', fullPage: true }});
             await expect(page.locator('#content')).toContainText('Model Groups');
             await expect(page.locator('#content')).toContainText('Single model routes');
+            await page.getByRole('button', {{ name: /^Add model route$/ }}).last().click();
+            let modal = page.locator('#modal-overlay .modal').last();
+            await expect(modal).toContainText('Model output limit (metadata, optional)');
+            await expect(modal).toContainText('BrighTO does not add an output cap to calls.');
+            await assertResponsiveLayout(page, cfg.name + '-model-route-modal');
+            await page.screenshot({{ path: outDir + '/' + cfg.name + '-model-route-modal.png', fullPage: true }});
+            await modal.getByRole('button', {{ name: /^Cancel$/ }}).click();
             await page.getByRole('button', {{ name: /^Create model group$/ }}).last().click();
-            const modal = page.locator('#modal-overlay .modal').last();
+            modal = page.locator('#modal-overlay .modal').last();
             await expect(modal).toBeVisible();
             await expect(modal).toContainText('API model group name');
             await assertResponsiveLayout(page, cfg.name + '-model-group-modal');

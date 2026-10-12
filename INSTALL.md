@@ -176,7 +176,7 @@ Use the portal:
 7. Click **Save enabled** only after the test passes.
 8. Create or reuse a client API key under **API Keys**.
 
-The model form displays provider-reported context length where available, or a labeled editable fallback (256K for language models, 8,192 for System One). Max output tokens is optional and is not filled in automatically.
+The model form displays provider-reported context length where available, or a labeled editable fallback (256K for language models, 8,192 for System One). Model output limit is optional metadata and is not filled in automatically; callers choose their own request output-token parameters.
 
 Provider key names supported by `set-key` if you prefer `.env` secrets:
 

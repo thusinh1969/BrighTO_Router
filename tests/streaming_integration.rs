@@ -593,6 +593,178 @@ async fn responses_connection_probe_leaves_output_limit_unset_and_exposes_provid
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn cloud_probe_preserves_each_protocols_output_token_contract(pool: PgPool) {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, serde_json::Value)>(12);
+    let chat_tx = tx.clone();
+    let completion_tx = tx.clone();
+    let responses_tx = tx.clone();
+    let mock = axum::Router::new()
+        .route(
+            "/v1/chat/completions",
+            axum::routing::post(move |axum::Json(body): axum::Json<serde_json::Value>| {
+                let tx = chat_tx.clone();
+                async move {
+                    tx.send(("chat".to_string(), body)).await.unwrap();
+                    axum::Json(serde_json::json!({"choices":[{"message":{"role":"assistant","content":"OK"}}]}))
+                }
+            }),
+        )
+        .route(
+            "/v1/completions",
+            axum::routing::post(move |axum::Json(body): axum::Json<serde_json::Value>| {
+                let tx = completion_tx.clone();
+                async move {
+                    tx.send(("completion".to_string(), body)).await.unwrap();
+                    axum::Json(serde_json::json!({"choices":[{"text":"OK"}]}))
+                }
+            }),
+        )
+        .route(
+            "/v1/responses",
+            axum::routing::post(move |axum::Json(body): axum::Json<serde_json::Value>| {
+                let tx = responses_tx.clone();
+                async move {
+                    tx.send(("responses".to_string(), body)).await.unwrap();
+                    axum::Json(serde_json::json!({"object":"response","output":[]}))
+                }
+            }),
+        )
+        .route(
+            "/v1/messages",
+            axum::routing::post(move |axum::Json(body): axum::Json<serde_json::Value>| {
+                let tx = tx.clone();
+                async move {
+                    tx.send(("messages".to_string(), body)).await.unwrap();
+                    axum::Json(serde_json::json!({"content":[{"type":"text","text":"OK"}]}))
+                }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}/v1", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+    let (state, _) = build_state(pool, base_url.clone()).await;
+    let app = brighto_router::handlers::router(state);
+
+    for (dialect, protocol, model, path) in [
+        ("openai", "openai_chat", "gpt-6.1-sol", "chat"),
+        ("openai", "openai_chat", "deepseek-v4-pro", "chat"),
+        ("openai", "openai_chat", "kimi-k3", "chat"),
+        ("openai", "openai_chat", "qwen3.8-max", "chat"),
+        ("openai", "openai_chat", "glm-5", "chat"),
+        ("openai", "openai_chat", "gemini-3", "chat"),
+        ("openai", "openai_chat", "meta-muse", "chat"),
+        (
+            "openai",
+            "openai_completions",
+            "legacy-completion",
+            "completion",
+        ),
+        ("openai", "openai_responses", "gpt-6.1-sol", "responses"),
+        (
+            "anthropic",
+            "anthropic_messages",
+            "claude-haiku-5-5",
+            "messages",
+        ),
+    ] {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri("/admin/test-connection")
+            .header("x-admin-key", "test-admin")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "base_url":base_url,"protocol":protocol,"dialect":dialect,
+                    "auth_mode":"none","provider_model_name":model
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        request.extensions_mut().insert(axum::extract::ConnectInfo(
+            "127.0.0.1:12345".parse::<std::net::SocketAddr>().unwrap(),
+        ));
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), 200, "{model} {protocol}");
+        let data = to_bytes(response.into_body(), 8192).await.unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&data).unwrap();
+        assert_eq!(result["ok"], true, "{model} {protocol}: {result}");
+        let (received_path, body) = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(received_path, path);
+        assert_eq!(body["model"], model);
+        if dialect == "anthropic" {
+            assert!(body["max_tokens"].as_u64().is_some_and(|v| v > 0));
+        } else {
+            for field in ["max_tokens", "max_completion_tokens", "max_output_tokens"] {
+                assert!(body.get(field).is_none(), "{model} {protocol}: {body}");
+            }
+        }
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn chat_gateway_preserves_caller_output_limit_or_absence(pool: PgPool) {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<serde_json::Value>(2);
+    let mock = axum::Router::new().route(
+        "/v1/chat/completions",
+        axum::routing::post(move |axum::Json(body): axum::Json<serde_json::Value>| {
+            let tx = tx.clone();
+            async move {
+                tx.send(body).await.unwrap();
+                axum::Json(serde_json::json!({
+                    "choices":[{"message":{"role":"assistant","content":"OK"}}],
+                    "usage":{"prompt_tokens":1,"completion_tokens":1}
+                }))
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}/v1", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, mock).await.unwrap() });
+    let (state, _) = build_state_for_route(
+        pool,
+        base_url,
+        "public-model",
+        "provider-model",
+        "openai_chat",
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    for caller_cap in [None, Some(123_i64)] {
+        let mut body = serde_json::json!({
+            "model":"public-model","messages":[{"role":"user","content":"OK?"}],
+            "stream":false
+        });
+        if let Some(cap) = caller_cap {
+            body["max_completion_tokens"] = serde_json::json!(cap);
+        }
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("authorization", "Bearer test-key")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), 200);
+        let forwarded = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(forwarded["model"], "provider-model");
+        assert_eq!(
+            forwarded.get("max_completion_tokens"),
+            body.get("max_completion_tokens")
+        );
+        assert!(forwarded.get("max_tokens").is_none());
+        assert!(forwarded.get("max_output_tokens").is_none());
+    }
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn responses_stream_preserves_tool_events_and_records_terminal_usage(pool: PgPool) {
     const SSE: &str = concat!(
         "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"fc_1\",\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"read_file\",\"arguments\":\"\"}}\n\n",

@@ -2289,6 +2289,12 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
             "context_tokens must be positive",
         ));
     }
+    if payload.max_output_tokens.is_some_and(|n| n <= 0) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "max_output_tokens must be positive when provided",
+        ));
+    }
     let context_tokens =
         payload
             .context_tokens
@@ -3940,15 +3946,38 @@ mod tests {
     }
 
     #[test]
+    fn route_output_limit_metadata_is_optional_and_positive() {
+        for value in [serde_json::Value::Null, json!(128_000)] {
+            let route: UpsertRoute = serde_json::from_value(json!({
+                "model_name":"test-model","backend_ids":[1],"auth_mode":"none",
+                "max_output_tokens":value
+            }))
+            .unwrap();
+            let validated = validate_route(route).unwrap();
+            assert_eq!(validated.max_output_tokens, value.as_i64());
+        }
+        for value in [0, -1] {
+            let route: UpsertRoute = serde_json::from_value(json!({
+                "model_name":"test-model","backend_ids":[1],"auth_mode":"none",
+                "max_output_tokens":value
+            }))
+            .unwrap();
+            assert!(validate_route(route).is_err());
+        }
+    }
+
+    #[test]
     fn model_metadata_and_error_detail_are_truthful() {
         let models = json!({"data": [
             {"id":"deepseek-v4-pro","context_window":1048576},
+            {"id":"kimi-k3","context_length":1048576},
             {"id":"claude-haiku-5-5","max_input_tokens":1000000},
             {"id":"gpt-6.1-sol"},
             {"id":"unknown-model"}
         ]});
         let limits = parse_model_limits(&models);
         assert_eq!(limits["deepseek-v4-pro"].context_tokens, 1_048_576);
+        assert_eq!(limits["kimi-k3"].context_tokens, 1_048_576);
         assert_eq!(limits["claude-haiku-5-5"].context_tokens, 1_000_000);
         assert_eq!(limits["gpt-6.1-sol"].context_tokens, 1_050_000);
         assert_eq!(documented_model_context("kimi-k3"), Some(1_000_000));

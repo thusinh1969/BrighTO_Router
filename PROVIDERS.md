@@ -62,11 +62,11 @@ In the Portal:
 4. Pick a provider preset or **Custom LLM**.
 5. Enter the Base URL.
 6. Paste the provider API key when required, leave it blank to use the provider `.env` key when configured, or leave it blank for local/no-auth **Custom LLM** endpoints.
-7. Click **Load models** when available, or use the task-specific suggestion/manual model name.
+7. Click **Load models** to fetch the provider's current list and model context metadata. If the provider does not expose a model list, the Portal clearly labels its task-specific suggestions; you can also enter the exact model name manually.
 8. Click **Test connection**.
 9. Save enabled only after the test passes.
 
-The context window shown in the model form comes from provider model metadata when the provider supplies it. If the provider omits it, the form labels an editable fallback (256K for language models, 8,192 for System One). This value describes the model; it does not set a request output limit. **Max output tokens** remains blank unless you set it. Test Connection sends a short real request and shows the provider's error message if rejected. Anthropic Messages requires a `max_tokens` value in its test request; this does not create a route-wide output cap.
+The context window shown in the model form comes from provider model metadata when the provider supplies it. If the provider omits it, the form labels an editable fallback (256K for language models, 8,192 for System One). This value describes the model; it does not set a request output limit. **Model output limit** is optional metadata and remains blank unless you set it. Test Connection sends a short real request and shows the provider's error message if rejected. Anthropic Messages requires a `max_tokens` value in its test request; this does not create a route-wide output cap.
 
 The Portal automatically creates or reuses the provider endpoint for the Base URL. You do not need to create a provider first.
 
