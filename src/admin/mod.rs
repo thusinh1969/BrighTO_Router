@@ -1608,7 +1608,10 @@ async fn test_chat_completion(
     let body = if anthropic {
         serde_json::json!({"model": model, "max_tokens": 1, "messages": [{"role":"user","content":"ping"}]})
     } else {
-        serde_json::json!({"model": model, "max_tokens": 1, "stream": false, "messages": [{"role":"user","content":"ping"}]})
+        // Khong set max_tokens: reasoning models (o1/o3/o4/gpt-5*) reject "max_tokens" (400
+        // unsupported_parameter), va "max_completion_tokens" nho (1) cung 400 "could not finish".
+        // Bo han de test connection chay duoc voi moi model (chat lan reasoning).
+        serde_json::json!({"model": model, "stream": false, "messages": [{"role":"user","content":"ping"}]})
     };
     post_json_probe(state, base_url, route, dialect, key, body, 20).await
 }
