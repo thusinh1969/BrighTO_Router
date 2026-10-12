@@ -431,6 +431,78 @@ struct ModelListResponse {
     backend_id: i64,
     backend_name: String,
     models: Vec<String>,
+    model_limits: HashMap<String, ModelLimit>,
+}
+
+#[derive(Serialize)]
+struct ModelLimit {
+    context_tokens: i64,
+    source: &'static str,
+}
+
+fn documented_model_context(id: &str) -> Option<i64> {
+    // Exact model IDs only. Many cloud models are *not* 1M-context; never infer
+    // a provider-wide limit from a brand name. Prefer live /models metadata.
+    match id {
+        // https://developers.openai.com/api/docs/models/gpt-6.1-sol
+        "gpt-6.1-sol" => Some(1_050_000),
+        // https://api-docs.deepseek.com/api/list-models/
+        "deepseek-v4-pro" | "deepseek-v4-flash" | "deepseek-flash" => Some(1_048_576),
+        // https://www.moonshot.ai/en
+        "kimi-k3" => Some(1_000_000),
+        // https://help.aliyun.com/en/model-studio/qwen3-8-max
+        // https://help.aliyun.com/en/model-studio/qwen3-8-flash
+        // https://help.aliyun.com/en/model-studio/qwen3-8-27b
+        "qwen3.8-max" | "qwen3.8-flash" | "qwen3.8-27b" => Some(1_000_000),
+        _ => None,
+    }
+}
+
+fn parse_model_limits(body: &serde_json::Value) -> HashMap<String, ModelLimit> {
+    let mut limits = HashMap::new();
+    let Some(items) = body
+        .get("data")
+        .or_else(|| body.get("models"))
+        .and_then(serde_json::Value::as_array)
+    else {
+        return limits;
+    };
+    for item in items {
+        let Some(id) = item
+            .get("id")
+            .or_else(|| item.get("model"))
+            .or_else(|| item.get("name"))
+            .and_then(serde_json::Value::as_str)
+        else {
+            continue;
+        };
+        let provider_value = item
+            .get("context_window")
+            .or_else(|| item.get("context_length"))
+            .or_else(|| item.get("max_input_tokens"))
+            .or_else(|| item.get("input_token_limit"))
+            .or_else(|| item.get("inputTokenLimit"))
+            .and_then(serde_json::Value::as_i64)
+            .filter(|n| *n > 0);
+        if let Some(context_tokens) = provider_value {
+            limits.insert(
+                id.to_string(),
+                ModelLimit {
+                    context_tokens,
+                    source: "provider",
+                },
+            );
+        } else if let Some(context_tokens) = documented_model_context(id) {
+            limits.insert(
+                id.to_string(),
+                ModelLimit {
+                    context_tokens,
+                    source: "model documentation",
+                },
+            );
+        }
+    }
+    limits
 }
 
 #[derive(Deserialize)]
@@ -1288,10 +1360,12 @@ async fn fetch_backend_models(
         .await
         .map_err(|e| ApiError::internal(format!("parse models response: {e}")))?;
     let models = parse_model_list(&body);
+    let model_limits = parse_model_limits(&body);
     Ok(Json(ModelListResponse {
         backend_id: id,
         backend_name: name,
         models,
+        model_limits,
     }))
 }
 
@@ -1356,10 +1430,12 @@ async fn preview_models(
         .await
         .map_err(|e| ApiError::internal(format!("parse models response: {e}")))?;
     let models = parse_model_list(&body);
+    let model_limits = parse_model_limits(&body);
     Ok(Json(ModelListResponse {
         backend_id: 0,
         backend_name: base_url,
         models,
+        model_limits,
     }))
 }
 
@@ -1591,7 +1667,40 @@ async fn post_json_probe(
     Ok((status, json))
 }
 
-/// 1-token chat/messages probe to prove key + model really work.
+fn probe_detail(
+    status: u16,
+    data: Option<&serde_json::Value>,
+    success: impl Into<String>,
+    key: &str,
+) -> String {
+    if status < 400 {
+        return success.into();
+    }
+    let message = data
+        .and_then(|body| {
+            body.pointer("/error/message")
+                .or_else(|| body.get("message"))
+        })
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("provider did not return an error message");
+    let safe = if key.is_empty() {
+        message.to_string()
+    } else {
+        message.replace(key, "[redacted]")
+    };
+    safe.chars().take(512).collect()
+}
+
+/// A real chat/messages probe. OpenAI-compatible models choose their own output
+/// length; Anthropic requires max_tokens in the request schema.
+fn chat_probe_body(dialect: &str, model: &str) -> serde_json::Value {
+    if dialect == "anthropic" {
+        serde_json::json!({"model": model, "max_tokens": 16, "messages": [{"role":"user","content":"Reply OK."}]})
+    } else {
+        serde_json::json!({"model": model, "stream": false, "messages": [{"role":"user","content":"Reply OK."}]})
+    }
+}
+
 async fn test_chat_completion(
     state: &Arc<AdminState>,
     base_url: &str,
@@ -1605,14 +1714,7 @@ async fn test_chat_completion(
     } else {
         "/v1/chat/completions"
     };
-    let body = if anthropic {
-        serde_json::json!({"model": model, "max_tokens": 1, "messages": [{"role":"user","content":"ping"}]})
-    } else {
-        // Khong set max_tokens: reasoning models (o1/o3/o4/gpt-5*) reject "max_tokens" (400
-        // unsupported_parameter), va "max_completion_tokens" nho (1) cung 400 "could not finish".
-        // Bo han de test connection chay duoc voi moi model (chat lan reasoning).
-        serde_json::json!({"model": model, "stream": false, "messages": [{"role":"user","content":"ping"}]})
-    };
+    let body = chat_probe_body(dialect, model);
     post_json_probe(state, base_url, route, dialect, key, body, 20).await
 }
 
@@ -1626,7 +1728,6 @@ async fn test_text_completion(
     let body = serde_json::json!({
         "model": model,
         "prompt": "ping",
-        "max_tokens": 1,
         "stream": false
     });
     post_json_probe(state, base_url, "/v1/completions", dialect, key, body, 20).await
@@ -1642,8 +1743,6 @@ async fn test_responses(
     let body = serde_json::json!({
         "model": model,
         "input": "ping",
-        // OpenAI Responses requires at least 16, including reasoning models.
-        "max_output_tokens": 16,
         "stream": false
     });
     post_json_probe(state, base_url, "/v1/responses", dialect, key, body, 20).await
@@ -1682,7 +1781,7 @@ async fn test_embedding(
     Ok((
         status,
         status < 400 && dim > 0,
-        format!("embedding dim {dim}"),
+        probe_detail(status, data.as_ref(), format!("embedding dim {dim}"), key),
     ))
 }
 
@@ -1767,7 +1866,12 @@ async fn test_rerank(
     Ok((
         status,
         status < 400 && first_ok,
-        format!("rerank results {count}"),
+        probe_detail(
+            status,
+            data.as_ref(),
+            format!("rerank results {count}"),
+            key,
+        ),
     ))
 }
 
@@ -1803,7 +1907,12 @@ async fn test_systemone(
     Ok((
         status,
         status < 400 && count > 0,
-        format!("systemone answers {count}"),
+        probe_detail(
+            status,
+            data.as_ref(),
+            format!("systemone answers {count}"),
+            key,
+        ),
     ))
 }
 
@@ -1854,7 +1963,12 @@ async fn test_asr(
     Ok((
         status,
         status < 400 && text_len > 0,
-        format!("transcript chars {text_len}"),
+        probe_detail(
+            status,
+            data.as_ref(),
+            format!("transcript chars {text_len}"),
+            key,
+        ),
     ))
 }
 
@@ -1912,28 +2026,39 @@ async fn test_connection(
                             && body.get("output").is_some_and(serde_json::Value::is_array)
                     });
                     let ok = (200..300).contains(&status) && valid_response;
-                    let detail = if ok {
-                        "responses OK".to_string()
-                    } else {
-                        let message = data
-                            .as_ref()
-                            .and_then(|body| body.pointer("/error/message"))
-                            .and_then(serde_json::Value::as_str)
-                            .unwrap_or("endpoint did not return a valid Responses object");
-                        let safe_message = if key.is_empty() {
-                            message.to_string()
+                    let detail = probe_detail(
+                        status,
+                        data.as_ref(),
+                        if valid_response {
+                            "responses OK"
                         } else {
-                            message.replace(&key, "[redacted]")
-                        };
-                        safe_message.chars().take(512).collect()
-                    };
+                            "endpoint did not return a valid Responses object"
+                        },
+                        &key,
+                    );
                     (status, ok, detail)
                 })
         }
         ProviderProtocol::OpenAiCompletions => {
             test_text_completion(&state, &base_url, dialect, &key, model)
                 .await
-                .map(|(status, _)| (status, status < 400, "completions OK".to_string()))
+                .map(|(status, data)| {
+                    let ok = (200..300).contains(&status)
+                        && data.as_ref().is_some_and(|body| {
+                            body.get("choices").is_some_and(serde_json::Value::is_array)
+                        });
+                    let detail = probe_detail(
+                        status,
+                        data.as_ref(),
+                        if ok {
+                            "completions OK"
+                        } else {
+                            "endpoint did not return choices"
+                        },
+                        &key,
+                    );
+                    (status, ok, detail)
+                })
         }
         ProviderProtocol::OpenAiEmbeddings => {
             test_embedding(&state, &base_url, dialect, &key, model).await
@@ -1953,7 +2078,27 @@ async fn test_connection(
         }
         _ => test_chat_completion(&state, &base_url, dialect, &key, model)
             .await
-            .map(|(status, _)| (status, status < 400, "chat/messages OK".to_string())),
+            .map(|(status, data)| {
+                let valid = data.as_ref().is_some_and(|body| {
+                    if dialect == "anthropic" {
+                        body.get("content").is_some_and(serde_json::Value::is_array)
+                    } else {
+                        body.get("choices").is_some_and(serde_json::Value::is_array)
+                    }
+                });
+                let ok = (200..300).contains(&status) && valid;
+                let detail = probe_detail(
+                    status,
+                    data.as_ref(),
+                    if ok {
+                        "chat/messages OK"
+                    } else {
+                        "endpoint did not return a valid chat response"
+                    },
+                    &key,
+                );
+                (status, ok, detail)
+            }),
     };
     let latency_ms = started.elapsed().as_millis() as u64;
     match tested {
@@ -1965,9 +2110,7 @@ async fn test_connection(
             error: if ok {
                 None
             } else {
-                Some(format!(
-                    "endpoint returned HTTP {status}; check base URL, key, model, and task type"
-                ))
+                Some(format!("provider HTTP {status}: {detail}"))
             },
             detail: Some(detail),
         })),
@@ -2140,6 +2283,25 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
             }
         }
     };
+    if payload.context_tokens.is_some_and(|n| n <= 0) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "context_tokens must be positive",
+        ));
+    }
+    let context_tokens =
+        payload
+            .context_tokens
+            .or_else(|| match ProviderProtocol::parse(&protocol) {
+                ProviderProtocol::SystemOne => Some(8_192),
+                ProviderProtocol::OpenAiChat
+                | ProviderProtocol::LocalOpenAiChat
+                | ProviderProtocol::CustomOpenAiChat
+                | ProviderProtocol::OpenAiCompletions
+                | ProviderProtocol::OpenAiResponses
+                | ProviderProtocol::AnthropicMessages => Some(262_144),
+                _ => None,
+            });
     // Ghi provider key (plaintext) ra file secrets nếu được cung cấp; chỉ lưu ref.
     let provider_key_ref = match payload
         .provider_key
@@ -2297,7 +2459,7 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
         chars_per_token,
         first_byte_timeout,
         provider_model_name,
-        context_tokens: payload.context_tokens,
+        context_tokens,
         max_output_tokens: payload.max_output_tokens,
         price_input_per_mtok_usd: payload.price_input_per_mtok_usd,
         price_output_per_mtok_usd: payload.price_output_per_mtok_usd,
@@ -3762,6 +3924,51 @@ async fn get_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chat_probe_does_not_force_openai_output_limit() {
+        let body = chat_probe_body("openai", "gpt-6.1-sol");
+        assert!(body.get("max_tokens").is_none());
+        assert!(body.get("max_completion_tokens").is_none());
+        assert_eq!(body["model"], "gpt-6.1-sol");
+        assert!(
+            chat_probe_body("anthropic", "claude-haiku-5-5")["max_tokens"]
+                .as_i64()
+                .unwrap()
+                > 0
+        );
+    }
+
+    #[test]
+    fn model_metadata_and_error_detail_are_truthful() {
+        let models = json!({"data": [
+            {"id":"deepseek-v4-pro","context_window":1048576},
+            {"id":"claude-haiku-5-5","max_input_tokens":1000000},
+            {"id":"gpt-6.1-sol"},
+            {"id":"unknown-model"}
+        ]});
+        let limits = parse_model_limits(&models);
+        assert_eq!(limits["deepseek-v4-pro"].context_tokens, 1_048_576);
+        assert_eq!(limits["claude-haiku-5-5"].context_tokens, 1_000_000);
+        assert_eq!(limits["gpt-6.1-sol"].context_tokens, 1_050_000);
+        assert_eq!(documented_model_context("kimi-k3"), Some(1_000_000));
+        assert_eq!(documented_model_context("qwen3.8-flash"), Some(1_000_000));
+        assert_eq!(
+            documented_model_context("qwen3.8-livetranslate-flash-realtime"),
+            None
+        );
+        let gemini_shape = json!({"models":[{"name":"gemini-example","inputTokenLimit":1048576}]});
+        assert_eq!(
+            parse_model_limits(&gemini_shape)["gemini-example"].context_tokens,
+            1_048_576
+        );
+        assert!(!limits.contains_key("unknown-model"));
+        let error = json!({"error":{"message":"Unsupported max_tokens for key secret-key"}});
+        assert_eq!(
+            probe_detail(400, Some(&error), "ignored", "secret-key"),
+            "Unsupported max_tokens for key [redacted]"
+        );
+    }
 
     #[test]
     fn ip_cidr_checks() {

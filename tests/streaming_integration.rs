@@ -528,16 +528,16 @@ async fn responses_proxy_accepts_sdk_v1_base_url_and_records_usage(pool: PgPool)
 }
 
 #[sqlx::test(migrations = "./migrations")]
-async fn responses_connection_probe_uses_valid_token_limit_and_exposes_provider_error(
+async fn responses_connection_probe_leaves_output_limit_unset_and_exposes_provider_error(
     pool: PgPool,
 ) {
     let mock = axum::Router::new().route(
         "/v1/responses",
         axum::routing::post(|axum::Json(body): axum::Json<serde_json::Value>| async move {
-            if body["max_output_tokens"].as_u64().unwrap_or(0) < 16 {
+            if body.get("max_output_tokens").is_some() {
                 return (
                     axum::http::StatusCode::BAD_REQUEST,
-                    axum::Json(serde_json::json!({"error":{"message":"max_output_tokens must be at least 16"}})),
+                    axum::Json(serde_json::json!({"error":{"message":"probe must not force max_output_tokens"}})),
                 );
             }
             if body["model"] == "missing-model" {

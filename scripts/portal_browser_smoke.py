@@ -446,12 +446,60 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           const page = await browser.newPage({{ viewport: {{ width: 1440, height: 1000 }} }});
           attachPageDiagnostics(page);
           try {{
+            const seeded = await page.request.post(baseURL + '/admin/backends', {{
+              headers: {{ 'x-admin-key': adminKey }},
+              data: {{ name: 'OpenAI', base_url: 'https://api.openai.com', api_key_ref: 'env:NONE', format: 'openai', enabled: false }}
+            }});
+            expect(seeded.ok()).toBeTruthy();
             await login(page);
-            const modal = await openAddModel(page);
-            const selects = modal.locator('select');
+            let modal = await openAddModel(page);
+            let selects = modal.locator('select');
             await expect(selects.nth(0).locator('option[value="chat"]')).toContainText('/v1/chat/completions');
             await expect(selects.nth(0).locator('option[value="completion"]')).toContainText('/v1/completions');
             await expect(selects.nth(0).locator('option[value="responses"]')).toContainText('/v1/responses');
+            await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('262144');
+            await selects.nth(1).selectOption('openai');
+            await modal.locator('input').nth(1).fill('test-key');
+            await page.route('**/admin/routes/preview-models', async route => {{
+              await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{
+                models: ['gpt-6.1-sol'], model_limits: {{ 'gpt-6.1-sol': {{ context_tokens: 1050000, source: 'model documentation' }} }}
+              }}) }});
+            }});
+            await modal.getByRole('button', {{ name: /Load models/i }}).click();
+            await expect(page.getByRole('option').filter({{ hasText: 'gpt-6.1-sol' }})).toContainText('1,050,000 context');
+            await choosePickerModel(page, 'gpt-6.1-sol');
+            await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('1050000');
+            await expect(modal).toContainText('published model documentation');
+            await expect(modal.locator('.route-model-grid .field').nth(3).locator('input')).toHaveValue('');
+            let probePayload = null;
+            await page.route('**/admin/test-connection', async route => {{
+              probePayload = route.request().postDataJSON();
+              await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{
+                ok: false, status: 400, error: 'provider HTTP 400: exact upstream failure'
+              }}) }});
+            }});
+            await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
+            await expect(modal.locator('.connection-status')).toContainText('exact upstream failure');
+            expect(probePayload.protocol).toBe('openai_chat');
+            expect(probePayload.provider_model_name).toBe('gpt-6.1-sol');
+            expect(probePayload.provider_key).toBe('test-key');
+            await page.unroute('**/admin/test-connection');
+            await page.route('**/admin/test-connection', async route => {{
+              await route.fulfill({{ status: 200, contentType: 'application/json', body: JSON.stringify({{
+                ok: true, status: 200, latency_ms: 1, detail: 'chat/messages OK'
+              }}) }});
+            }});
+            await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
+            await expect(modal.locator('.connection-status')).toContainText('Save enabled will activate this provider endpoint');
+            await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
+            await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/, {{ timeout: 15000 }});
+            const checked = await page.request.get(baseURL + '/admin/backends', {{ headers: {{ 'x-admin-key': adminKey }} }});
+            expect(checked.ok()).toBeTruthy();
+            expect((await checked.json()).find(b => b.base_url === 'https://api.openai.com').enabled).toBeTruthy();
+            await page.unroute('**/admin/test-connection');
+            await page.unroute('**/admin/routes/preview-models');
+            modal = await openAddModel(page);
+            selects = modal.locator('select');
             await selects.nth(0).selectOption('completion');
             await expect(modal).toContainText('Completions calls /v1/completions');
             await selects.nth(0).selectOption('rerank');
@@ -473,6 +521,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await expect(picker).not.toContainText('qwen3-rerank');
             await picker.getByRole('button', {{ name: 'Cancel' }}).click();
             await selects.nth(0).selectOption('systemone');
+            await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('8192');
             await expect(providerSelect.locator('option[value="ollaya"]')).toHaveCount(1);
             await providerSelect.selectOption('ollaya');
             await expect(modal.locator('input').nth(0)).toHaveValue(/11435\/v1/);

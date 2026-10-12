@@ -994,7 +994,7 @@ function userCallPanel(me,logs){
   var p=el("div","panel call-panel");
   var endpoint=location.origin+"/v1/chat/completions";
   var firstModel=(me&&me.key&&me.key.allowed_models&&me.key.allowed_models.length)?me.key.allowed_models[0]:((logs&&logs.length&&logs[0].model)||"<model>");
-  var curlBody=JSON.stringify({model:firstModel,messages:[{role:"user",content:"Reply OK"}],max_tokens:16},null,2);
+  var curlBody=JSON.stringify({model:firstModel,messages:[{role:"user",content:"Reply OK"}]},null,2);
   var bearerKey=authKey||"<your API key>";
   var authHeader="Authorization: Bearer "+bearerKey;
   var cont=" "+String.fromCharCode(92);
@@ -1717,9 +1717,6 @@ function openRouteModal(route,opts){
       if(k==="cohere") return ["rerank-v3.5","rerank-english-v3.0","rerank-multilingual-v3.0"];
       if(k==="qwen") return ["qwen3-rerank"];
     }
-    if(task==="completion"){
-      if(k==="openai") return ["gpt-3.5-turbo-instruct"];
-    }
     if(task==="asr"){
       if(k==="openai") return ["whisper-1","gpt-4o-mini-transcribe","gpt-4o-transcribe"];
     }
@@ -1824,8 +1821,8 @@ function openRouteModal(route,opts){
     if(typeof mi!=="undefined" && mi) applyCat.oldPublicModel=mi.value||"";
     applyCat.resetModel=true;
   }
-  ps.onchange=function(){ markModelReset(); applyCat(true); clearTest("Provider changed — test connection again before saving enabled."); };
-  ts.onchange=function(){ markModelReset(); refreshProviderOptions(); applyCat(true); clearTest("Task changed — test connection again before saving enabled."); };
+  ps.onchange=function(){ markModelReset(); applyCat(true); refreshContextFallback(); clearTest("Provider changed — test connection again before saving enabled."); };
+  ts.onchange=function(){ markModelReset(); refreshProviderOptions(); applyCat(true); refreshContextFallback(); clearTest("Task changed — test connection again before saving enabled."); };
   routeModeSel.onchange=function(){ routeMode=routeModeSel.value; updateRouteModeUi(); refreshProviderOptions(); applyCat(true); clearTest(routeMode==="group"?"Test each endpoint, add at least two, then save the model group.":"Single endpoint mode — test connection before saving enabled."); };
   applyCat();
   url.oninput=function(){ refreshKeyHint(); clearTest(""); };
@@ -1854,6 +1851,21 @@ function openRouteModal(route,opts){
   var mi=el("input"); mi.placeholder="team-model"; mi.value=route.model_name||""; f.appendChild(mi);
   f.appendChild(el("p","hint","The model name your apps send. Use the same name or a shorter team alias."));
 	  modelGrid.appendChild(f);
+	  var fc=el("div","field"); fc.appendChild(el("label",null,"Context window (tokens)"));
+	  var ct=el("input"); ct.type="number"; ct.min="1"; ct.value=route.context_tokens||(ts.value==="systemone"?8192:(["chat","messages","completion","responses"].indexOf(ts.value)>=0?262144:"")); fc.appendChild(ct);
+	  var contextHint=el("p","hint",route.context_tokens?"Saved model context; edit if needed. This is metadata, not an output cap.":"Fallback estimate when provider metadata is unavailable; edit if needed. This does not cap output."); fc.appendChild(contextHint);
+	  modelGrid.appendChild(fc);
+	  var contextSource=route.context_tokens?"saved":"fallback";
+	  function refreshContextFallback(){
+	    if(contextSource==="custom"||contextSource==="saved") return;
+	    ct.value=ts.value==="systemone"?8192:(["chat","messages","completion","responses"].indexOf(ts.value)>=0?262144:"");
+	    contextHint.textContent="Fallback estimate when provider metadata is unavailable; edit if needed. This does not cap output.";
+	    contextSource="fallback";
+	  }
+	  ct.oninput=function(){ contextSource="custom"; contextHint.textContent="Manually set model context. This is metadata, not an output cap."; };
+	  var fo=el("div","field"); fo.appendChild(el("label",null,"Max output tokens (optional)"));
+	  var mo=el("input"); mo.type="number"; mo.min="1"; mo.value=route.max_output_tokens||""; fo.appendChild(mo);
+	  fo.appendChild(el("p","hint","Leave blank to let the caller and provider decide. BrighTO does not add a cap.")); modelGrid.appendChild(fo);
 	  m.appendChild(modelGrid);
 	  var modelMap=el("div","model-map");
 	  var clientBox=el("div","box"); clientBox.appendChild(el("span","k","Client sends")); var clientVal=el("span","v empty","Public name"); clientBox.appendChild(clientVal);
@@ -1872,7 +1884,7 @@ function openRouteModal(route,opts){
 	    clientVal.classList.toggle("empty",!publicName);
 	    providerVal.classList.toggle("empty",!providerName);
 	  }
-	  ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; clearTest(""); updateModelMap(); };
+	  ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; refreshContextFallback(); clearTest(""); updateModelMap(); };
 	  mi.oninput=function(){ clearTest(""); updateModelMap(); };
 	  updateModelMap();
 	  applyCat();
@@ -1931,15 +1943,13 @@ function openRouteModal(route,opts){
     endpointTest={ok:false,candidate:null}; addEndpointBtn.disabled=true; setConnectionStatus("ok","Endpoint added. Add another endpoint or save the group."); renderGroupEndpoints();
   };
 
-	  var optionalOpen=!!(route.context_tokens||route.max_output_tokens||route.price_input_per_mtok_usd||route.price_output_per_mtok_usd||route.fallback_backend_id||(route.first_byte_timeout&&route.first_byte_timeout!==180));
+	  var optionalOpen=!!(route.price_input_per_mtok_usd||route.price_output_per_mtok_usd||route.fallback_backend_id||(route.first_byte_timeout&&route.first_byte_timeout!==180));
 	  var advBtn=el("button","advanced-toggle");
-	  var advCopy=el("div"); advCopy.appendChild(el("b",null,"Optional limits and pricing")); advCopy.appendChild(el("span",null,"Context, output cap, price, fallback provider, and timeout."));
+	  var advCopy=el("div"); advCopy.appendChild(el("b",null,"Optional routing and pricing")); advCopy.appendChild(el("span",null,"Price, fallback provider, and timeout."));
 	  var advIcon=el("i",null,optionalOpen?"Hide":"Show");
 	  advBtn.appendChild(advCopy); advBtn.appendChild(advIcon); m.appendChild(advBtn);
 	  var advPanel=el("div","advanced-panel"+(optionalOpen?"":" hidden"));
 	  var limits=el("div","form-grid");
-  var f5=el("div","field"); f5.appendChild(el("label",null,"Context window (tokens, optional)")); var ct=el("input"); ct.type="number"; ct.value=route.context_tokens||""; f5.appendChild(ct); limits.appendChild(f5);
-  var f6=el("div","field"); f6.appendChild(el("label",null,"Max output tokens (optional)")); var mo=el("input"); mo.type="number"; mo.value=route.max_output_tokens||""; f6.appendChild(mo); limits.appendChild(f6);
   var f7=el("div","field"); f7.appendChild(el("label",null,"Price per 1M input tokens (USD, optional)")); var pi=el("input"); pi.type="number"; pi.step="0.01"; pi.value=route.price_input_per_mtok_usd!=null?route.price_input_per_mtok_usd:""; f7.appendChild(pi); limits.appendChild(f7);
   var f8=el("div","field"); f8.appendChild(el("label",null,"Price per 1M output tokens (USD, optional)")); var po=el("input"); po.type="number"; po.step="0.01"; po.value=route.price_output_per_mtok_usd!=null?route.price_output_per_mtok_usd:""; f8.appendChild(po); limits.appendChild(f8);
   var f3=el("div","field"); f3.appendChild(el("label",null,"Fallback provider (optional)"));
@@ -2014,9 +2024,11 @@ function openRouteModal(route,opts){
     return {};
   }
 
-  function applyPickedModel(chosen){
+  function applyPickedModel(chosen,limit){
     ms.value=chosen;
     if(!mi.value) mi.value=chosen;
+    if(limit && limit.context_tokens){ ct.value=limit.context_tokens; contextSource="provider"; contextHint.textContent="Context from "+(limit.source==="provider"?"provider model metadata":"published model documentation")+". Edit if needed; this does not cap output."; }
+    else refreshContextFallback();
     clearTest("Model chosen — run Test connection before saving enabled.");
     updateModelMap();
   }
@@ -2030,7 +2042,7 @@ function openRouteModal(route,opts){
       var payload=Object.assign({base_url:url.value.trim(), protocol:da.dialect, auth_mode:da.auth}, keyPayload());
       var data=await api("/admin/routes/preview-models","POST",payload);
       if(!data.models || !data.models.length){ toast("No models returned — type the provider model name manually","err"); return; }
-      pickModelModal(data.models, applyPickedModel);
+      pickModelModal(data.models, function(chosen){ applyPickedModel(chosen,(data.model_limits||{})[chosen]); }, data.model_limits||{});
     }catch(e){ toast("Load models: "+e.message,"err"); }
     finally{ loadBtn.disabled=false; loadBtn.textContent="Load models"; }
   };
@@ -2045,6 +2057,8 @@ function openRouteModal(route,opts){
       var r=await api("/admin/test-connection","POST",payload);
       if(r.ok){
         var okMsg="Connected ("+r.latency_ms+" ms)"+(r.detail?" · "+r.detail:(r.model_ok===true?" · model OK":(r.model_ok===false?" · model rejected":"")));
+        var matchedBackend=backends.find(function(b){return b.base_url===url.value.trim() && b.format===da.dialect;});
+        if(matchedBackend && matchedBackend.enabled===false) okMsg+=" · Save enabled will activate this provider endpoint";
         if(routeMode==="group"){
           endpointTest={ok:true,candidate:currentEndpointCandidate()};
           addEndpointBtn.disabled=false;
@@ -2155,7 +2169,7 @@ function openRouteModal(route,opts){
   ov.appendChild(m); ov.classList.remove("hidden");
 }
 
-function pickModelModal(models, onPick){
+function pickModelModal(models, onPick, modelLimits){
   var ov=el("div"); ov.className="picker-overlay"; ov.style.position="fixed"; ov.style.inset="0"; ov.style.background="rgba(2,6,18,.82)"; ov.style.zIndex="300"; ov.style.display="flex"; ov.style.alignItems="flex-start"; ov.style.justifyContent="center"; ov.style.padding="42px 20px"; ov.style.overflowY="auto";
   var m=el("div","modal picker-modal");
   var head=el("div","picker-head");
@@ -2178,7 +2192,8 @@ function pickModelModal(models, onPick){
       var it=el("button","picker-item"); it.type="button"; it.setAttribute("role","option"); it.setAttribute("aria-selected",chosen===md?"true":"false");
       if(chosen===md) it.classList.add("selected");
       it.appendChild(el("span","mono",md));
-      it.appendChild(el("span","picker-badge",chosen===md?"Selected":"Model"));
+      var limit=modelLimits&&modelLimits[md];
+      it.appendChild(el("span","picker-badge",limit&&limit.context_tokens?Number(limit.context_tokens).toLocaleString()+" context":(chosen===md?"Selected":"Model")));
       it.onclick=function(){ chosen=md; use.disabled=false; draw(search.value); };
       it.ondblclick=function(){ chosen=md; onPick(chosen); ov.remove(); };
       list.appendChild(it);

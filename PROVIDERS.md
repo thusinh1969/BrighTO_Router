@@ -66,6 +66,8 @@ In the Portal:
 8. Click **Test connection**.
 9. Save enabled only after the test passes.
 
+The context window shown in the model form comes from provider model metadata when the provider supplies it. If the provider omits it, the form labels an editable fallback (256K for language models, 8,192 for System One). This value describes the model; it does not set a request output limit. **Max output tokens** remains blank unless you set it. Test Connection sends a short real request and shows the provider's error message if rejected. Anthropic Messages requires a `max_tokens` value in its test request; this does not create a route-wide output cap.
+
 The Portal automatically creates or reuses the provider endpoint for the Base URL. You do not need to create a provider first.
 
 ## Create a Model Group

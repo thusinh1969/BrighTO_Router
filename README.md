@@ -171,6 +171,8 @@ Open **Models & Routes → Add model route** in the Portal.
 7. Click **Test connection**.
 8. Save the route only after the test passes.
 
+The model form shows its context window: it uses provider `/models` metadata when available and labels the fallback when it is not. The fallback is 256K tokens for language models and 8,192 for System One; you can edit it. **Max output tokens is optional** and stays unset unless you choose a cap. BrighTO does not add an output cap to OpenAI-compatible gateway calls.
+
 The provider API key belongs to the model route. Client applications do not receive provider keys. They call BrighTO-Router with a client API key issued from the **API Keys** screen.
 
 ## Single-file Python SDK
