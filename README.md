@@ -293,7 +293,32 @@ The unlimited team default applies to new installations. Upgrading preserves exi
 
 `./start.sh start`, `./start.sh restart`, Docker image pulls, and Docker image rebuilds do **not** wipe PostgreSQL. Local data is stored in the Docker named volume `brighto-airouter_pg-data`. Data is removed only when you explicitly delete the volume, run `docker compose down -v`, or manually reset the database.
 
-## Upgrade without export/import pain
+## Updating to a new version
+
+**Python client, examples, or documentation only:**
+
+```bash
+cd ~/brighto-router
+git pull --ff-only
+```
+
+If your application keeps its own copy of `brighto.py`, replace that copy too. The router container does not need a restart.
+
+**Router or Portal code only, with no database schema or configuration changes:** use this path only when the release is explicitly compatible with your existing `.env` and PostgreSQL schema, and the updated Docker image has been published under the image tag already set in `.env`.
+
+```bash
+cd ~/brighto-router
+git pull --ff-only
+docker compose pull router
+docker compose up -d --no-deps --force-recreate --pull never router
+docker compose ps router
+```
+
+This replaces the router container without running migrations or default-data seeding, editing `.env`, or recreating PostgreSQL. Your teams, routes, keys, and usage history stay in PostgreSQL. The router still writes normal usage records while serving traffic. After the restart, check `/readyz` on your configured HTTP or HTTPS address and make a request through an existing route. Pulling Git alone does **not** deploy Rust or embedded Portal changes; the Docker image must also be updated. If the new release needs a different image tag, change `BRIGHTO_ROUTER_IMAGE` in `.env` deliberately before pulling it.
+
+If the release changes the database schema, configuration, or install defaults, use the full upgrade below instead. Do not run `./start.sh upgrade` for a code-only update: it runs migrations and seeds defaults.
+
+### Full upgrade without export/import pain
 
 Normal upgrades are in-place. Users do **not** need to export routes, reinstall, and import them again.
 
