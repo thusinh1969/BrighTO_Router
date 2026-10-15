@@ -3653,12 +3653,42 @@ fn push_usage_filters(
 }
 
 /// Dashboard summary: totals + error rate + p95 + nhóm theo model/team/key.
+// ===== Summary cache =====
+// /admin/summary quét toàn bộ usage_ledger (1.25M+ dòng, nhiều query) -> 2-3s.
+// Cache kết quả 45s để dashboard load lại tức thì + giảm tải Postgres.
+static SUMMARY_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<HashMap<String, (std::time::Instant, String)>>,
+> = std::sync::OnceLock::new();
+
+const SUMMARY_CACHE_TTL_SECS: u64 = 45;
+
+fn summary_cache_get(key: &str) -> Option<String> {
+    let c = SUMMARY_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let m = c.lock().ok()?;
+    let (t, v) = m.get(key)?;
+    if t.elapsed() < Duration::from_secs(SUMMARY_CACHE_TTL_SECS) {
+        Some(v.clone())
+    } else {
+        None
+    }
+}
+
+fn summary_cache_put(key: String, value: String) {
+    let c = SUMMARY_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    if let Ok(mut m) = c.lock() {
+        if m.len() > 64 {
+            m.clear();
+        }
+        m.insert(key, (std::time::Instant::now(), value));
+    }
+}
+
 async fn get_summary(
     Extension(state): Extension<Arc<AdminState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Query(params): Query<SummaryQuery>,
-) -> Result<Json<SummaryResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
     let days = params.days.unwrap_or(30).clamp(1, 365);
@@ -3671,6 +3701,13 @@ async fn get_summary(
     let model = params.model.as_deref();
     let status = normalize_status(params.status.as_deref())?;
     let to = params.to;
+
+    let cache_key = format!(
+        "d={days}|t={team:?}|k={key:?}|b={backend:?}|m={model:?}|s={status:?}|f={from}|to={to:?}"
+    );
+    if let Some(cached) = summary_cache_get(&cache_key) {
+        return Ok(([(header::CONTENT_TYPE, "application/json")], cached).into_response());
+    }
 
     // Giá route (cả input + output) cho phép tính cost ước lượng per model.
     let snap = state.runtime.cfg.load_full();
@@ -3906,7 +3943,7 @@ async fn get_summary(
         .map(|g| g.requests)
         .sum();
 
-    Ok(Json(SummaryResponse {
+    let resp = SummaryResponse {
         totals: TotalsRow {
             requests,
             input_tokens: trow.try_get("input_tokens")?,
@@ -3924,7 +3961,10 @@ async fn get_summary(
         by_key,
         by_bucket,
         by_backend,
-    }))
+    };
+    let body = serde_json::to_string(&resp).unwrap_or_else(|_| "{}".to_string());
+    summary_cache_put(cache_key, body.clone());
+    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
 }
 
 #[cfg(test)]
