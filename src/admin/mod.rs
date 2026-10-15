@@ -3702,8 +3702,9 @@ async fn get_summary(
     let status = normalize_status(params.status.as_deref())?;
     let to = params.to;
 
+    let status_key = params.status.as_deref().unwrap_or("-");
     let cache_key = format!(
-        "d={days}|t={team:?}|k={key:?}|b={backend:?}|m={model:?}|s={status:?}|f={from}|to={to:?}"
+        "d={days}|t={team:?}|k={key:?}|b={backend:?}|m={model:?}|s={status_key}|f={from}|to={to:?}"
     );
     if let Some(cached) = summary_cache_get(&cache_key) {
         return Ok(([(header::CONTENT_TYPE, "application/json")], cached).into_response());
