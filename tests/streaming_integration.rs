@@ -1271,6 +1271,48 @@ async fn large_nonstream_upload_preserves_exact_content_length(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "./migrations")]
+async fn large_nonstream_alias_buffers_and_rewrites_provider_model(pool: PgPool) {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+    let backend_base = spawn_model_capture_backend("backend-1", tx).await;
+    let (state, _ledger_rx) = build_state_for_route(
+        pool,
+        backend_base,
+        "public-alias",
+        "provider-model",
+        "openai_chat",
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let payload = format!(
+        r#"{{"model":"public-alias","stream":false,"messages":[{{"role":"user","content":"{}"}}]}}"#,
+        "x".repeat(96 * 1024)
+    );
+    let len = payload.len();
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/chat/completions")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .header("content-length", len.to_string())
+        .body(Body::from(payload))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        200,
+        "large non-stream body with a provider alias must be buffered and rewritten, not rejected"
+    );
+    let (backend, model) = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("backend capture within 2s")
+        .expect("backend capture present");
+    assert_eq!(backend, "backend-1");
+    assert_eq!(model, "provider-model");
+}
+
+#[sqlx::test(migrations = "./migrations")]
 async fn nonstream_response_starts_before_upstream_eof(pool: PgPool) {
     let backend_base = spawn_delayed_nonstream_backend().await;
     let (state, mut ledger_rx) = build_state(pool, backend_base).await;

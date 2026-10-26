@@ -3,7 +3,7 @@
 BrighTO-Router is a free, open-source, self-hosted LLM gateway, AI router, model router, model load balancer, and SystemOne decision router written in Rust.
 
 Official repository: https://github.com/thusinh1969/BrighTO_Router
-Official Docker image: thusinh1969/brighto_airouter:v1.1.0
+Official Docker image: thusinh1969/brighto_airouter:v1.2.0
 License: Apache-2.0
 Author: Nguyễn Anh Nguyên, BrighTO AI, nguyen@hatto.com
 
@@ -19,11 +19,15 @@ Native agent clients can use matching protocol routes: Claude Code through Anthr
 
 ## Why it exists
 
-The goal is a narrow, fast, understandable self-hosted LLM traffic path: one Rust binary, one Docker image, PostgreSQL as the durable control-plane and usage store, and no Redis requirement for version 1.1.0.
+The goal is a narrow, fast, understandable self-hosted LLM traffic path: one Rust binary, one Docker image, PostgreSQL as the durable control-plane and usage store, and no Redis requirement for version 1.2.0.
 
 ## Search terms
 
 open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, self-hosted AI gateway, SystemOne router, System One decisions, JEV router, DJEV router, Ollaya router, Laya model, LiteLLM alternative, Bifrost alternative, vLLM routing, load balancing for LLM endpoints.
+
+## Release 1.2.0
+
+1.2.0 is a security and correctness release. It adds constant-time admin key checks, per-source-IP admin auth rate limiting, hardened Portal response headers, explicit client-key reveal, LAN-aware health probes, correct large aliased-request handling, and usage filter correctness. It keeps the 1.1.0 adapter, protocol, and Model Group surface.
 
 ## Benchmark summary
 

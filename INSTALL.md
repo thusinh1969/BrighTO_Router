@@ -35,10 +35,10 @@ cd BrighTO_Router
 
 A failed Model Group backend is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; change it in `.env`, then run `./start.sh restart`. `ROUTER_WORKER_THREADS` is blank by default, which means the router uses all available CPU threads; set it only when you want to cap CPU use.
 
-BrighTO-Router 1.1.0 uses `thusinh1969/brighto_airouter:v1.1.0` by default. The published tag includes `linux/amd64` and `linux/arm64`; Docker selects the image matching your host. Existing local `.env` files from older installs should include:
+BrighTO-Router 1.2.0 uses `thusinh1969/brighto_airouter:v1.2.0` by default. The published tag includes `linux/amd64` and `linux/arm64`; Docker selects the image matching your host. Existing local `.env` files from older installs should include:
 
 ```bash
-BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.1.0
+BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.2.0
 BACKEND_CIRCUIT_OPEN_SECONDS=30
 ```
 
@@ -62,7 +62,7 @@ and local model servers. See [Docker's host-networking guide](https://docs.docke
 | macOS Apple Silicon | Docker Desktop runs the Linux `arm64` container. |
 | Windows x86_64 | Docker Desktop with WSL2 runs the Linux `amd64` container. |
 
-Native Windows `.exe` and macOS `.app` releases are not part of 1.1.0. Docker Compose is the install path. Both image architectures pass HTTP/HTTPS API and browser checks; ARM64 runtime verification uses QEMU emulation, not a native GB10 or Apple Silicon benchmark. For custom builds, use [the local Docker build instructions](README.md#portal-front-end-development).
+Native Windows `.exe` and macOS `.app` releases are not part of 1.2.0. Docker Compose is the install path. Both image architectures pass HTTP/HTTPS API and browser checks; ARM64 runtime verification uses QEMU emulation, not a native GB10 or Apple Silicon benchmark. For custom builds, use [the local Docker build instructions](README.md#portal-front-end-development).
 
 What happens:
 
@@ -70,7 +70,7 @@ What happens:
 2. Docker starts PostgreSQL 16.
 3. SQL migrations run.
 4. The unlimited `Default Team` and local demo client key are seeded. Set a budget in the Portal if needed.
-5. Docker pulls and starts `thusinh1969/brighto_airouter:v1.1.0`.
+5. Docker pulls and starts `thusinh1969/brighto_airouter:v1.2.0`.
 
 On an existing PostgreSQL volume, install and upgrade preserve team and key budgets. To remove a cap, choose **Unlimited** on the team and **Inherit team budget** on each affected key. Token budgets enforce limits; configured money amounts are stored and shown but not enforced.
 
@@ -203,7 +203,7 @@ Use the portal:
 7. Add two or more existing tested routes from the compatible-route dropdown.
 8. Save enabled. Provider URLs and provider API keys are not entered in the group wizard; they stay on the source routes.
 
-1.1.0 Model Groups require all selected routes to match the same API shape. Do not mix Chat Completions (`/v1/chat/completions`), Completions (`/v1/completions`), Responses (`/v1/responses`), embeddings, rerank, ASR, System One, or Anthropic Messages inside one group.
+1.2.0 Model Groups require all selected routes to match the same API shape. Do not mix Chat Completions (`/v1/chat/completions`), Completions (`/v1/completions`), Responses (`/v1/responses`), embeddings, rerank, ASR, System One, or Anthropic Messages inside one group.
 
 ## Test from the command line
 
@@ -243,7 +243,7 @@ python3 test_router.py --model <audio-model-route> --text "Summarize this audio.
 
 `--provider` uses standard public route names. Run `python3 test_router.py --list-presets` to see the mapping, or pass `--model` when your route name is custom. In rerank mode, `--query` and `--text` both work; `--query` is clearer and takes priority.
 
-1.1.0 live provider smoke tests:
+Live provider smoke tests (run these when the relevant provider keys are configured):
 
 ```bash
 python3 scripts/adapter_smoke.py --provider qwen --task embedding

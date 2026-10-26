@@ -6,14 +6,14 @@ use std::{
     fmt::Write as _,
     io::Read,
     net::{IpAddr, SocketAddr},
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Path, Query},
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, patch, post, put},
 };
@@ -211,12 +211,104 @@ fn validate_master_key(value: String) -> String {
     value
 }
 
+/// Admin auth brute-force guard. 10 lần sai key trong 60 giây từ cùng một IP -> 429.
+/// Chỉ đếm lần sai key; "ip not allowed" không phải phỏng đoán secret nên không bị đếm.
+const ADMIN_AUTH_MAX_FAILURES: u32 = 10;
+const ADMIN_AUTH_WINDOW: Duration = Duration::from_secs(60);
+const ADMIN_AUTH_MAX_TRACKED_IPS: usize = 4096;
+
+#[derive(Debug)]
+struct AdminAuthFailureWindow {
+    first_failure: Instant,
+    count: u32,
+}
+
+static ADMIN_AUTH_FAILURES: OnceLock<Mutex<HashMap<IpAddr, AdminAuthFailureWindow>>> =
+    OnceLock::new();
+
+fn admin_auth_failures() -> &'static Mutex<HashMap<IpAddr, AdminAuthFailureWindow>> {
+    ADMIN_AUTH_FAILURES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn admin_auth_rate_limited(peer_ip: IpAddr) -> bool {
+    let mut map = admin_auth_failures()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match map.get(&peer_ip) {
+        Some(window) if window.first_failure.elapsed() < ADMIN_AUTH_WINDOW => {
+            window.count >= ADMIN_AUTH_MAX_FAILURES
+        }
+        Some(_) => {
+            map.remove(&peer_ip);
+            false
+        }
+        None => false,
+    }
+}
+
+fn record_admin_auth_failure(peer_ip: IpAddr) {
+    let mut map = admin_auth_failures()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if map.len() >= ADMIN_AUTH_MAX_TRACKED_IPS {
+        map.retain(|_, window| window.first_failure.elapsed() < ADMIN_AUTH_WINDOW);
+    }
+    let now = Instant::now();
+    match map.get_mut(&peer_ip) {
+        Some(window) if window.first_failure.elapsed() < ADMIN_AUTH_WINDOW => {
+            window.count = window.count.saturating_add(1);
+            if window.count == ADMIN_AUTH_MAX_FAILURES {
+                tracing::warn!(peer_ip = %peer_ip, "admin auth rate limit reached");
+            }
+        }
+        Some(window) => {
+            window.first_failure = now;
+            window.count = 1;
+        }
+        None => {
+            map.insert(
+                peer_ip,
+                AdminAuthFailureWindow {
+                    first_failure: now,
+                    count: 1,
+                },
+            );
+        }
+    }
+}
+
+fn clear_admin_auth_failures(peer_ip: IpAddr) {
+    if let Ok(mut map) = admin_auth_failures().lock() {
+        map.remove(&peer_ip);
+    }
+}
+
+/// So sánh không rò rỉ vị trí khác biệt qua timing. Độ dài vẫn lộ (chấp nhận được:
+/// ADMIN_MASTER_KEY là secret cố định, không phải dữ liệu do client điều khiển từng byte).
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (a, b) in left.iter().zip(right.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
+}
+
 fn check_admin_auth(
     master_key: &str,
     allow_cidrs: &[String],
     headers: &HeaderMap,
     peer_ip: IpAddr,
 ) -> Result<(), ApiError> {
+    if admin_auth_rate_limited(peer_ip) {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many failed admin auth attempts; retry later",
+        ));
+    }
+
     let provided = headers
         .get("x-admin-key")
         .and_then(|v| v.to_str().ok())
@@ -228,7 +320,12 @@ fn check_admin_auth(
                 .and_then(|v| v.strip_prefix("Bearer ").map(str::to_owned))
         });
 
-    if provided.as_deref() != Some(master_key) {
+    let key_ok = provided
+        .as_deref()
+        .is_some_and(|value| constant_time_eq(value.as_bytes(), master_key.as_bytes()));
+    if !key_ok {
+        record_admin_auth_failure(peer_ip);
+        tracing::warn!(peer_ip = %peer_ip, "admin auth rejected: invalid key");
         return Err(ApiError::unauthorized("invalid admin key"));
     }
 
@@ -237,9 +334,11 @@ fn check_admin_auth(
         .iter()
         .any(|cidr| ip_matches_cidr(peer_ip, cidr))
     {
+        tracing::warn!(peer_ip = %peer_ip, "admin auth rejected: ip not allowed");
         return Err(ApiError::forbidden("ip not allowed"));
     }
 
+    clear_admin_auth_failures(peer_ip);
     Ok(())
 }
 
@@ -309,13 +408,13 @@ pub fn user_router(runtime: Arc<AppState>) -> Router {
         .layer(Extension(state))
 }
 
-async fn portal() -> impl IntoResponse {
+async fn portal() -> Response {
     let body = std::env::var("PORTAL_STATIC_FILE")
         .ok()
         .filter(|path| !path.trim().is_empty())
         .and_then(|path| std::fs::read_to_string(path).ok())
         .unwrap_or_else(|| include_str!("../../static/index.html").to_string());
-    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], body)
+    crate::handlers::portal_response(body)
 }
 
 // ===== Request/response types =====
@@ -617,6 +716,7 @@ struct UsageQuery {
     status: Option<String>,
     from: Option<i64>,
     to: Option<i64>,
+    days: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -687,6 +787,12 @@ struct StatRow {
 #[derive(Deserialize)]
 struct StatsQuery {
     team: Option<i64>,
+    key: Option<i64>,
+    backend: Option<i64>,
+    model: Option<String>,
+    status: Option<String>,
+    from: Option<i64>,
+    to: Option<i64>,
     days: Option<u32>,
 }
 
@@ -3201,7 +3307,7 @@ async fn get_usage(
             params.backend,
             params.model.as_deref(),
             params.status.as_deref(),
-            params.from,
+            usage_from(params.from, params.days),
             params.to,
         )
         .await?,
@@ -3303,28 +3409,38 @@ async fn list_keys(
     Ok(Json(out))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn query_stats(
     pool: &PgPool,
     team: Option<i64>,
     key: Option<i64>,
+    backend: Option<i64>,
+    model: Option<&str>,
+    status: &StatusFilter,
+    from: Option<i64>,
+    to: Option<i64>,
     days: u32,
 ) -> Result<Vec<StatRow>, ApiError> {
     let days = days.clamp(1, 365);
-    let since = now_secs() - i64::from(days) * 86_400;
+    let since = from.unwrap_or_else(|| now_secs() - i64::from(days) * 86_400);
     let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
         "SELECT (ts / 86400) * 86400 AS day, model, \
          CAST(COALESCE(SUM(input_tokens), 0) AS BIGINT) AS input_tokens, \
          CAST(COALESCE(SUM(output_tokens), 0) AS BIGINT) AS output_tokens, \
          COUNT(*) AS requests \
-         FROM usage_ledger WHERE ts >= ",
+         FROM usage_ledger",
     );
-    builder.push_bind(since);
-    if let Some(team) = team {
-        builder.push(" AND team_id = ").push_bind(team);
-    }
-    if let Some(key) = key {
-        builder.push(" AND key_id = ").push_bind(key);
-    }
+    push_usage_filters(
+        &mut builder,
+        "",
+        team,
+        key,
+        backend,
+        model,
+        status,
+        Some(since),
+        to,
+    );
     builder.push(" GROUP BY 1, 2 ORDER BY 1, 2");
     let query = builder.build();
     let rows = query.fetch_all(pool).await?;
@@ -3341,6 +3457,11 @@ async fn query_stats(
     Ok(out)
 }
 
+/// `days` là cửa sổ mặc định khi caller không truyền `from`; `from` tường minh luôn thắng.
+fn usage_from(from: Option<i64>, days: Option<u32>) -> Option<i64> {
+    from.or_else(|| days.map(|days| now_secs() - i64::from(days.clamp(1, 365)) * 86_400))
+}
+
 async fn get_stats(
     Extension(state): Extension<Arc<AdminState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -3349,8 +3470,20 @@ async fn get_stats(
 ) -> Result<Json<Vec<StatRow>>, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
+    let status = normalize_status(params.status.as_deref())?;
     Ok(Json(
-        query_stats(pool, params.team, None, params.days.unwrap_or(30)).await?,
+        query_stats(
+            pool,
+            params.team,
+            params.key,
+            params.backend,
+            params.model.as_deref(),
+            &status,
+            params.from,
+            params.to,
+            params.days.unwrap_or(30),
+        )
+        .await?,
     ))
 }
 
@@ -3403,7 +3536,7 @@ async fn me_usage(
             None,
             params.model.as_deref(),
             params.status.as_deref(),
-            params.from,
+            usage_from(params.from, params.days),
             params.to,
         )
         .await?,
@@ -3418,7 +3551,18 @@ async fn me_stats(
     let key = authorize_user_key(&state, &headers)?;
     let pool = state.pool().await?;
     Ok(Json(
-        query_stats(pool, None, Some(key.id), params.days.unwrap_or(30)).await?,
+        query_stats(
+            pool,
+            None,
+            Some(key.id),
+            None,
+            None,
+            &StatusFilter::None,
+            None,
+            None,
+            params.days.unwrap_or(30),
+        )
+        .await?,
     ))
 }
 
@@ -3428,7 +3572,7 @@ async fn reveal_key(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(id): Path<i64>,
-) -> Result<Json<KeyRevealResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
     let row = sqlx::query::<sqlx::Postgres>(
@@ -3445,12 +3589,17 @@ async fn reveal_key(
             "plaintext not stored (key created before key-reveal); disable and recreate it",
         )
     })?;
-    Ok(Json(KeyRevealResponse {
+    let mut response = Json(KeyRevealResponse {
         id,
         prefix: row.try_get("key_prefix")?,
         owner: row.try_get("owner")?,
         key,
-    }))
+    })
+    .into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(response)
 }
 
 /// Read-only runtime settings cho màn Settings (admin path, không phải hot path).
@@ -4239,6 +4388,42 @@ mod tests {
     }
 
     #[test]
+    fn constant_time_eq_matches_normal_equality() {
+        assert!(constant_time_eq(b"secret", b"secret"));
+        assert!(!constant_time_eq(b"secret", b"secreu"));
+        assert!(!constant_time_eq(b"secret", b"secret-longer"));
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn admin_auth_rate_limits_repeated_bad_keys() {
+        let ip: IpAddr = "203.0.113.42".parse().unwrap();
+        clear_admin_auth_failures(ip);
+        let allow = vec!["0.0.0.0/0".to_string()];
+        let mut bad = HeaderMap::new();
+        bad.insert("x-admin-key", "wrong".parse().unwrap());
+
+        for _ in 0..ADMIN_AUTH_MAX_FAILURES {
+            let err = check_admin_auth("secret", &allow, &bad, ip).unwrap_err();
+            assert_eq!(err.status, StatusCode::UNAUTHORIZED);
+        }
+        let err = check_admin_auth("secret", &allow, &bad, ip).unwrap_err();
+        assert_eq!(err.status, StatusCode::TOO_MANY_REQUESTS);
+
+        // Key đúng vẫn bị chặn trong cửa sổ chống brute-force; hết cửa sổ mới thử lại.
+        let mut good = HeaderMap::new();
+        good.insert("x-admin-key", "secret".parse().unwrap());
+        assert_eq!(
+            check_admin_auth("secret", &allow, &good, ip)
+                .unwrap_err()
+                .status,
+            StatusCode::TOO_MANY_REQUESTS
+        );
+        clear_admin_auth_failures(ip);
+        assert!(check_admin_auth("secret", &allow, &good, ip).is_ok());
+    }
+
+    #[test]
     fn admin_auth_rejects_bad_ip() {
         let mut headers = HeaderMap::new();
         headers.insert("x-admin-key", "secret".parse().unwrap());
@@ -4266,6 +4451,18 @@ mod tests {
         assert!(extract_api_key(&HeaderMap::new()).is_none());
     }
 
+    #[test]
+    fn usage_days_window_is_applied_only_without_explicit_from() {
+        assert_eq!(usage_from(None, None), None);
+        let now = now_secs();
+        let from = usage_from(None, Some(7)).expect("days window");
+        assert!((now - from - 7 * 86_400).abs() <= 2);
+        assert_eq!(usage_from(Some(123), Some(7)), Some(123));
+        // Out-of-range days clamp to 365 instead of underflowing.
+        let clamped = usage_from(None, Some(10_000)).expect("clamped window");
+        assert!((now - clamped - 365 * 86_400).abs() <= 2);
+    }
+
     #[sqlx::test(migrations = "./migrations")]
     async fn stats_aggregate_daily_by_model(pool: PgPool) -> anyhow::Result<()> {
         let now = SystemTime::now()
@@ -4274,25 +4471,39 @@ mod tests {
             .as_secs() as i64;
         let today = (now / 86_400) * 86_400;
 
-        let insert = |rid: &str, model: &str, input: i64, output: i64| {
+        let insert = |rid: &str, model: &str, status: i64, input: i64, output: i64| {
             sqlx::query(
                 "INSERT INTO usage_ledger \
                  (ts, request_id, key_id, team_id, model, backend_id, status, \
                   input_tokens, output_tokens, estimated, ttfb_ms, total_ms, router_overhead_ms, stream, client_aborted) \
-                 VALUES ($1, $2, 1, 1, $3, 1, 200, $4, $5, false, 0, 0, 0, false, false)",
+                 VALUES ($1, $2, 1, 1, $3, 1, $4, $5, $6, false, 0, 0, 0, false, false)",
             )
             .bind(today)
             .bind(rid)
             .bind(model)
+            .bind(status)
             .bind(input)
             .bind(output)
             .execute(&pool)
         };
-        insert("r1", "model-a", 100, 10).await?;
-        insert("r2", "model-a", 50, 5).await?;
-        insert("r3", "model-b", 30, 3).await?;
+        insert("r1", "model-a", 200, 100, 10).await?;
+        insert("r2", "model-a", 200, 50, 5).await?;
+        insert("r3", "model-b", 200, 30, 3).await?;
+        insert("r4", "model-c", 500, 7, 1).await?;
 
-        let stats = query_stats(&pool, None, None, 30).await.expect("stats");
+        let stats = query_stats(
+            &pool,
+            None,
+            None,
+            None,
+            None,
+            &StatusFilter::None,
+            None,
+            None,
+            30,
+        )
+        .await
+        .expect("stats");
         let a = stats
             .iter()
             .find(|s| s.model == "model-a")
@@ -4300,12 +4511,40 @@ mod tests {
         assert_eq!(a.input_tokens, 150);
         assert_eq!(a.output_tokens, 15);
         assert_eq!(a.requests, 2);
-        let b = stats
-            .iter()
-            .find(|s| s.model == "model-b")
-            .expect("model-b present");
-        assert_eq!(b.input_tokens, 30);
-        assert_eq!(b.requests, 1);
+
+        let only_a = query_stats(
+            &pool,
+            None,
+            None,
+            None,
+            Some("model-a"),
+            &StatusFilter::None,
+            None,
+            None,
+            30,
+        )
+        .await
+        .expect("filtered stats");
+        assert_eq!(only_a.len(), 1);
+        assert_eq!(only_a[0].model, "model-a");
+        assert_eq!(only_a[0].requests, 2);
+
+        let errors = query_stats(
+            &pool,
+            None,
+            None,
+            None,
+            None,
+            &StatusFilter::Error,
+            None,
+            None,
+            30,
+        )
+        .await
+        .expect("error stats");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].model, "model-c");
+        assert_eq!(errors[0].requests, 1);
         Ok(())
     }
 }

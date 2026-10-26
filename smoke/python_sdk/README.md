@@ -8,7 +8,7 @@ python3 -m unittest discover -s tests -p test_python_sdk.py -v
 python3 smoke/python_sdk/run.py
 ```
 
-The runtime check uses an existing local `thusinh1969/brighto_airouter:v1.1.0` Docker image. Use `--image <local-tag>` to select another image. It never pulls or publishes an image, changes `.env`, or touches the installed router's database.
+The runtime check uses an existing local `thusinh1969/brighto_airouter:v1.2.0` Docker image. Use `--image <local-tag>` to select another image. It never pulls or publishes an image, changes `.env`, or touches the installed router's database.
 
 Prerequisites: Docker, OpenSSL, Node.js/npm, Chromium, and the release mock binary. The existing browser helper installs Playwright when missing and builds release binaries when missing. Two temporary PostgreSQL databases and router containers provide clean HTTP and HTTPS cases; generated certificates are trusted explicitly by the SDK.
 

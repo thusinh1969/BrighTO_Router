@@ -2388,12 +2388,10 @@ function renderKeys(c){
       if(k.revealable===false){
         secret.appendChild(el("span","muted","legacy · recreate"));
       }else{
-        secret.appendChild(el("span","mono","…"));
-        api("/admin/keys/"+k.id+"/reveal","GET").then(function(data){
-          secret.innerHTML="";
-          var full=el("span","mono",data.key); full.title=data.key; secret.appendChild(full);
-          secret.appendChild(copyKeyBtn(data.key));
-        }).catch(function(){ secret.innerHTML=""; var vb=el("button","btn sm ghost","Reveal"); vb.onclick=function(){revealKey(k);}; secret.appendChild(vb); });
+        // Không tự động tải plaintext khi mở danh sách: admin phải chủ động bấm Reveal.
+        var vb=el("button","btn sm ghost","Reveal key");
+        vb.onclick=function(){revealKey(k);};
+        secret.appendChild(vb);
       }
       ks.appendChild(secret);
       ks.appendChild(el("div","cell-sub","Prefix "+k.prefix+" · key ID "+k.id));

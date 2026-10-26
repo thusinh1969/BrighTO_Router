@@ -436,13 +436,53 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-async fn portal(_: State<Arc<AppState>>) -> impl IntoResponse {
+async fn portal(_: State<Arc<AppState>>) -> Response<Body> {
     let body = std::env::var("PORTAL_STATIC_FILE")
         .ok()
         .filter(|path| !path.trim().is_empty())
         .and_then(|path| std::fs::read_to_string(path).ok())
         .unwrap_or_else(|| include_str!("../static/index.html").to_string());
-    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], body)
+    portal_response(body)
+}
+
+/// Portal là trang quản trị chứa key trong localStorage: chặn cache, framing và
+/// tài nguyên ngoài. CSP vẫn cho inline CSS/JS vì Portal là single-file có chủ đích.
+pub(crate) fn portal_response(body: String) -> Response<Body> {
+    let mut response = body.into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-store"),
+    );
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        header::HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        header::HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        header::X_FRAME_OPTIONS,
+        header::HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        header::STRICT_TRANSPORT_SECURITY,
+        header::HeaderValue::from_static("max-age=31536000"),
+    );
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        header::HeaderValue::from_static(
+            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; \
+             script-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self'; \
+             frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        ),
+    );
+    response
 }
 
 async fn handle_generate(
@@ -560,9 +600,14 @@ async fn handle_generate(
     }
 
     // 5. Budget reserve + concurrency (RAII: nếu mọi đường return sau đây, tự rollback/release).
+    // Chỉ stream upload khi proxy chắc chắn không phải sửa body. Nếu route cần rewrite
+    // model/provider adapter, phải buffer để rewrite; nếu không, request lớn sẽ bị 400
+    // "streaming upload requires no model or adapter body rewrite" thay vì được phục vụ.
     let allow_streaming_upload = route.backend_ids.len() == 1
         && route.fallback_backend_id.is_none()
-        && route.endpoints.is_empty();
+        && route.endpoints.is_empty()
+        && !json_proxy_body_needs_rewrite(&route, model, protocol)
+        && protocol != ProviderProtocol::SystemOne;
     let body_len = incoming.body_len();
     let est_tokens = estimate_tokens_len(body_len, &route);
     let (head, proxy_body) = match incoming

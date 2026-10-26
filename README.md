@@ -14,16 +14,16 @@ Use it as a free, open-source LiteLLM or Bifrost alternative when you want a nar
 Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Python SDK](#single-file-python-sdk) · [API examples](docs/API_EXAMPLES.md) · [Agent clients](docs/AGENT_CLIENTS.md) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
 
 - Official repository: `https://github.com/thusinh1969/BrighTO_Router`
-- Official Docker image: `thusinh1969/brighto_airouter:v1.1.0` (`linux/amd64` and `linux/arm64`)
+- Official Docker image: `thusinh1969/brighto_airouter:v1.2.0` (`linux/amd64` and `linux/arm64`)
 - Search keywords: open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, SystemOne router, System One decisions, JEV router, DJEV router, Ollaya router, Laya model, LiteLLM alternative
-- Release version: `1.1.0`
+- Release version: `1.2.0`
 
 ## Why teams choose BrighTO-Router
 
 | Strength | What it means |
 |---|---|
 | **Ultra-fast large-context routing** | Same-machine mock benchmarks show million-token pass-through overhead in low single-digit milliseconds over HTTP. |
-| **Dead-simple production stack** | One Rust binary, one Docker image, PostgreSQL as the durable store. No Redis required for 1.1.0. |
+| **Dead-simple production stack** | One Rust binary, one Docker image, PostgreSQL as the durable store. No Redis required for 1.2.0. |
 | **Multi-core by default** | The router uses all available CPU threads by default; set `ROUTER_WORKER_THREADS` only when you need to cap CPU use. |
 | **Load balancing built in** | Model Groups let one API model name spread traffic across compatible routes using round-robin or weighted round-robin. |
 | **Easy to run and maintain** | `./start.sh install`, `start`, `stop`, `status`, `logs`, `restart`; Portal for routes, teams, keys, budgets, and usage. |
@@ -49,9 +49,11 @@ These benchmarks use deterministic local Rust mock backends. They measure router
 
 Honest read: Model Groups add routing choice, per-endpoint model rewrite, PostgreSQL-backed round-robin counters, and fail-safe behavior. The table reports standalone Model Group overhead against a direct mock backend. We do not claim a negative Model Group delta versus single route; release validation uses a fair same-mock gate so impossible-looking benchmark wins cannot slip into public claims.
 
+Release scope: 1.2.0 is a security and correctness release. The benchmark table above is the existing 1.0/1.1 measurement set and was not re-run for 1.2.0; no new performance claim is made here.
+
 ## Core capabilities
 
-| Capability | Current 1.1.0 status |
+| Capability | Current 1.2.0 status |
 |---|---|
 | Chat, completions, and Responses | OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, and `/v1/responses`. |
 | Anthropic Messages | `/v1/messages` with Anthropic-compatible upstreams. |
@@ -107,7 +109,7 @@ cd BrighTO_Router
 ./start.sh install
 ```
 
-This 1.1.0 line pulls `thusinh1969/brighto_airouter:v1.1.0` by default. Docker automatically selects the matching `linux/amd64` or `linux/arm64` image. If you already have an old `.env`, make sure it contains `BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.1.0`, then run `./start.sh restart`.
+This 1.2.0 line pulls `thusinh1969/brighto_airouter:v1.2.0` by default. Docker automatically selects the matching `linux/amd64` or `linux/arm64` image. If you already have an old `.env`, make sure it contains `BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.2.0`, then run `./start.sh restart`.
 
 Open the Portal on the server:
 
@@ -143,6 +145,8 @@ ADMIN_ALLOW_CIDR=<YOUR_PUBLIC_IP>/32
 ```
 
 If the Portal says `Admin access blocked: ip not allowed`, your browser IP is outside `ADMIN_ALLOW_CIDR`. Set it to a range that includes your browser, or temporarily use `0.0.0.0/0,::/0`, then restart.
+
+Admin key checks are rate-limited per source IP: 10 failed key attempts within 60 seconds return `429` until the window expires. Rejected attempts are logged without the key value. The Portal and key-reveal responses are sent with `Cache-Control: no-store`, and the Portal is restricted by a same-origin Content Security Policy.
 
 HTTPS first-run with a local self-signed certificate:
 
@@ -277,7 +281,7 @@ python3 test_router.py --router https://<router-host>:18443/v1 --ca ssl/cert.pem
 
 ## What install creates
 
-`./start.sh install` creates `.env` from `.env.example`, starts PostgreSQL in Docker, runs migrations, seeds default records, pulls `thusinh1969/brighto_airouter:v1.1.0`, and starts the router.
+`./start.sh install` creates `.env` from `.env.example`, starts PostgreSQL in Docker, runs migrations, seeds default records, pulls `thusinh1969/brighto_airouter:v1.2.0`, and starts the router.
 
 Default records:
 
@@ -294,6 +298,8 @@ The unlimited team default applies to new installations. Upgrading preserves exi
 `./start.sh start`, `./start.sh restart`, Docker image pulls, and Docker image rebuilds do **not** wipe PostgreSQL. Local data is stored in the Docker named volume `brighto-airouter_pg-data`. Data is removed only when you explicitly delete the volume, run `docker compose down -v`, or manually reset the database.
 
 ## Updating to a new version
+
+1.2.0 has no database schema change and introduces no new required environment variables. The published image is `thusinh1969/brighto_airouter:v1.2.0`; installs that pin `BRIGHTO_ROUTER_IMAGE` to `v1.1.0` must change that value, or pass `./start.sh upgrade --image thusinh1969/brighto_airouter:v1.2.0`, to deploy it.
 
 **Python client, examples, or documentation only:**
 
@@ -334,7 +340,7 @@ Upgrade also protects existing users from the old LAN-only admin default. If `.e
 To pin a new image tag explicitly:
 
 ```bash
-./start.sh upgrade --image thusinh1969/brighto_airouter:v1.1.0
+./start.sh upgrade --image thusinh1969/brighto_airouter:v1.2.0
 ```
 
 Manual safety commands are available when moving servers or before a risky maintenance window:
@@ -416,12 +422,12 @@ Why use Kubernetes if the router is already very fast? Availability and operatio
 
 More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROVIDERS.md), [k8s/README.md](k8s/README.md).
 
-## What teams get in 1.1.0
+## What teams get in 1.2.0
 
 - One internal endpoint for multiple model providers.
 - OpenAI-style routes: `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/models`.
 - Anthropic Messages route: `/v1/messages`.
-- Adapter routes: `/v1/rerank`, `/v1/audio/transcriptions`, `/v1/systemone`, and `/v1/decisions` are implemented, Portal task-aware, mock/integration tested, and live-smoked with OpenAI, Qwen/DashScope, Jina, Voyage, Cohere, and Ollaya/Laya.
+- Adapter routes: `/v1/rerank`, `/v1/audio/transcriptions`, `/v1/systemone`, and `/v1/decisions` are implemented, Portal task-aware, and covered by the inherited 1.1.0 live smokes plus the 1.2.0 mock, Portal, SDK, and Docker gates.
 - Multimodal LLM JSON pass-through when the selected backend supports that request shape.
 - Model aliases and provider-backed model routes.
 - Weighted backend routing, fallback backend support, and circuit breaking.
@@ -433,16 +439,25 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 - Health endpoints: `/healthz`, `/readyz`.
 - Prometheus metrics endpoint: `/metrics`.
 
+### Security and correctness hardening in 1.2.0
+
+- Admin authentication uses constant-time key comparison, per-source-IP rate limiting (10 failed key attempts per 60 seconds), and rejection logging without key material.
+- The Portal sends a same-origin Content Security Policy, `Cache-Control: no-store`, framing/referrer protections, and reveals client keys only after an explicit **Reveal key** click.
+- Active health probes cover LAN hostnames and treat reachable services without `/health` or `/v1/models` as unknown instead of opening their circuit.
+- Large non-stream requests to aliased routes are buffered and rewritten instead of rejected.
+- Usage charts and logs apply the selected model/status/provider/team/key/date filters.
+- `start.sh` writes the TLS private key with mode `0600` and grants the router container uid `10001` read access through a POSIX ACL (with a documented `0644` fallback when ACLs are unavailable).
+
 ## Logging, analytics, and privacy
 
-BrighTO-Router logs one usage record per API call. It does not store chat content, prompts, uploaded media, tool payloads, or model responses. In 1.1.0, a "session" in the router means request-level traffic metadata, not a stored conversation transcript.
+BrighTO-Router records one usage row for each request that reaches a provider backend, including provider errors and client aborts. It does not store chat content, prompts, uploaded media, tool payloads, or model responses. Requests rejected before forwarding — invalid key, model permission, budget/concurrency limit, or no healthy backend — return an error to the caller but are not written to `usage_ledger`. In 1.2.0, a "session" in the router means request-level traffic metadata, not a stored conversation transcript.
 
 Usage records are written to PostgreSQL in `usage_ledger`. If PostgreSQL is temporarily unavailable, the router writes usage events to the local JSONL file configured by `LEDGER_FALLBACK_FILE` (`/var/lib/brighto-router/ledger-fallback.jsonl` in the default Docker setup) and replays them when the database is available again. PostgreSQL is the source for Portal reporting, budget counters, historical analytics, and Grafana SQL dashboards. The fallback file is only a durability buffer during database outages.
 
-| Customer question | 1.1.0 answer | Why it matters |
+| Customer question | 1.2.0 answer | Why it matters |
 |---|---|---|
 | Do we log request size? | Yes, by `input_tokens`, `output_tokens`, and an `estimated` flag when the provider did not return exact usage. | Enough for budget, cost, and capacity analysis without storing content. |
-| Do we log speed? | Yes: `ttfb_ms` (time to first byte), `total_ms` (whole request), and `router_overhead_ms` (router work before provider forwarding). Token-per-second values are derived from token counts and duration. | Admins can see whether latency comes from the provider, large payloads, or router overhead. |
+| Do we log speed? | Yes: `ttfb_ms` (time until upstream response headers; streamed first-token latency can be later), `total_ms` (whole request), and `router_overhead_ms` (router work before provider forwarding). Token-per-second values are derived from token counts and duration. | Admins can see whether latency comes from the provider, large payloads, or router overhead. |
 | Do we log errors? | Yes: HTTP `status`, `client_aborted`, and a short `error_class` such as timeout, read failure, network error, or client aborted. | Supports error-rate dashboards and operational alerts. |
 | Do we log provider error text/body? | No. The router forwards provider errors to the caller but does not persist the provider response body. | Provider error bodies can contain prompt fragments, account details, or sensitive payload context. |
 | Do we keep chat content? | No. No prompt, message array, image/audio payload, tool call body, or model answer is stored by the router. | Keeps the hot path fast, reduces storage cost, and avoids turning the router into a private data lake. |
@@ -454,9 +469,9 @@ If a customer needs full transcript auditing, that should be an explicit enterpr
 
 ## Multimodal and media support
 
-BrighTO-Router 1.1.0 routes LLM, OpenAI Responses, embeddings, rerank, System One decisions, and OpenAI-compatible ASR/transcription requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
+BrighTO-Router 1.2.0 routes LLM, OpenAI Responses, embeddings, rerank, System One decisions, and OpenAI-compatible ASR/transcription requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
 
-| Capability | 1.1.0 status | What it means |
+| Capability | 1.2.0 status | What it means |
 |---|---|---|
 | Text chat/completions | Yes | Supported through OpenAI-style `/v1/chat/completions` and `/v1/completions`. |
 | OpenAI Responses | Proxy yes | Supported through `/v1/responses` when the backend exposes the Responses API. Useful for Codex-style clients. |
@@ -465,9 +480,9 @@ BrighTO-Router 1.1.0 routes LLM, OpenAI Responses, embeddings, rerank, System On
 | Image input inside LLM chat JSON | Conditional yes | Passed through when the selected backend accepts that JSON shape and the request stays under `MAX_BODY_BYTES`. |
 | Audio input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts audio data in the same JSON endpoint. This is separate from the multipart ASR adapter below. |
 | Video input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts video data in the same JSON endpoint and the body-size limit allows it. |
-| OpenAI Images API such as `/v1/images/generations` | No | Planned as a future media adapter, not part of 1.1.0. |
-| Audio generation / TTS | No | Planned as future media adapters. 1.1.0 supports ASR/transcription only for OpenAI-compatible multipart providers. |
-| Video generation routes | No | Planned as future media adapters, not part of 1.1.0. |
+| OpenAI Images API such as `/v1/images/generations` | No | Planned as a future media adapter, not part of 1.2.0. |
+| Audio generation / TTS | No | Planned as future media adapters. 1.2.0 supports ASR/transcription only for OpenAI-compatible multipart providers. |
+| Video generation routes | No | Planned as future media adapters, not part of 1.2.0. |
 | Reranking APIs | Yes | `/v1/rerank` supports Jina, Voyage, Cohere, Qwen/DashScope, and OpenAI-compatible/custom rerank adapters. |
 | Multipart ASR upload | Yes | `/v1/audio/transcriptions` supports OpenAI-compatible transcription providers and has live OpenAI smoke coverage. |
 | System One / decisions | Yes | `/v1/systemone` and `/v1/decisions` forward TypeSafe/Jev-compatible decision requests and return answers unchanged. |
@@ -481,7 +496,7 @@ The practical rule is simple: if a provider exposes a model through a supported 
 
 `/v1/embeddings` is a proxy route, not an embedding engine. The backend creates the vector. BrighTO-Router only applies authentication, model-route policy, budget checks, provider credential handling, response forwarding, and usage logging. It does not store vectors, build a vector index, run semantic search, or convert one provider's embedding format into another.
 
-BGE or Qwen text embedding models can be routed when they are exposed by an OpenAI-compatible backend that accepts `/v1/embeddings`; 1.1.0 live-smokes Qwen `qwen3.7-text-embedding` this way. Qwen `tongyi-embedding-vision-flash` is a multimodal embedding model, but it uses DashScope multimodal embedding APIs and should be handled by a future dedicated adapter. In 1.1.0, reranking is implemented as a separate adapter endpoint because reranking has a different request and response shape from embeddings.
+BGE or Qwen text embedding models can be routed when they are exposed by an OpenAI-compatible backend that accepts `/v1/embeddings`; the 1.1.0 validation live-smoked Qwen `qwen3.7-text-embedding` this way and 1.2.0 keeps that surface. Qwen `tongyi-embedding-vision-flash` is a multimodal embedding model, but it uses DashScope multimodal embedding APIs and should be handled by a future dedicated adapter. Reranking is implemented as a separate adapter endpoint because reranking has a different request and response shape from embeddings.
 
 ## Why Rust instead of Python
 
@@ -523,7 +538,7 @@ Runtime state is split deliberately:
 | Ledger fallback | Local JSONL file from `LEDGER_FALLBACK_FILE` | Keeps serving during a temporary PostgreSQL outage. |
 | Backend recovery probe | `BACKEND_CIRCUIT_OPEN_SECONDS`, default `30` | How long a failed backend stays out of rotation before a half-open test request can let it rejoin. |
 
-PostgreSQL is intentionally narrow: durable control plane, cross-pod Model Group counters, and usage metadata. It is not in the per-token provider streaming path. See the interactive diagrams: [v1.1.0 architecture](docs/architecture/brighto-router-workflow.html) and [PostgreSQL data flow](docs/postgresql-data-flow.html).
+PostgreSQL is intentionally narrow: durable control plane, cross-pod Model Group counters, and usage metadata. It is not in the per-token provider streaming path. See the interactive diagrams: [v1.2.0 architecture](docs/architecture/brighto-router-workflow.html) and [PostgreSQL data flow](docs/postgresql-data-flow.html).
 
 **JSONL** means one JSON record per line.
 
@@ -625,8 +640,8 @@ The script builds the release binary, builds the Docker image, updates `.env` to
 For an official multi-architecture Docker release, publish a manifest that contains both common server platforms:
 
 ```bash
-PUSH_LATEST=1 ./scripts/docker_multiarch_release.sh v1.1.0
-docker buildx imagetools inspect thusinh1969/brighto_airouter:v1.1.0
+PUSH_LATEST=1 ./scripts/docker_multiarch_release.sh v1.2.0
+docker buildx imagetools inspect thusinh1969/brighto_airouter:v1.2.0
 docker buildx imagetools inspect thusinh1969/brighto_airouter:latest
 ```
 

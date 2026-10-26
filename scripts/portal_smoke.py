@@ -95,6 +95,11 @@ def main():
             checks.append((name, ok))
             print(("PASS " if ok else "FAIL ") + name)
 
+        r = requests.get(base + "/")
+        check("portal sends CSP", "content-security-policy" in r.headers)
+        check("portal is no-store", r.headers.get("cache-control") == "no-store")
+        check("portal blocks framing", r.headers.get("x-frame-options") == "DENY")
+
         # Admin list endpoints
         r = requests.get(base + "/admin/teams", headers=admin)
         check("admin /teams lists 1 team", r.status_code == 200 and len(r.json()) == 1)
@@ -122,6 +127,7 @@ def main():
         # New SOTA endpoints: reveal key, settings, add provider.
         r = requests.get(base + "/admin/keys/%d/reveal" % key_id, headers=admin)
         check("GET /admin/keys/{id}/reveal returns plaintext", r.status_code == 200 and r.json()["key"] == key)
+        check("reveal response is no-store", r.headers.get("cache-control") == "no-store")
         r = requests.get(base + "/admin/settings", headers=admin)
         ok = r.status_code == 200 and "version" in r.json() and "database_ok" in r.json()
         check("GET /admin/settings returns runtime info", ok)
@@ -154,6 +160,28 @@ def main():
            "VALUES (%d, 'smoke-req-1', %d, 1, 'smoke-model', 1, 200, 100, 10, false, 50, 100, 3, false, false);"
            % (now, key_id),
            env=dict(os.environ, PGPASSWORD="llm_router_dev"))
+        sh("psql", "-h", "127.0.0.1", "-p", str(pg_port), "-U", "llm_router",
+           "-d", "llm_router", "-q", "-c",
+           "INSERT INTO usage_ledger (ts, request_id, key_id, team_id, model, backend_id, status, "
+           "input_tokens, output_tokens, estimated, ttfb_ms, total_ms, router_overhead_ms, stream, client_aborted) "
+           "VALUES (%d, 'smoke-req-old', 9999, 1, 'smoke-old-model', 1, 500, 7, 1, false, 20, 40, 2, false, false);"
+           % (now - 40 * 86400,),
+           env=dict(os.environ, PGPASSWORD="llm_router_dev"))
+
+        r = requests.get(base + "/admin/usage?days=7", headers=admin)
+        ok = (r.status_code == 200 and len(r.json()) == 1
+              and r.json()[0]["model"] == "smoke-model")
+        check("admin /usage applies days window", ok)
+        r = requests.get(base + "/admin/usage?days=90", headers=admin)
+        check("admin /usage days=90 includes older row", r.status_code == 200 and len(r.json()) == 2)
+        r = requests.get(base + "/admin/stats?days=30&model=smoke-model", headers=admin)
+        ok = (r.status_code == 200 and len(r.json()) == 1
+              and r.json()[0]["model"] == "smoke-model" and r.json()[0]["requests"] == 1)
+        check("admin /stats honors model filter", ok)
+        r = requests.get(base + "/admin/stats?days=30&model=smoke-old-model", headers=admin)
+        check("admin /stats excludes older row", r.status_code == 200 and r.json() == [])
+        r = requests.get(base + "/admin/stats?days=90&model=smoke-old-model&status=error", headers=admin)
+        check("admin /stats honors status filter", r.status_code == 200 and len(r.json()) == 1)
 
         user = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
         r = requests.get(base + "/portal/me", headers=user)

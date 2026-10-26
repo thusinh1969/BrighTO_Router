@@ -1,6 +1,6 @@
 # Provider setup
 
-BrighTO-Router 1.1.0 keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, System One/Decision, and ASR/transcription.
+BrighTO-Router 1.2.0 keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, System One/Decision, and ASR/transcription.
 
 Chat, OpenAI Responses, and Anthropic Messages are distinct native protocols. Select the matching task in Portal; compatible Model Groups preserve that protocol. [Agent client setup](docs/AGENT_CLIENTS.md) covers Claude Code, Codex, Hermes, OpenClaw, and HTTPS trust.
 
@@ -78,7 +78,7 @@ Use **Models & Routes → Create Model Group** when several existing tested rout
 - one local chat route plus one cloud fallback route;
 - several embedding or rerank routes of the same type where one has more capacity than the others.
 
-Rules in 1.1.0:
+Rules in 1.2.0:
 
 - Group members must be existing tested routes.
 - All selected routes must match the selected model type: chat, embedding, rerank, System One, or ASR.
@@ -132,7 +132,7 @@ Create client keys in **API Keys**. Admin can view and copy them again later.
 
 ## Adapter providers
 
-Embeddings, rerank, System One/Decision, and ASR/transcription are first-class 1.1.0 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models` or the same request shape. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route wizard. Model Groups reuse those tested routes and do not ask for provider keys.
+Embeddings, rerank, System One/Decision, and ASR/transcription are first-class 1.2.0 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models` or the same request shape. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route wizard. Model Groups reuse those tested routes and do not ask for provider keys.
 
 System One routes use `/v1/systemone` and `/v1/decisions` for Ollaya/Laya, Jev/DJev-style, or TypeSafe System One-compatible endpoints. Local Ollaya/Laya can run with no API key; hosted endpoints normally use Bearer auth.
 

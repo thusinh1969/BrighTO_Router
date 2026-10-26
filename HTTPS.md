@@ -26,7 +26,7 @@ The helper creates these files:
 | File | Purpose |
 |---|---|
 | `ssl/fullchain.pem` | Server certificate followed by the local CA certificate; mounted into Docker. |
-| `ssl/privkey.pem` | Server private key; keep it on the server. |
+| `ssl/privkey.pem` | Server private key; written `0600`. `start.sh` grants the router container uid `10001` read access via a POSIX ACL, falling back to `0644` with a warning if ACLs are unavailable. |
 | `ssl/ca.pem` | Public CA certificate; distribute it to clients that must trust this server. |
 
 The temporary CA private key is removed after signing. Running the helper again creates a new CA; clients must trust the new `ca.pem`. A hostname or IP used by clients must appear in the server certificate. Use the same hostname in the helper, Portal URL, and client configuration.

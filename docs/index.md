@@ -27,6 +27,7 @@ Most teams do not need a large hosted AI platform to start. They need a fast, un
 - Round-robin and weighted Model Groups for load balancing
 - Team API keys, expiry, token budgets, RPM limits, and concurrency limits
 - PostgreSQL usage ledger and Portal dashboard
+- Hardened admin auth (constant-time key check, per-IP rate limiting) and Portal security headers in 1.2.0
 - No prompt or response content stored by default
 - One-line Docker install with amd64 and arm64 images; Linux servers, Windows through Docker Desktop/WSL2, and macOS through Docker Desktop
 
@@ -44,7 +45,7 @@ http://127.0.0.1:18080/
 
 ## Architecture
 
-- [v1.1.0 architecture](architecture/brighto-router-workflow.html) — Portal, Admin API, PostgreSQL snapshot, Rust hot path, adapters, Model Groups, SystemOne, ledger, and release gates.
+- [v1.2.0 architecture](architecture/brighto-router-workflow.html) — Portal, Admin API, PostgreSQL snapshot, Rust hot path, adapters, Model Groups, SystemOne, ledger, and release gates.
 - [PostgreSQL data flow](postgresql-data-flow.html) — durable control plane, Model Group counters, usage ledger, and JSONL fallback.
 - [Python SDK and API examples](API_EXAMPLES.md) — one-file client for chat, streaming, Responses, embeddings, rerank, ASR, System One, and Anthropic Messages, plus a Quyết backend example.
 - [Load-balancing test notes](REAL_LOAD_BALANCING_TESTS.md) — round-robin and weighted Model Group validation.
@@ -52,8 +53,8 @@ http://127.0.0.1:18080/
 ## Repository and Docker image
 
 - GitHub: [thusinh1969/BrighTO_Router](https://github.com/thusinh1969/BrighTO_Router)
-- Docker: `thusinh1969/brighto_airouter:v1.1.0` for `linux/amd64` and `linux/arm64`
-- Release: `v1.1.0`
+- Docker: `thusinh1969/brighto_airouter:v1.2.0` for `linux/amd64` and `linux/arm64`
+- Release: `v1.2.0`
 
 ## Benchmarks
 

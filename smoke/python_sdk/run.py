@@ -144,10 +144,14 @@ def main():
         private.chmod(0o644)  # Ephemeral test certificate, readable by non-root Docker user.
         try:
             command("docker", "run", "--rm", "-d", "--name", pg, "-e", "POSTGRES_USER=sdk", "-e", "POSTGRES_PASSWORD=sdk-test-only", "-p", f"127.0.0.1:{pg_port}:5432", "postgres:16-alpine")
-            for _ in range(60):
+            pg_ready = False
+            for _ in range(120):
                 if subprocess.run(["docker", "exec", pg, "pg_isready", "-U", "sdk"], capture_output=True).returncode == 0:
+                    pg_ready = True
                     break
                 time.sleep(0.5)
+            if not pg_ready:
+                raise RuntimeError("temporary Postgres did not become ready for image smoke")
             mock_log = (temp / "mock.log").open("w")
             mock = subprocess.Popen([str(browser_smoke.MOCK_BIN)], cwd=REPO, env=dict(env, MOCK_ADDR=f"0.0.0.0:{mock_port}"), stdout=mock_log, stderr=subprocess.STDOUT)
             mock_base = f"http://{hostname}:{mock_port}"

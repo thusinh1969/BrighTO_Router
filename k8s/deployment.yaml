@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: router
-          image: thusinh1969/brighto_airouter:v1
+          image: thusinh1969/brighto_airouter:v1.2.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

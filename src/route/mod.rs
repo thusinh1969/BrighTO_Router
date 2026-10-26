@@ -2,6 +2,7 @@
 //! acquire() trả BackendLease (RAII): pick + inc inflight trong một guard, Drop -> dec inflight.
 
 use std::collections::HashMap;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -821,6 +822,9 @@ impl RamBackendPool {
                 // Route-level credentials are resolved later on the real request, so an
                 // unauthenticated health probe must not open the backend circuit.
                 HealthProbeResult::AuthRequired => {}
+                // Service is reachable but does not implement /health or /v1/models
+                // (for example an ASR or rerank server). Reachability is not failure.
+                HealthProbeResult::Unknown => {}
             }
         }
     }
@@ -850,17 +854,25 @@ fn is_local_host(base_url: &str) -> bool {
             _ => host, // bare hostname/IPv4, or bare IPv6
         },
     };
-    host == "127.0.0.1"
-        || host == "localhost"
-        || host.starts_with("10.")
-        || host.starts_with("192.168.")
-        || host.starts_with("172.16.")
-        || host.starts_with("172.17.")
-        || host.starts_with("172.18.")
-        || host.starts_with("172.19.")
-        || host.starts_with("172.2")
-        || host.starts_with("172.3")
-        || host == "::1"
+
+    // Parse IP literal instead of string prefixes. The old "172.2"/"172.3" prefixes
+    // also matched public addresses such as 172.200.x.x and 172.3.x.x.
+    if let Ok(ip) = host.parse::<Ipv4Addr>() {
+        return ip.is_loopback() || ip.is_private() || ip.is_unspecified();
+    }
+    if let Ok(ip) = host.parse::<Ipv6Addr>() {
+        let unique_local = (ip.segments()[0] & 0xfe00) == 0xfc00;
+        return ip.is_loopback() || ip.is_unspecified() || unique_local;
+    }
+
+    // LAN services are commonly addressed by single-label DNS names or *.local,
+    // e.g. http://a6000:8020/v1 or http://llm-host.local:8088/v1. Those are the
+    // local/no-auth backends this probe exists for; cloud APIs always contain a dot.
+    !host.is_empty()
+        && (!host.contains('.')
+            || host.ends_with(".local")
+            || host.ends_with(".lan")
+            || host.ends_with(".internal"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -868,11 +880,15 @@ enum HealthProbeResult {
     Healthy,
     Unhealthy,
     AuthRequired,
+    /// Reachable, but the service does not expose /health or /v1/models.
+    Unknown,
 }
 
 async fn check_backend_health(client: &reqwest::Client, base_url: &str) -> HealthProbeResult {
     let base = base_url.trim_end_matches('/');
     let mut auth_required = false;
+    let mut probe_unsupported = false;
+    let mut server_error = false;
 
     if let Ok(resp) = client
         .get(format!("{base}/health"))
@@ -880,27 +896,31 @@ async fn check_backend_health(client: &reqwest::Client, base_url: &str) -> Healt
         .send()
         .await
     {
-        if resp.status().is_success() {
-            return HealthProbeResult::Healthy;
-        }
-        if matches!(resp.status().as_u16(), 401 | 403) {
-            auth_required = true;
+        match resp.status().as_u16() {
+            200..=299 => return HealthProbeResult::Healthy,
+            401 | 403 => auth_required = true,
+            404 | 405 => probe_unsupported = true,
+            status if status >= 500 || status == 429 => server_error = true,
+            _ => probe_unsupported = true,
         }
     }
 
     for url in model_probe_urls(base) {
         if let Ok(resp) = client.get(url).timeout(Duration::from_secs(3)).send().await {
-            if resp.status().is_success() {
-                return HealthProbeResult::Healthy;
-            }
-            if matches!(resp.status().as_u16(), 401 | 403) {
-                auth_required = true;
+            match resp.status().as_u16() {
+                200..=299 => return HealthProbeResult::Healthy,
+                401 | 403 => auth_required = true,
+                404 | 405 => probe_unsupported = true,
+                status if status >= 500 || status == 429 => server_error = true,
+                _ => probe_unsupported = true,
             }
         }
     }
 
     if auth_required {
         HealthProbeResult::AuthRequired
+    } else if probe_unsupported && !server_error {
+        HealthProbeResult::Unknown
     } else {
         HealthProbeResult::Unhealthy
     }
@@ -1049,6 +1069,37 @@ mod tests {
         );
     }
 
+    #[test]
+    fn local_health_targets_include_lan_hostnames_and_private_ips() {
+        for base in [
+            "http://127.0.0.1:8088/v1",
+            "http://localhost:8088/v1",
+            "http://0.0.0.0:8088/v1",
+            "http://10.0.0.5:8088/v1",
+            "http://172.20.1.5:8088/v1",
+            "http://192.168.1.20:8088/v1",
+            "http://[::1]:8088/v1",
+            "http://a6000:8020/v1",
+            "http://llm-host.local:8088/v1",
+        ] {
+            assert!(
+                is_local_host(base),
+                "{base} must be health-checked as local"
+            );
+        }
+        for base in [
+            "https://api.openai.com",
+            "https://api.example.com/v1",
+            "http://172.200.1.5:8088/v1",
+            "http://172.3.1.5:8088/v1",
+        ] {
+            assert!(
+                !is_local_host(base),
+                "{base} must not be treated as a local no-auth backend"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn local_auth_required_health_probe_does_not_mark_unhealthy() {
         let app = axum::Router::new().route(
@@ -1066,6 +1117,50 @@ mod tests {
 
         let result = check_backend_health(&client, &format!("http://{addr}/v1")).await;
         assert_eq!(result, HealthProbeResult::AuthRequired);
+    }
+
+    #[tokio::test]
+    async fn local_probe_without_health_endpoints_is_unknown_not_unhealthy() {
+        let app = axum::Router::new()
+            .route(
+                "/health",
+                axum::routing::get(|| async { axum::http::StatusCode::NOT_FOUND }),
+            )
+            .route(
+                "/v1/models",
+                axum::routing::get(|| async { axum::http::StatusCode::NOT_FOUND }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let client = reqwest::Client::new();
+
+        let result = check_backend_health(&client, &format!("http://{addr}/v1")).await;
+        assert_eq!(result, HealthProbeResult::Unknown);
+    }
+
+    #[tokio::test]
+    async fn local_probe_server_error_is_unhealthy() {
+        let app = axum::Router::new()
+            .route(
+                "/health",
+                axum::routing::get(|| async { axum::http::StatusCode::INTERNAL_SERVER_ERROR }),
+            )
+            .route(
+                "/v1/models",
+                axum::routing::get(|| async { axum::http::StatusCode::INTERNAL_SERVER_ERROR }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        let client = reqwest::Client::new();
+
+        let result = check_backend_health(&client, &format!("http://{addr}/v1")).await;
+        assert_eq!(result, HealthProbeResult::Unhealthy);
     }
 
     #[tokio::test]

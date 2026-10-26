@@ -356,6 +356,15 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           const issued = (await adminFetch('/admin/keys')).find(k => k.owner === 'audit@example.com');
           const originalKey = (await adminFetch('/admin/keys/' + issued.id + '/reveal')).key;
           let keyRow = page.locator('.key-list-table tbody tr').filter({{ hasText: 'audit@example.com' }}).first();
+          const keyTableText = await page.locator('.key-list-table').innerText();
+          if (/sk-brighto-[0-9a-f]{{16,}}/.test(keyTableText)) {{
+            throw new Error('plaintext API key must not be rendered until Reveal is clicked');
+          }}
+          await keyRow.getByRole('button', {{ name: /^Reveal key$/ }}).click();
+          const revealModal = page.locator('#modal-overlay .modal').last();
+          await expect(revealModal.locator('.key-reveal')).toContainText(/sk-brighto-/);
+          await revealModal.getByRole('button', {{ name: /^Close$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
           await keyRow.getByRole('button', {{ name: /^Edit$/ }}).click();
           modal = page.locator('#modal-overlay .modal').last();
           await modal.locator('input').first().fill('audit-renamed@example.com');
