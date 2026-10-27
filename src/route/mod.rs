@@ -1002,6 +1002,7 @@ mod tests {
             protocol: "openai_chat".into(),
             provider_key: None,
             routing_policy: RoutingPolicy::LeastLoadedWeighted,
+            accept_anthropic_messages: false,
             endpoints: std::collections::HashMap::new(),
         }
     }
@@ -1224,6 +1225,7 @@ mod tests {
             protocol: "openai_chat".into(),
             provider_key: None,
             routing_policy: RoutingPolicy::LeastLoadedWeighted,
+            accept_anthropic_messages: false,
             endpoints: std::collections::HashMap::new(),
         }
     }

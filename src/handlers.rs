@@ -17,10 +17,11 @@ use serde::Deserialize;
 use serde_json::value::RawValue;
 
 use crate::auth;
+use crate::bridge;
 #[cfg(test)]
 use crate::contract::RoutingPolicy;
 use crate::contract::{ApiKey, AppState, BudgetError, ModelRoute, ProviderProtocol};
-use crate::proxy::{self, ProxyContext, ProxyRequestBody};
+use crate::proxy::{self, ProxyContext, ProxyRequestBody, ResponseDialect};
 
 /// Chỉ parse field top-level, bỏ qua toàn bộ phần còn lại (không cấp phát cho skipped fields).
 /// stream_options dùng RawValue để biết top-level có key này hay không (serde chỉ map field top-level).
@@ -339,6 +340,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/systemone", post(systemone))
         .route("/v1/decisions", post(decisions))
         .route("/v1/messages", post(messages))
+        .route("/v1/messages/count_tokens", post(messages_count_tokens))
         .route("/v1/models", get(models))
         .route("/metrics", get(metrics))
         .route("/healthz", get(healthz))
@@ -381,6 +383,91 @@ async fn decisions(State(state): State<Arc<AppState>>, req: Request<Body>) -> Re
 }
 async fn messages(State(state): State<Arc<AppState>>, req: Request<Body>) -> Response<Body> {
     handle_generate(state, req, "/v1/messages").await
+}
+
+/// Claude Code asks for a token estimate before sending a large conversation.
+/// The router answers locally for both native Anthropic routes and bridged
+/// OpenAI-chat routes. This is deliberately approximate and never touches the
+/// budget or the usage ledger.
+async fn messages_count_tokens(
+    State(state): State<Arc<AppState>>,
+    req: Request<Body>,
+) -> Response<Body> {
+    let request_id = generate_request_id();
+    let fail =
+        |status: StatusCode, message: &str| build_error_mode(&request_id, status, message, true);
+    let (parts, body) = req.into_parts();
+
+    let Some(api_key_plain) = extract_api_key(&parts.headers) else {
+        return fail(StatusCode::UNAUTHORIZED, "missing API key");
+    };
+    let key_hash = auth::hash_key(&api_key_plain);
+    let snapshot = state.cfg.load_full();
+    let key: ApiKey = match auth::authorize_key(&snapshot, &key_hash) {
+        Ok(key) => key,
+        Err(_) => return fail(StatusCode::UNAUTHORIZED, "invalid API key"),
+    };
+
+    if let Some(len) = parse_content_length(&parts.headers)
+        && len > state.max_body_bytes as u64
+    {
+        return fail(StatusCode::PAYLOAD_TOO_LARGE, "request body too large");
+    }
+    let body =
+        match collect_remaining_body(Bytes::new(), body.into_data_stream(), state.max_body_bytes)
+            .await
+        {
+            Ok(body) => body,
+            Err(BodyReadError::TooLarge) => {
+                return fail(StatusCode::PAYLOAD_TOO_LARGE, "request body too large");
+            }
+            Err(BodyReadError::ReadFailed) | Err(BodyReadError::InvalidJson) => {
+                return fail(StatusCode::BAD_REQUEST, "request body read failed");
+            }
+        };
+    let head: RequestHead<'_> = match serde_json::from_slice(&body) {
+        Ok(head) => head,
+        Err(_) => return fail(StatusCode::BAD_REQUEST, "invalid JSON"),
+    };
+    let model = head.model;
+    if model.is_empty() {
+        return fail(StatusCode::BAD_REQUEST, "model is required");
+    }
+    if !auth::model_allowed(&key, model) {
+        return fail(StatusCode::FORBIDDEN, "model not allowed for this key");
+    }
+    let Some(route) = snapshot.routes.get(model) else {
+        return fail(StatusCode::NOT_FOUND, "model not configured");
+    };
+    if !route.enabled {
+        return fail(StatusCode::FORBIDDEN, "model is disabled");
+    }
+    let protocol = ProviderProtocol::parse(&route.protocol);
+    let supported = protocol == ProviderProtocol::AnthropicMessages
+        || (route.accept_anthropic_messages && protocol.is_openai_chat_family());
+    if !supported {
+        return fail(
+            StatusCode::BAD_REQUEST,
+            &format!("model '{model}' does not accept Anthropic Messages"),
+        );
+    }
+    let input_tokens = match bridge::tokens::estimate_input_tokens(&body, route.chars_per_token) {
+        Ok(tokens) => tokens,
+        Err(error) => {
+            return fail(StatusCode::BAD_REQUEST, &error.message());
+        }
+    };
+    let mut resp = (
+        StatusCode::OK,
+        axum::Json(serde_json::json!({"input_tokens": input_tokens})),
+    )
+        .into_response();
+    if let Ok(value) = header::HeaderValue::from_str(&request_id) {
+        resp.headers_mut()
+            .insert("x-router-request-id", value.clone());
+        resp.headers_mut().insert("request-id", value);
+    }
+    resp
 }
 
 async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -492,18 +579,22 @@ async fn handle_generate(
 ) -> Response<Body> {
     let started = Instant::now();
     let request_id = generate_request_id();
+    let anthropic_errors = incoming_path == "/v1/messages";
+    let fail = |status: StatusCode, message: &str| {
+        build_error_mode(&request_id, status, message, anthropic_errors)
+    };
 
     let (mut parts, body) = req.into_parts();
 
     // 1. Auth key — 401 nhanh trước khi đọc body (không tốn chi phí đọc 200K body cho key sai).
     let Some(api_key_plain) = extract_api_key(&parts.headers) else {
-        return build_error(&request_id, StatusCode::UNAUTHORIZED, "missing API key");
+        return fail(StatusCode::UNAUTHORIZED, "missing API key");
     };
     let key_hash = auth::hash_key(&api_key_plain);
     let snapshot = state.cfg.load_full();
     let key: ApiKey = match auth::authorize_key(&snapshot, &key_hash) {
         Ok(k) => k,
-        Err(_) => return build_error(&request_id, StatusCode::UNAUTHORIZED, "invalid API key"),
+        Err(_) => return fail(StatusCode::UNAUTHORIZED, "invalid API key"),
     };
 
     // 2. Đọc request head. Large non-stream bodies can stay as a streaming upload candidate;
@@ -517,45 +608,33 @@ async fn handle_generate(
     {
         Ok(b) => b,
         Err(BodyReadError::TooLarge) => {
-            return build_error(
-                &request_id,
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "request body too large",
-            );
+            return fail(StatusCode::PAYLOAD_TOO_LARGE, "request body too large");
         }
         Err(BodyReadError::ReadFailed) => {
-            return build_error(
-                &request_id,
-                StatusCode::BAD_REQUEST,
-                "request body read failed",
-            );
+            return fail(StatusCode::BAD_REQUEST, "request body read failed");
         }
         Err(BodyReadError::InvalidJson) => {
-            return build_error(&request_id, StatusCode::BAD_REQUEST, "invalid JSON");
+            return fail(StatusCode::BAD_REQUEST, "invalid JSON");
         }
     };
     let head = incoming.head();
     let model_name = head.model.clone();
     let model = model_name.as_str();
     if model.is_empty() {
-        return build_error(&request_id, StatusCode::BAD_REQUEST, "model is required");
+        return fail(StatusCode::BAD_REQUEST, "model is required");
     }
 
     // 3. Quyền model.
     if !auth::model_allowed(&key, model) {
-        return build_error(
-            &request_id,
-            StatusCode::FORBIDDEN,
-            "model not allowed for this key",
-        );
+        return fail(StatusCode::FORBIDDEN, "model not allowed for this key");
     }
 
     // 4. Route.
     let Some(route) = snapshot.routes.get(model).cloned() else {
-        return build_error(&request_id, StatusCode::NOT_FOUND, "model not configured");
+        return fail(StatusCode::NOT_FOUND, "model not configured");
     };
     if !route.enabled {
-        return build_error(&request_id, StatusCode::FORBIDDEN, "model is disabled");
+        return fail(StatusCode::FORBIDDEN, "model is disabled");
     }
 
     // Effective-enabled guard (CODEX lifecycle): route enabled nhưng mọi backend tham chiếu đều
@@ -577,8 +656,7 @@ async fn handle_generate(
         })
         .unwrap_or(false);
     if !any_backend_enabled {
-        return build_error(
-            &request_id,
+        return fail(
             StatusCode::FORBIDDEN,
             "model is disabled: no enabled provider backend",
         );
@@ -586,57 +664,108 @@ async fn handle_generate(
 
     // Protocol endpoint guard (CODEX provider-protocol taxonomy): route chỉ chấp nhận endpoint
     // đã khai báo. Gọi sai endpoint -> 400 rõ ràng, KHÔNG forward shape sai lên provider.
+    // The one exception is the explicit Claude CLI bridge: an OpenAI-chat route
+    // with accept_anthropic_messages accepts /v1/messages and translates it.
     let protocol = ProviderProtocol::parse(&route.protocol);
-    if !protocol.accepts_incoming_path(incoming_path) {
-        return build_error(
-            &request_id,
-            StatusCode::BAD_REQUEST,
-            &format!(
+    let bridge_request = incoming_path == "/v1/messages"
+        && route.accept_anthropic_messages
+        && protocol.is_openai_chat_family();
+    if !bridge_request && !protocol.accepts_incoming_path(incoming_path) {
+        let message = if incoming_path == "/v1/messages" && protocol.is_openai_chat_family() {
+            format!(
+                "model '{model}' does not accept Anthropic Messages; enable 'Also accept Anthropic Messages (Claude CLI)' on this route"
+            )
+        } else {
+            format!(
                 "model '{model}' is a {} route (call {})",
                 protocol.label(),
                 protocol.incoming_path()
-            ),
-        );
+            )
+        };
+        return fail(StatusCode::BAD_REQUEST, &message);
     }
 
     // 5. Budget reserve + concurrency (RAII: nếu mọi đường return sau đây, tự rollback/release).
     // Chỉ stream upload khi proxy chắc chắn không phải sửa body. Nếu route cần rewrite
     // model/provider adapter, phải buffer để rewrite; nếu không, request lớn sẽ bị 400
     // "streaming upload requires no model or adapter body rewrite" thay vì được phục vụ.
-    let allow_streaming_upload = route.backend_ids.len() == 1
+    // Bridge requests are always buffered because the body is translated and its
+    // `model`/`stream_options` fields change.
+    let allow_streaming_upload = !bridge_request
+        && route.backend_ids.len() == 1
         && route.fallback_backend_id.is_none()
         && route.endpoints.is_empty()
         && !json_proxy_body_needs_rewrite(&route, model, protocol)
         && protocol != ProviderProtocol::SystemOne;
     let body_len = incoming.body_len();
-    let est_tokens = estimate_tokens_len(body_len, &route);
-    let (head, proxy_body) = match incoming
+    let mut est_tokens = estimate_tokens_len(body_len, &route);
+    let (head, mut proxy_body) = match incoming
         .into_proxy_body(allow_streaming_upload, state.max_body_bytes)
         .await
     {
         Ok(v) => v,
         Err(BodyReadError::TooLarge) => {
-            return build_error(
-                &request_id,
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "request body too large",
-            );
+            return fail(StatusCode::PAYLOAD_TOO_LARGE, "request body too large");
         }
         Err(BodyReadError::ReadFailed) => {
-            return build_error(
-                &request_id,
-                StatusCode::BAD_REQUEST,
-                "request body read failed",
-            );
+            return fail(StatusCode::BAD_REQUEST, "request body read failed");
         }
         Err(BodyReadError::InvalidJson) => {
-            return build_error(&request_id, StatusCode::BAD_REQUEST, "invalid JSON");
+            return fail(StatusCode::BAD_REQUEST, "invalid JSON");
         }
     };
+    // Claude CLI / Claude Code request: fully buffer, translate Anthropic
+    // Messages -> OpenAI Chat, and switch the upstream path. The public model
+    // name is preserved for auth/route selection and rewritten by the normal
+    // provider-model path below or by the proxy for group endpoints.
+    let mut bridge_context: Option<bridge::BridgeContext> = None;
+    if bridge_request {
+        let original = match &proxy_body {
+            ProxyRequestBody::Buffered(body) => body.clone(),
+            ProxyRequestBody::Streaming { .. } => {
+                return fail(
+                    StatusCode::BAD_REQUEST,
+                    "Claude bridge requires a buffered request body",
+                );
+            }
+        };
+        let translated = match bridge::request::anthropic_to_openai(&original, model) {
+            Ok(translated) => translated,
+            Err(error) => {
+                return fail(
+                    StatusCode::from_u16(error.status()).unwrap_or(StatusCode::BAD_REQUEST),
+                    &error.message(),
+                );
+            }
+        };
+        est_tokens = bridge::tokens::estimate_input_tokens(&original, route.chars_per_token)
+            .unwrap_or(est_tokens);
+        proxy_body = ProxyRequestBody::Buffered(Bytes::from(translated));
+        // Anthropic clients add query parameters such as `?beta=true`; they
+        // are Anthropic protocol flags and must not leak into an OpenAI Chat
+        // upstream URL. Strict OpenAI-compatible servers 404 on them.
+        parts.uri = Uri::from_static("/v1/chat/completions");
+        // Anthropic client headers describe the Anthropic protocol and must not
+        // leak into the OpenAI upstream request.
+        let anthropic_headers: Vec<HeaderName> = parts
+            .headers
+            .keys()
+            .filter(|name| name.as_str().starts_with("anthropic-"))
+            .cloned()
+            .collect();
+        for name in anthropic_headers {
+            parts.headers.remove(name);
+        }
+        bridge_context = Some(bridge::BridgeContext {
+            public_model: model.to_string(),
+            request_id: request_id.clone(),
+            estimated_input_tokens: est_tokens,
+        });
+    }
+
     // Viết lại top-level "model" từ public name -> provider model name (nếu khác) cho body buffered.
     // Adapter JSON protocols may also need tiny provider-specific normalization. Streaming upload
     // stays narrow: it must not need body mutation.
-    let (head, mut proxy_body) = (head, proxy_body);
     match &proxy_body {
         ProxyRequestBody::Buffered(body) => {
             if route.endpoints.is_empty() && json_proxy_body_needs_rewrite(&route, model, protocol)
@@ -644,8 +773,7 @@ async fn handle_generate(
                 if let Some(b) = rewrite_json_proxy_body(body, &route, protocol) {
                     proxy_body = ProxyRequestBody::Buffered(Bytes::from(b));
                 } else {
-                    return build_error(
-                        &request_id,
+                    return fail(
                         StatusCode::BAD_REQUEST,
                         "could not rewrite adapter request body",
                     );
@@ -659,8 +787,7 @@ async fn handle_generate(
                 || protocol == ProviderProtocol::QwenRerank
                 || protocol == ProviderProtocol::SystemOne
             {
-                return build_error(
-                    &request_id,
+                return fail(
                     StatusCode::BAD_REQUEST,
                     "streaming upload requires no model or adapter body rewrite",
                 );
@@ -671,8 +798,7 @@ async fn handle_generate(
         parts.uri = match qwen_rerank_upstream_uri(&route.provider_model_name) {
             Ok(uri) => uri,
             Err(_) => {
-                return build_error(
-                    &request_id,
+                return fail(
                     StatusCode::BAD_REQUEST,
                     "could not build Qwen rerank upstream path",
                 );
@@ -681,19 +807,16 @@ async fn handle_generate(
     }
 
     let stream = head.stream;
-    let stream_options_present = head.stream_options_present;
+    // The bridge translator always adds stream_options when stream=true.
+    let stream_options_present = head.stream_options_present || bridge_request;
 
     let reservation = match state.budget.reserve(&key, model, est_tokens) {
         Ok(r) => Some(r),
         Err(BudgetError::BudgetExceeded { .. }) => {
-            return build_error(
-                &request_id,
-                StatusCode::TOO_MANY_REQUESTS,
-                "budget exceeded",
-            );
+            return fail(StatusCode::TOO_MANY_REQUESTS, "budget exceeded");
         }
         Err(BudgetError::RateLimited { retry_after }) => {
-            let mut resp = build_error(&request_id, StatusCode::TOO_MANY_REQUESTS, "rate limited");
+            let mut resp = fail(StatusCode::TOO_MANY_REQUESTS, "rate limited");
             if let Ok(v) = header::HeaderValue::from_str(&retry_after.as_secs().to_string()) {
                 resp.headers_mut().insert(header::RETRY_AFTER, v);
             }
@@ -703,11 +826,7 @@ async fn handle_generate(
     let concurrency = match state.budget.acquire_concurrency(&key) {
         Some(g) => Some(g),
         None => {
-            return build_error(
-                &request_id,
-                StatusCode::TOO_MANY_REQUESTS,
-                "concurrency limit reached",
-            );
+            return fail(StatusCode::TOO_MANY_REQUESTS, "concurrency limit reached");
         }
     };
 
@@ -722,6 +841,12 @@ async fn handle_generate(
         stream_options_present,
         protocol,
         rewrite_model_in_proxy,
+        bridge: bridge_context,
+        response_dialect: if anthropic_errors {
+            ResponseDialect::Anthropic
+        } else {
+            ResponseDialect::OpenAi
+        },
         reservation,
         concurrency,
         start: started,
@@ -891,6 +1016,8 @@ async fn handle_multipart_adapter(
         stream_options_present: true,
         protocol,
         rewrite_model_in_proxy: false,
+        bridge: None,
+        response_dialect: ResponseDialect::OpenAi,
         reservation,
         concurrency,
         start: started,
@@ -1063,6 +1190,7 @@ fn rewrite_model_field(body: &[u8], new_model: &str) -> Option<Vec<u8>> {
         protocol: "openai_chat".to_string(),
         provider_key: None,
         routing_policy: RoutingPolicy::LeastLoadedWeighted,
+        accept_anthropic_messages: false,
         endpoints: std::collections::HashMap::new(),
     };
     rewrite_json_proxy_body(body, &route, ProviderProtocol::OpenAiChat)
@@ -1087,15 +1215,40 @@ fn estimate_tokens_len(body_len: usize, route: &ModelRoute) -> u64 {
 }
 
 fn build_error(request_id: &str, status: StatusCode, message: &str) -> Response<Body> {
-    let body = serde_json::json!({
-        "error": {
-            "message": message,
-            "type": "invalid_request_error"
-        }
-    });
-    let mut resp = (status, axum::Json(body)).into_response();
+    build_error_mode(request_id, status, message, false)
+}
+
+/// OpenAI clients keep the historical `{"error":{"message","type"}}` body.
+/// Anthropic clients (Claude Code) require `{"type":"error","error":{...}}`;
+/// sending the OpenAI envelope to them breaks their error display/retry logic.
+fn build_error_mode(
+    request_id: &str,
+    status: StatusCode,
+    message: &str,
+    anthropic: bool,
+) -> Response<Body> {
+    let mut resp = if anthropic {
+        let body = bridge::anthropic_error_body(status.as_u16(), message);
+        Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(Body::from(body))
+            .expect("static error response must build")
+    } else {
+        let body = serde_json::json!({
+            "error": {
+                "message": message,
+                "type": "invalid_request_error"
+            }
+        });
+        (status, axum::Json(body)).into_response()
+    };
     if let Ok(v) = header::HeaderValue::from_str(request_id) {
         resp.headers_mut().insert("x-router-request-id", v);
+    }
+    if anthropic && let Ok(v) = header::HeaderValue::from_str(request_id) {
+        resp.headers_mut().insert("request-id", v);
     }
     resp
 }
@@ -1171,6 +1324,7 @@ mod tests {
             protocol: "openai_chat".to_string(),
             provider_key: None,
             routing_policy: RoutingPolicy::LeastLoadedWeighted,
+            accept_anthropic_messages: false,
             endpoints: std::collections::HashMap::new(),
         }
     }
@@ -1299,6 +1453,7 @@ mod tests {
             protocol: "openai_chat".to_string(),
             provider_key: None,
             routing_policy: RoutingPolicy::LeastLoadedWeighted,
+            accept_anthropic_messages: false,
             endpoints: std::collections::HashMap::new(),
         };
         let body = Bytes::from_static(b"hello world");

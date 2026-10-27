@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Docker tag to publish, for example v1.2.0
+        description: Docker tag to publish, for example v1.3.0
         required: true
-        default: v1.2.0
+        default: v1.3.0
       push_latest:
         description: Also publish latest
         type: boolean

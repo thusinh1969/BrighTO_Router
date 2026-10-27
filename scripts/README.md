@@ -9,7 +9,7 @@ Keep scripts here small, explicit, and single-purpose. Put user-facing smoke tes
 | Script | Purpose | Typical command |
 |---|---|---|
 | `rebuild_docker_local.sh` | Rebuild the Rust release binary, build a local Docker image, update `.env` to use it with pull policy `never`, and restart the router. | `./scripts/rebuild_docker_local.sh my-brighto-router:dev` |
-| `docker_multiarch_release.sh` | Build both architectures, run HTTP/HTTPS API and Playwright checks on each, then publish the multi-architecture tag. Set `PUSH_LATEST=1` to also update `latest`. | `PUSH_LATEST=1 ./scripts/docker_multiarch_release.sh v1.2.0` |
+| `docker_multiarch_release.sh` | Build both architectures, run HTTP/HTTPS API and Playwright checks on each, then publish the multi-architecture tag. Set `PUSH_LATEST=1` to also update `latest`. | `PUSH_LATEST=1 ./scripts/docker_multiarch_release.sh v1.3.0` |
 | `tls_smoke.sh` | Check HTTP/HTTPS router health and TLS behavior. | `./scripts/tls_smoke.sh` |
 | `test_postgres.sh` | Run PostgreSQL-backed integration checks. | `./scripts/test_postgres.sh` |
 

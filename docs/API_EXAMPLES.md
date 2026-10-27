@@ -102,6 +102,20 @@ with Router() as client:
 
 Each method calls its own API shape. `respond()` accepts structured input as well as text. Responses function calls and Anthropic tool-use blocks retain their provider format in `.tool_calls` and `.raw`.
 
+`<public-anthropic-route>` can be a native Anthropic Messages route or an OpenAI Chat route with **Also accept Anthropic Messages (Claude CLI)** enabled. Both use `/v1/messages`; the bridge route translates the same request and response shapes. The optional token estimate endpoint is also available through the normal HTTP helper:
+
+```python
+with Router() as client:
+    estimate = client.post(
+        "/messages/count_tokens",
+        model="<public-anthropic-or-bridge-route>",
+        messages=[{"role": "user", "content": "Estimate this request."}],
+    )
+    print(estimate["input_tokens"])
+```
+
+The estimate is local: BrighTO does not call the provider and does not consume budget for `count_tokens`.
+
 ## Embeddings
 
 ```python

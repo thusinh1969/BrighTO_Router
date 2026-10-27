@@ -126,7 +126,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           return {{ chat: 'local_openai_chat', completion: 'openai_completions', responses: 'openai_responses', messages: 'anthropic_messages', embedding: 'openai_embeddings', rerank: 'openai_rerank', asr: 'openai_audio_transcriptions', systemone: 'systemone' }}[task] || 'openai_chat';
         }}
 
-        async function createCustomRoute(page, task, providerModel, publicName, baseUrl = mockURL) {{
+        async function createCustomRoute(page, task, providerModel, publicName, baseUrl = mockURL, acceptAnthropic = false) {{
           const expectedProtocol = expectedProtocolForTask(task);
           let testPayload = null;
           let savePayload = null;
@@ -153,6 +153,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
                 expect(body.auth_mode).toBe('none');
                 expect(body.provider_key).toBeUndefined();
                 expect(body.provider_key_ref).toBeUndefined();
+                expect(body.accept_anthropic_messages).toBe(acceptAnthropic);
               }}
             }}
             await route.continue();
@@ -161,11 +162,19 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           const selects = modal.locator('select');
           await selects.nth(0).selectOption(task);
           await selects.nth(1).selectOption('custom-llm');
+          const bridgeToggle = modal.locator('#route-bridge-toggle');
+          if (task === 'chat') {{
+            await expect(bridgeToggle).toBeVisible();
+            if (acceptAnthropic) await bridgeToggle.check();
+            else await expect(bridgeToggle).not.toBeChecked();
+          }} else {{
+            await expect(bridgeToggle).toBeHidden();
+          }}
           const inputs = modal.locator('input');
           await inputs.nth(0).fill(baseUrl);
           await modal.getByRole('button', {{ name: /Load models/i }}).click();
           await choosePickerModel(page, providerModel);
-          await inputs.nth(3).fill(publicName);
+          await inputs.nth(4).fill(publicName);
           await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
           await expect(modal.locator('.connection-status')).toContainText('Connected', {{ timeout: 15000 }});
           expect(testPayload).toBeTruthy();
@@ -186,6 +195,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
                 payload = body;
                 expect(body.protocol).toBe('openai_chat');
                 expect(body.routing_policy).toBe('weighted_round_robin');
+                expect(body.accept_anthropic_messages).toBe(true);
                 expect(body.endpoints).toHaveLength(2);
                 expect(body.endpoints[0].weight).toBe(2);
                 expect(body.endpoints[1].weight).toBe(1);
@@ -198,6 +208,8 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(modal).toContainText('Add existing tested route');
           await expect(modal).toContainText('No provider key is entered here');
           await expect(modal).not.toContainText('Provider API key');
+          await expect(modal.locator('#group-bridge-toggle')).toBeVisible();
+          await modal.locator('#group-bridge-toggle').check();
           const selects = modal.locator('select');
           await selects.nth(0).selectOption('chat');
           await selects.nth(1).selectOption('weighted_round_robin');
@@ -227,11 +239,13 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(row).toContainText('weighted round robin');
           await expect(row).toContainText('weighted RR');
           await expect(row).toContainText('2 endpoints');
+          await expect(row).toContainText('Claude CLI bridge');
           await row.getByRole('button', {{ name: /^Edit$/ }}).click();
           const editModal = page.locator('#modal-overlay .modal').last();
           await expect(editModal).toContainText('Edit model group');
           await expect(editModal.locator('.route-picker-row')).toHaveCount(2);
           await expect(editModal.locator('.group-weight-input')).toHaveCount(2);
+          await expect(editModal.locator('#group-bridge-toggle')).toBeChecked();
           await editModal.getByRole('button', {{ name: /^Cancel$/ }}).click();
           await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
         }}
@@ -298,10 +312,10 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           }}
           await providerSelect.selectOption('qwen');
           await expect(modal.locator('input').nth(0)).toHaveAttribute('placeholder', /workspace/);
-          await expect(modal.locator('input').nth(2)).toHaveValue('qwen3-rerank');
+          await expect(modal.locator('input').nth(3)).toHaveValue('qwen3-rerank');
           await providerSelect.selectOption('cohere');
-          await expect(modal.locator('input').nth(2)).toHaveValue('rerank-v3.5');
           await expect(modal.locator('input').nth(3)).toHaveValue('rerank-v3.5');
+          await expect(modal.locator('input').nth(4)).toHaveValue('rerank-v3.5');
           await modal.getByRole('button', {{ name: /Load models/i }}).click();
           const picker = page.locator('.picker-overlay .modal').last();
           await expect(picker).toContainText('rerank-v3.5');
@@ -311,7 +325,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await expect(providerSelect.locator('option[value="ollaya"]')).toHaveCount(1);
           await providerSelect.selectOption('ollaya');
           await expect(modal.locator('input').nth(0)).toHaveValue(/11435\/v1/);
-          await expect(modal.locator('input').nth(2)).toHaveValue('laya');
+          await expect(modal.locator('input').nth(3)).toHaveValue('laya');
           await expect(modal).toContainText('System One calls /v1/systemone');
           await modal.getByRole('button', {{ name: 'Cancel' }}).click();
           await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
@@ -420,6 +434,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           const selects = modal.locator('select');
           await expect(selects.nth(0).locator('option[value="messages"]')).toContainText('/v1/messages');
           await selects.nth(0).selectOption('messages');
+          await expect(modal.locator('#group-bridge-toggle')).toBeHidden();
           const choices = await selects.nth(2).locator('option').evaluateAll(items => items.map(x => x.value));
           expect(choices).toContain('audit-messages');
           expect(choices).toContain('audit-messages-b');
@@ -434,6 +449,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
           const payload = (await saved).postDataJSON();
           expect(payload.protocol).toBe('anthropic_messages');
+          expect(payload.accept_anthropic_messages).toBe(false);
           for (const ep of payload.endpoints) expect(ep.protocol).toBe('anthropic_messages');
           await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
           const row = page.locator('.route-list-table tbody tr').filter({{ hasText: 'audit-messages-group' }}).first();
@@ -446,6 +462,7 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat');
           await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat-shared');
           await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat-b', mockURL + '/');
+          await createCustomRoute(page, 'chat', 'mock-model', 'audit-chat-bridge', mockURL, true);
           await createCustomRoute(page, 'completion', 'mock-completion', 'audit-completions', mockURL + '/v1');
           await createCustomRoute(page, 'responses', 'mock-responses', 'audit-responses', mockURL + '/v1');
           await createCustomRoute(page, 'messages', 'mock-model', 'audit-messages', mockURL + '/v1');
@@ -462,15 +479,23 @@ def full_playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await page.reload({{ waitUntil: 'domcontentloaded' }});
           await expect(page.locator('#app-view')).toBeVisible();
           await nav(page, 'models', 'Models');
-          for (const name of ['audit-chat', 'audit-chat-b', 'audit-completions', 'audit-responses', 'audit-embedding', 'audit-rerank', 'audit-asr', 'audit-systemone', 'audit-systemone-b', 'audit-model-group', 'audit-systemone-group']) {{
+          for (const name of ['audit-chat', 'audit-chat-b', 'audit-chat-bridge', 'audit-completions', 'audit-responses', 'audit-embedding', 'audit-rerank', 'audit-asr', 'audit-systemone', 'audit-systemone-b', 'audit-model-group', 'audit-systemone-group']) {{
             await expect(page.locator('#content')).toContainText(name);
           }}
 
-          const routeRow = page.locator('.route-list-table tbody tr').filter({{ hasText: 'audit-chat' }}).first();
+          const bridgeRow = page.locator('.route-list-table tbody tr').filter({{ hasText: 'audit-chat-bridge' }}).first();
+          await expect(bridgeRow).toContainText('Claude CLI bridge');
+          await bridgeRow.getByRole('button', {{ name: /^Edit$/ }}).click();
+          let bridgeModal = page.locator('#modal-overlay .modal').last();
+          await expect(bridgeModal.locator('#route-bridge-toggle')).toBeChecked();
+          await bridgeModal.getByRole('button', {{ name: /^Cancel$/ }}).click();
+          await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
+
+          const routeRow = page.locator('.route-list-table tbody tr').filter({{ has: page.locator('span.cell-main', {{ hasText: /^audit-chat$/ }}) }}).first();
           await routeRow.getByRole('button', {{ name: /^Edit$/ }}).click();
           let modal = page.locator('#modal-overlay .modal').last();
           await expect(modal).toContainText('Edit model');
-          await modal.locator('input').nth(3).fill('audit-chat-renamed');
+          await modal.locator('input').nth(4).fill('audit-chat-renamed');
           await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
           await expect(modal.locator('.connection-status')).toContainText('Connected', {{ timeout: 15000 }});
           await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();

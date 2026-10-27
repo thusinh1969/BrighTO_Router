@@ -39,3 +39,10 @@ MUST_NOT.md
 ADAPTER_PLAN.md
 AGENTS.md
 audits/
+
+# isolated Claude CLI bridge UAT local state
+uat/.env.uat
+uat/work/
+uat/claude-config/
+uat/artifacts/
+uat/tls/

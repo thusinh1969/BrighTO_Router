@@ -116,6 +116,17 @@ impl ProviderProtocol {
             || matches!(self, ProviderProtocol::SystemOne) && path == "/v1/decisions"
     }
 
+    /// Chat Completions family that can be bridged to Anthropic Messages.
+    /// The upstream protocol/path stays /v1/chat/completions.
+    pub fn is_openai_chat_family(self) -> bool {
+        matches!(
+            self,
+            ProviderProtocol::OpenAiChat
+                | ProviderProtocol::LocalOpenAiChat
+                | ProviderProtocol::CustomOpenAiChat
+        )
+    }
+
     /// Nhãn hiển thị cho wizard + lỗi endpoint guard.
     pub fn label(self) -> &'static str {
         match self {
@@ -242,6 +253,10 @@ pub struct ModelRoute {
     pub provider_key: Option<String>,
     /// Model Group load-balancing policy. Existing routes default to least_loaded_weighted.
     pub routing_policy: RoutingPolicy,
+    /// OpenAI-chat routes can also accept Anthropic Messages at /v1/messages.
+    /// Translation happens in the bridge module; the same public model keeps
+    /// serving /v1/chat/completions normally.
+    pub accept_anthropic_messages: bool,
     /// Per-backend endpoint overrides for true mixed-provider groups. Empty keeps legacy single-endpoint behavior.
     pub endpoints: HashMap<i64, ModelEndpoint>,
 }

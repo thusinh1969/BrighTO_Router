@@ -3,31 +3,33 @@
 BrighTO-Router is a free, open-source, self-hosted LLM gateway, AI router, model router, model load balancer, and SystemOne decision router written in Rust.
 
 Official repository: https://github.com/thusinh1969/BrighTO_Router
-Official Docker image: thusinh1969/brighto_airouter:v1.2.0
+Official Docker image: thusinh1969/brighto_airouter:v1.3.0
 License: Apache-2.0
 Author: Nguyễn Anh Nguyên, BrighTO AI, nguyen@hatto.com
 
 ## What it does
 
-BrighTO-Router gives teams one stable API endpoint for OpenAI-compatible, Anthropic-compatible, cloud, local, Ollaya/Laya, and JEV/DJEV-style System One backends. It supports Chat Completions, legacy Completions, OpenAI Responses, Anthropic Messages, embeddings, rerank, ASR/transcription, SystemOne decisions, team API keys, token budgets, usage logging, and NGINX-style Model Groups for round-robin or weighted load balancing.
+BrighTO-Router gives teams one stable API endpoint for OpenAI-compatible, Anthropic-compatible, cloud, local, Ollaya/Laya, and JEV/DJEV-style System One backends. It supports Chat Completions, legacy Completions, OpenAI Responses, Anthropic Messages, embeddings, rerank, ASR/transcription, SystemOne decisions, team API keys, token budgets, usage logging, and NGINX-style Model Groups for round-robin or weighted load balancing. An explicit Claude CLI bridge lets an OpenAI Chat route also accept Anthropic Messages at /v1/messages, so Claude Code can use an OpenAI-compatible model without a separate native Anthropic backend.
 
 The single-file brighto.py Python SDK covers every public inference endpoint. test_router.py uses the same SDK for command-line checks. Setup and method examples: https://thusinh1969.github.io/BrighTO_Router/API_EXAMPLES.html
 
 Quyết by Chinh Nguyen (https://github.com/ncchinh/quyet) is an independent decision-model runtime with the System One response contract. An optional external HTTP example serves it behind BrighTO; it is not bundled into the Rust router image.
 
-Native agent clients can use matching protocol routes: Claude Code through Anthropic Messages, Codex through OpenAI Responses, and Hermes/OpenClaw through Chat Completions. Streaming tool calls and results are forwarded without automatic protocol conversion; upstream compatibility is required. Configuration and verified-version scope: https://thusinh1969.github.io/BrighTO_Router/AGENT_CLIENTS.html
+Native agent clients can use matching protocol routes: Claude Code through Anthropic Messages (native or the explicit OpenAI Chat bridge), Codex through OpenAI Responses, and Hermes/OpenClaw through Chat Completions. Streaming tool calls and results are forwarded; apart from the explicit Claude CLI bridge, BrighTO does not convert protocols automatically. Upstream compatibility and tool calling are required. Configuration, model-name caveat, and verified-version scope: https://thusinh1969.github.io/BrighTO_Router/AGENT_CLIENTS.html
 
 ## Why it exists
 
-The goal is a narrow, fast, understandable self-hosted LLM traffic path: one Rust binary, one Docker image, PostgreSQL as the durable control-plane and usage store, and no Redis requirement for version 1.2.0.
+The goal is a narrow, fast, understandable self-hosted LLM traffic path: one Rust binary, one Docker image, PostgreSQL as the durable control-plane and usage store, and no Redis requirement for version 1.3.0.
 
 ## Search terms
 
-open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, self-hosted AI gateway, SystemOne router, System One decisions, JEV router, DJEV router, Ollaya router, Laya model, LiteLLM alternative, Bifrost alternative, vLLM routing, load balancing for LLM endpoints.
+open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, Claude Code gateway, Claude CLI bridge, Qwen3.8 Anthropic gateway, local Qwen gateway, Anthropic Messages proxy, self-hosted AI gateway, SystemOne router, System One decisions, JEV router, DJEV router, Ollaya router, Laya model, LiteLLM alternative, Bifrost alternative, vLLM routing, load balancing for LLM endpoints.
 
-## Release 1.2.0
+## Release 1.3.0
 
-1.2.0 is a security and correctness release. It adds constant-time admin key checks, per-source-IP admin auth rate limiting, hardened Portal response headers, explicit client-key reveal, LAN-aware health probes, correct large aliased-request handling, and usage filter correctness. It keeps the 1.1.0 adapter, protocol, and Model Group surface.
+1.3.0 adds the explicit Claude CLI bridge: an OpenAI Chat route can also accept Anthropic Messages at /v1/messages, with request/response/stream/tool translation, usage, errors, and a local count_tokens estimate. The same public model keeps serving /v1/chat/completions. Local Qwen 3.8 and other OpenAI-compatible Chat routes can be exposed to Claude Code as an opt-in route option. It requires additive migration 0008; run `./start.sh migrate` before starting the 1.3.0 binary. Runbook: https://thusinh1969.github.io/BrighTO_Router/MIGRATION_0008.html
+
+The previous 1.2.0 security release added constant-time admin key checks, per-source-IP admin auth rate limiting, hardened Portal response headers, explicit client-key reveal, LAN-aware health probes, correct large aliased-request handling, and usage filter correctness.
 
 ## Benchmark summary
 

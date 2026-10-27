@@ -35,10 +35,10 @@ cd BrighTO_Router
 
 A failed Model Group backend is retried after `BACKEND_CIRCUIT_OPEN_SECONDS` seconds. The default is `30`; change it in `.env`, then run `./start.sh restart`. `ROUTER_WORKER_THREADS` is blank by default, which means the router uses all available CPU threads; set it only when you want to cap CPU use.
 
-BrighTO-Router 1.2.0 uses `thusinh1969/brighto_airouter:v1.2.0` by default. The published tag includes `linux/amd64` and `linux/arm64`; Docker selects the image matching your host. Existing local `.env` files from older installs should include:
+BrighTO-Router 1.3.0 uses `thusinh1969/brighto_airouter:v1.3.0` by default. The published tag includes `linux/amd64` and `linux/arm64`; Docker selects the image matching your host. Existing local `.env` files from older installs should include:
 
 ```bash
-BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.2.0
+BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.3.0
 BACKEND_CIRCUIT_OPEN_SECONDS=30
 ```
 
@@ -62,7 +62,7 @@ and local model servers. See [Docker's host-networking guide](https://docs.docke
 | macOS Apple Silicon | Docker Desktop runs the Linux `arm64` container. |
 | Windows x86_64 | Docker Desktop with WSL2 runs the Linux `amd64` container. |
 
-Native Windows `.exe` and macOS `.app` releases are not part of 1.2.0. Docker Compose is the install path. Both image architectures pass HTTP/HTTPS API and browser checks; ARM64 runtime verification uses QEMU emulation, not a native GB10 or Apple Silicon benchmark. For custom builds, use [the local Docker build instructions](README.md#portal-front-end-development).
+Native Windows `.exe` and macOS `.app` releases are not part of 1.3.0. Docker Compose is the install path. Both image architectures pass HTTP/HTTPS API and browser checks; ARM64 runtime verification uses QEMU emulation, not a native GB10 or Apple Silicon benchmark. For custom builds, use [the local Docker build instructions](README.md#portal-front-end-development).
 
 What happens:
 
@@ -70,7 +70,7 @@ What happens:
 2. Docker starts PostgreSQL 16.
 3. SQL migrations run.
 4. The unlimited `Default Team` and local demo client key are seeded. Set a budget in the Portal if needed.
-5. Docker pulls and starts `thusinh1969/brighto_airouter:v1.2.0`.
+5. Docker pulls and starts `thusinh1969/brighto_airouter:v1.3.0`.
 
 On an existing PostgreSQL volume, install and upgrade preserve team and key budgets. To remove a cap, choose **Unlimited** on the team and **Inherit team budget** on each affected key. Token budgets enforce limits; configured money amounts are stored and shown but not enforced.
 
@@ -134,6 +134,8 @@ cd ~/brighto-router
 ```
 
 The upgrade command creates a private backup in `backups/`, pulls the configured Docker image, runs migrations, seeds missing defaults only, and recreates the router container. Existing teams, provider endpoints, model routes, Model Groups, API keys, usage ledger, and `.env` provider keys stay in place.
+
+The Claude CLI bridge adds migration `0008_route_accept_anthropic_messages.sql`. Run `./start.sh upgrade` or `./start.sh migrate` before starting a binary/image that includes the bridge; deploying only the new image against an unmigrated database leaves the `accept_anthropic_messages` column absent and the new route field cannot load. See [Migration 0008](docs/MIGRATION_0008.md) for the compatibility matrix, backup, verification, rolling-upgrade order, rollback, and test coverage.
 
 If `.env` still has the old LAN-only admin default `127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`, upgrade changes it to `0.0.0.0/0,::/0` so the Portal URL printed by `./start.sh status` can log in immediately. Custom `ADMIN_ALLOW_CIDR` values are preserved.
 
@@ -203,7 +205,7 @@ Use the portal:
 7. Add two or more existing tested routes from the compatible-route dropdown.
 8. Save enabled. Provider URLs and provider API keys are not entered in the group wizard; they stay on the source routes.
 
-1.2.0 Model Groups require all selected routes to match the same API shape. Do not mix Chat Completions (`/v1/chat/completions`), Completions (`/v1/completions`), Responses (`/v1/responses`), embeddings, rerank, ASR, System One, or Anthropic Messages inside one group.
+1.3.0 Model Groups require all selected routes to match the same API shape. Do not mix Chat Completions (`/v1/chat/completions`), Completions (`/v1/completions`), Responses (`/v1/responses`), embeddings, rerank, ASR, System One, or Anthropic Messages inside one group.
 
 ## Test from the command line
 

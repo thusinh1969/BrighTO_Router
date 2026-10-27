@@ -1,14 +1,14 @@
 # Provider setup
 
-BrighTO-Router 1.2.0 keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, System One/Decision, and ASR/transcription.
+BrighTO-Router 1.3.0 keeps provider setup simple: use **Add model route** for one tested endpoint, or **Create model group** to load-balance one API model name across two or more existing tested routes of the same type. The single-route flow covers chat, embeddings, rerank, System One/Decision, and ASR/transcription.
 
-Chat, OpenAI Responses, and Anthropic Messages are distinct native protocols. Select the matching task in Portal; compatible Model Groups preserve that protocol. [Agent client setup](docs/AGENT_CLIENTS.md) covers Claude Code, Codex, Hermes, OpenClaw, and HTTPS trust.
+Chat, OpenAI Responses, and Anthropic Messages are distinct native protocols. Select the matching task in Portal; compatible Model Groups preserve that protocol. The one explicit exception, in 1.3.0, is the Claude CLI bridge: an OpenAI Chat route can also accept `/v1/messages` when **Also accept Anthropic Messages (Claude CLI)** is enabled. [Agent client setup](docs/AGENT_CLIENTS.md) covers Claude Code, Codex, Hermes, OpenClaw, the bridge, and HTTPS trust.
 
 A **provider catalog entry** is only a preset: display name, default Base URL, protocol family, and optional `.env` key name. It is not an active route.
 
 When editing an authenticated route, leaving the key field blank keeps its stored credential for the unchanged endpoint and task. Changing the endpoint or task requires configuring credentials for the new target.
 
-A **model route** is what clients use for one endpoint. It maps one API model name to one upstream provider model, with its task type, provider API key/reference, price, limits, and enabled/disabled state.
+A **model route** is what clients use for one endpoint. It maps one API model name to one upstream provider model, with its task type, provider API key/reference, price, limits, and enabled/disabled state. A **Chat** route can enable **Also accept Anthropic Messages (Claude CLI)**; the same public model then serves `/v1/chat/completions` and `/v1/messages`, with Anthropic Messages translated to the OpenAI Chat upstream. Every backend on that route must use the OpenAI wire format.
 
 The API model name must be unique across all model routes and Model Groups. It is not a decorative display label; it is the exact `model` string clients send.
 
@@ -78,7 +78,7 @@ Use **Models & Routes → Create Model Group** when several existing tested rout
 - one local chat route plus one cloud fallback route;
 - several embedding or rerank routes of the same type where one has more capacity than the others.
 
-Rules in 1.2.0:
+Rules in 1.3.0:
 
 - Group members must be existing tested routes.
 - All selected routes must match the selected model type: chat, embedding, rerank, System One, or ASR.
@@ -132,7 +132,7 @@ Create client keys in **API Keys**. Admin can view and copy them again later.
 
 ## Adapter providers
 
-Embeddings, rerank, System One/Decision, and ASR/transcription are first-class 1.2.0 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models` or the same request shape. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route wizard. Model Groups reuse those tested routes and do not ask for provider keys.
+Embeddings, rerank, System One/Decision, and ASR/transcription are first-class 1.3.0 setup flows. The Portal task-type wizard uses task-specific model suggestions and Test Connection probes instead of assuming every provider supports `/v1/models` or the same request shape. Provider catalog entries are templates only; provider keys are supplied per route from `.env` or pasted in the Add model route wizard. Model Groups reuse those tested routes and do not ask for provider keys.
 
 System One routes use `/v1/systemone` and `/v1/decisions` for Ollaya/Laya, Jev/DJev-style, or TypeSafe System One-compatible endpoints. Local Ollaya/Laya can run with no API key; hosted endpoints normally use Bearer auth.
 

@@ -12,7 +12,7 @@ use sqlx::postgres::PgPool;
 use tower::ServiceExt;
 
 use brighto_router::budget::RamBudgetStore;
-use brighto_router::contract::{AppState, UsageEvent};
+use brighto_router::contract::{AppState, BackendFormat, ConfigSnapshot, UsageEvent};
 use brighto_router::ledger::LedgerSink;
 use brighto_router::metrics::Metrics;
 use brighto_router::route::RamBackendPool;
@@ -1036,9 +1036,35 @@ async fn build_state_for_route(
     provider_model: &str,
     protocol: &str,
 ) -> (Arc<AppState>, tokio::sync::mpsc::Receiver<UsageEvent>) {
+    build_state_for_route_flags(
+        pool,
+        backend_base,
+        public_model,
+        provider_model,
+        protocol,
+        false,
+    )
+    .await
+}
+
+async fn build_state_for_route_flags(
+    pool: PgPool,
+    backend_base: String,
+    public_model: &str,
+    provider_model: &str,
+    protocol: &str,
+    accept_anthropic_messages: bool,
+) -> (Arc<AppState>, tokio::sync::mpsc::Receiver<UsageEvent>) {
     set_test_env();
     // key file cho backend (không dùng env để test không phụ thuộc môi trường).
-    let key_file = std::env::temp_dir().join(format!("brighto_it_key_{}", std::process::id()));
+    // Parallel sqlx tests each need their own file: a shared path is truncated
+    // and rewritten concurrently, so config load can occasionally read it empty.
+    static KEY_FILE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let key_file = std::env::temp_dir().join(format!(
+        "brighto_it_key_{}_{}",
+        std::process::id(),
+        KEY_FILE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     std::fs::write(&key_file, "mockkey").unwrap();
     let key_ref = format!("file:{}", key_file.display());
 
@@ -1053,12 +1079,13 @@ async fn build_state_for_route(
     .unwrap();
 
     sqlx::query(
-        "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, provider_model_name, protocol) \
-         VALUES ($1, '[1]', NULL, 4.0, 180, $2, $3)",
+        "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, provider_model_name, protocol, accept_anthropic_messages) \
+         VALUES ($1, '[1]', NULL, 4.0, 180, $2, $3, $4)",
     )
     .bind(public_model)
     .bind(provider_model)
     .bind(protocol)
+    .bind(accept_anthropic_messages)
     .execute(&pool)
     .await
     .unwrap();
@@ -1369,4 +1396,586 @@ async fn nonstream_response_starts_before_upstream_eof(pool: PgPool) {
     assert_eq!(ev.status, 200);
     assert!(!ev.stream);
     assert!(!ev.client_aborted);
+}
+
+#[derive(Debug)]
+struct BridgeCapture {
+    body: serde_json::Value,
+    path: String,
+    anthropic_version: Option<String>,
+    anthropic_beta: Option<String>,
+}
+
+async fn spawn_bridge_backend(
+    response_body: &'static str,
+    content_type: &'static str,
+) -> (String, tokio::sync::oneshot::Receiver<BridgeCapture>) {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let tx = Arc::new(tokio::sync::Mutex::new(Some(tx)));
+    let app = axum::Router::new().route(
+        "/v1/chat/completions",
+        axum::routing::post(
+            move |uri: axum::http::Uri, headers: HeaderMap, body: Bytes| {
+                let tx = tx.clone();
+                async move {
+                    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    let captured = BridgeCapture {
+                        body,
+                        path: uri
+                            .path_and_query()
+                            .map(|value| value.as_str().to_string())
+                            .unwrap_or_default(),
+                        anthropic_version: headers
+                            .get("anthropic-version")
+                            .and_then(|value| value.to_str().ok())
+                            .map(str::to_string),
+                        anthropic_beta: headers
+                            .get("anthropic-beta")
+                            .and_then(|value| value.to_str().ok())
+                            .map(str::to_string),
+                    };
+                    if let Some(tx) = tx.lock().await.take() {
+                        let _ = tx.send(captured);
+                    }
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", content_type)
+                        .body(Body::from(response_body))
+                        .unwrap()
+                }
+            },
+        ),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    (format!("http://{addr}"), rx)
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anthropic_bridge_translates_nonstream_request_and_response(pool: PgPool) {
+    let (backend_base, capture_rx) = spawn_bridge_backend(
+        r#"{"id":"cmpl-bridge","choices":[{"message":{"role":"assistant","content":"Hello from upstream"},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":4}}"#,
+        "application/json",
+    )
+    .await;
+    let (state, mut ledger_rx) = build_state_for_route_flags(
+        pool,
+        backend_base,
+        "claude-local",
+        "provider-model",
+        "openai_chat",
+        true,
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/messages?beta=true")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .header("anthropic-version", "2023-06-01")
+        .header("anthropic-beta", "prompt-caching-2024-07-31")
+        .body(Body::from(
+            r#"{"model":"claude-local","max_tokens":64,"system":"Be brief","messages":[{"role":"user","content":"Hello"}]}"#,
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    assert!(
+        resp.headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("application/json")
+    );
+    assert!(resp.headers().contains_key("request-id"));
+    let body = to_bytes(resp.into_body(), 10 * 1024 * 1024).await.unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["type"], "message");
+    assert_eq!(value["role"], "assistant");
+    assert_eq!(value["model"], "claude-local");
+    assert_eq!(value["content"][0]["type"], "text");
+    assert_eq!(value["content"][0]["text"], "Hello from upstream");
+    assert_eq!(value["stop_reason"], "end_turn");
+    assert_eq!(value["usage"]["input_tokens"], 11);
+    assert_eq!(value["usage"]["output_tokens"], 4);
+
+    let captured = capture_rx.await.unwrap();
+    assert_eq!(captured.path, "/v1/chat/completions");
+    assert_eq!(captured.body["model"], "provider-model");
+    assert_eq!(captured.body["max_tokens"], 64);
+    assert_eq!(captured.body["stream"], false);
+    assert_eq!(captured.body["messages"][0]["role"], "system");
+    assert_eq!(captured.body["messages"][0]["content"], "Be brief");
+    assert_eq!(captured.body["messages"][1]["role"], "user");
+    assert_eq!(captured.body["messages"][1]["content"], "Hello");
+    assert!(captured.body.get("stream_options").is_none());
+    assert!(captured.anthropic_version.is_none());
+    assert!(captured.anthropic_beta.is_none());
+
+    let ev = tokio::time::timeout(Duration::from_secs(2), ledger_rx.recv())
+        .await
+        .expect("ledger event within 2s")
+        .expect("ledger event present");
+    assert_eq!(ev.input_tokens, 11);
+    assert_eq!(ev.output_tokens, 4);
+    assert!(!ev.estimated);
+    assert_eq!(ev.status, 200);
+    assert!(!ev.stream);
+}
+
+const BRIDGE_SSE_TOOL: &str = "data: {\"id\":\"cmpl-stream\",\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n\
+data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\n\
+data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"Read\",\"arguments\":\"{\\\"path\\\":\"}}]}}]}\n\n\
+data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"a.txt\\\"}\"}}]}}]}\n\n\
+data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n\
+data: {\"choices\":[],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":5}}\n\n\
+data: [DONE]\n\n";
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anthropic_bridge_streams_text_and_tool_calls(pool: PgPool) {
+    let (backend_base, capture_rx) =
+        spawn_bridge_backend(BRIDGE_SSE_TOOL, "text/event-stream").await;
+    let (state, mut ledger_rx) = build_state_for_route_flags(
+        pool,
+        backend_base,
+        "claude-stream",
+        "claude-stream",
+        "openai_chat",
+        true,
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .header("anthropic-version", "2023-06-01")
+        .body(Body::from(
+            r#"{"model":"claude-stream","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"Read a.txt"}]}"#,
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    assert!(
+        resp.headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("text/event-stream")
+    );
+    let body = to_bytes(resp.into_body(), 10 * 1024 * 1024).await.unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("event: message_start"), "{text}");
+    assert!(text.contains("\"text\":\"Hel\""), "{text}");
+    assert!(text.contains("\"text\":\"lo\""), "{text}");
+    assert!(text.contains("\"type\":\"tool_use\""), "{text}");
+    assert!(text.contains("\"id\":\"call_1\""), "{text}");
+    assert!(text.contains("input_json_delta"), "{text}");
+    assert!(text.contains("\"stop_reason\":\"tool_use\""), "{text}");
+    assert!(text.contains("\"output_tokens\":5"), "{text}");
+    assert!(text.contains("event: message_stop"), "{text}");
+    assert!(!text.contains("data: [DONE]"), "{text}");
+    assert!(!text.contains("\"choices\""), "{text}");
+
+    let captured = capture_rx.await.unwrap();
+    assert_eq!(captured.body["stream"], true);
+    assert_eq!(captured.body["stream_options"]["include_usage"], true);
+
+    let ev = tokio::time::timeout(Duration::from_secs(2), ledger_rx.recv())
+        .await
+        .expect("ledger event within 2s")
+        .expect("ledger event present");
+    assert_eq!(ev.input_tokens, 9);
+    assert_eq!(ev.output_tokens, 5);
+    assert!(!ev.estimated);
+    assert_eq!(ev.status, 200);
+    assert!(ev.stream);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anthropic_bridge_requires_the_route_toggle(pool: PgPool) {
+    let (backend_base, _capture_rx) = spawn_bridge_backend(
+        r#"{"choices":[{"message":{"role":"assistant","content":"unused"}}]}"#,
+        "application/json",
+    )
+    .await;
+    let (state, _ledger_rx) = build_state_for_route_flags(
+        pool,
+        backend_base,
+        "claude-off",
+        "claude-off",
+        "openai_chat",
+        false,
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"claude-off","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}"#,
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    let body = to_bytes(resp.into_body(), 8192).await.unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["type"], "error");
+    assert_eq!(value["error"]["type"], "invalid_request_error");
+    assert!(
+        value["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("does not accept Anthropic Messages")
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anthropic_bridge_translates_upstream_error_envelope(pool: PgPool) {
+    let (backend_base, _capture_rx) = spawn_bridge_backend(
+        r#"{"error":{"message":"provider rejected key","type":"authentication_error"}}"#,
+        "application/json",
+    )
+    .await;
+    // The mock always returns 200; use a dedicated status-aware backend here.
+    let status_backend = {
+        let app = axum::Router::new().route(
+            "/v1/chat/completions",
+            axum::routing::post(|| async {
+                axum::response::Response::builder()
+                    .status(401)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"error":{"message":"provider rejected key","type":"authentication_error"}}"#,
+                    ))
+                    .unwrap()
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        format!("http://{addr}")
+    };
+    let _ = backend_base;
+    let (state, _ledger_rx) = build_state_for_route_flags(
+        pool,
+        status_backend,
+        "claude-error",
+        "claude-error",
+        "openai_chat",
+        true,
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"claude-error","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}"#,
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 401);
+    let body = to_bytes(resp.into_body(), 8192).await.unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["type"], "error");
+    assert_eq!(value["error"]["type"], "authentication_error");
+    assert_eq!(value["error"]["message"], "provider rejected key");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anthropic_bridge_count_tokens_estimates_without_ledger(pool: PgPool) {
+    let (state, mut ledger_rx) = build_state_for_route_flags(
+        pool,
+        "http://127.0.0.1:9".to_string(),
+        "claude-count",
+        "provider-count",
+        "openai_chat",
+        true,
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/messages/count_tokens")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"claude-count","system":"Be brief","messages":[{"role":"user","content":"Count these words in the request"}],"tools":[{"name":"Read","description":"Read a file","input_schema":{"type":"object","properties":{"path":{"type":"string"}}}}]}"#,
+        ))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    assert!(resp.headers().contains_key("request-id"));
+    let body = to_bytes(resp.into_body(), 8192).await.unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(
+        value["input_tokens"]
+            .as_u64()
+            .is_some_and(|tokens| tokens > 0),
+        "{value}"
+    );
+    let observed = tokio::time::timeout(Duration::from_millis(150), ledger_rx.recv()).await;
+    assert!(
+        observed.is_err(),
+        "count_tokens must not write a usage ledger event: observed={observed:?}"
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anthropic_bridge_group_rewrites_endpoint_provider_model(pool: PgPool) {
+    let (tx, mut capture_rx) = tokio::sync::mpsc::channel(4);
+    let backend_base = spawn_model_capture_backend("group", tx).await;
+    let key_file =
+        std::env::temp_dir().join(format!("brighto_group_bridge_key_{}", std::process::id()));
+    std::fs::write(&key_file, "mockkey").unwrap();
+    let key_ref = format!("file:{}", key_file.display());
+
+    sqlx::query(
+        "INSERT INTO backends (id, name, base_url, api_key_ref, weight, max_inflight, format, enabled) \
+         VALUES (1, 'group-backend', $1, $2, 1, 100, 'openai', TRUE)",
+    )
+    .bind(&backend_base)
+    .bind(&key_ref)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO model_routes \
+         (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
+          provider_model_name, enabled, auth_mode, protocol, routing_policy, accept_anthropic_messages) \
+         VALUES ('claude-group', '[1]', NULL, 4.0, 180, 'claude-group', TRUE, 'bearer', 'openai_chat', 'round_robin', TRUE)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO model_route_endpoints \
+         (model_name, backend_id, provider_model_name, provider_key_ref, auth_mode, protocol, weight, max_inflight, enabled) \
+         VALUES ('claude-group', 1, 'provider-group', $1, 'bearer', 'openai_chat', 1, 100, TRUE)",
+    )
+    .bind(&key_ref)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO teams (id, name, budget, enabled) \
+         VALUES (1, 'team-1', '{\"period\":\"day\",\"max_tokens\":1000000,\"per_model\":{}}', TRUE)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let key_hash = hex::encode(brighto_router::auth::hash_key("test-key"));
+    sqlx::query(
+        "INSERT INTO api_keys (id, key_hash, key_prefix, team_id, owner, allowed_models, budget, rpm_limit, concurrency_limit, expires_at, enabled) \
+         VALUES (1, $1, 'sk-brigh', 1, 'tester', '[]', NULL, NULL, NULL, NULL, TRUE)",
+    )
+    .bind(&key_hash)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let loader = brighto_router::config::DbConfigLoader::new(pool.clone(), 5);
+    let snap = loader.load_snapshot().await.unwrap();
+    let cfg = Arc::new(ArcSwap::from_pointee(snap));
+    let budget = Arc::new(RamBudgetStore::new());
+    budget.load_teams(&cfg.load_full().teams);
+    let backends = Arc::new(RamBackendPool::new_with_counter_pool(pool.clone(), 1));
+    for backend in cfg.load_full().backends.values() {
+        backends.upsert_backend(backend.clone());
+    }
+    let (ptx, _prx) = tokio::sync::mpsc::channel(8192);
+    let (otx, mut orx) = tokio::sync::mpsc::channel(8192);
+    tokio::spawn(async move { while orx.recv().await.is_some() {} });
+    let state = Arc::new(AppState {
+        cfg,
+        budget,
+        backends,
+        client: reqwest::Client::new(),
+        ledger: LedgerSink::new(ptx, otx),
+        metrics: metrics(),
+        max_body_bytes: 10 * 1024 * 1024,
+        reload_notify: Arc::new(tokio::sync::Notify::new()),
+        config_ok_at: Arc::new(std::sync::atomic::AtomicU64::new(1)),
+        config_err_at: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        readiness_max_stale_ms: 5_000,
+    });
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"claude-group","max_tokens":32,"messages":[{"role":"user","content":"hello group"}]}"#,
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let body = to_bytes(resp.into_body(), 10 * 1024 * 1024).await.unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["type"], "message");
+    assert_eq!(value["content"][0]["text"], "ok");
+
+    let captured = tokio::time::timeout(Duration::from_secs(2), capture_rx.recv())
+        .await
+        .expect("capture within 2s")
+        .expect("capture present");
+    assert_eq!(
+        captured,
+        ("group".to_string(), "provider-group".to_string())
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anthropic_bridge_maps_image_blocks(pool: PgPool) {
+    let (backend_base, capture_rx) = spawn_bridge_backend(
+        r#"{"choices":[{"message":{"role":"assistant","content":"seen"},"finish_reason":"stop"}]}"#,
+        "application/json",
+    )
+    .await;
+    let (state, _ledger_rx) = build_state_for_route_flags(
+        pool,
+        backend_base,
+        "claude-image",
+        "provider-image",
+        "openai_chat",
+        true,
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"claude-image","max_tokens":32,"messages":[{"role":"user","content":[{"type":"text","text":"what is this?"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}]}"#,
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    let captured = capture_rx.await.unwrap();
+    let content = &captured.body["messages"][0]["content"];
+    assert_eq!(content[0]["type"], "text");
+    assert_eq!(content[1]["type"], "image_url");
+    assert_eq!(content[1]["image_url"]["url"], "data:image/png;base64,AAAA");
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anthropic_bridge_synthesizes_sse_when_upstream_ignores_stream(pool: PgPool) {
+    let (backend_base, capture_rx) = spawn_bridge_backend(
+        r#"{"id":"cmpl-json","choices":[{"message":{"role":"assistant","content":"fallback text"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2}}"#,
+        "application/json",
+    )
+    .await;
+    let (state, _ledger_rx) = build_state_for_route_flags(
+        pool,
+        backend_base,
+        "claude-json-stream",
+        "claude-json-stream",
+        "openai_chat",
+        true,
+    )
+    .await;
+    let app = brighto_router::handlers::router(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"claude-json-stream","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"hi"}]}"#,
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    assert!(
+        resp.headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("text/event-stream")
+    );
+    let body = to_bytes(resp.into_body(), 10 * 1024 * 1024).await.unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("event: message_start"), "{text}");
+    assert!(text.contains("fallback text"), "{text}");
+    assert!(text.contains("event: message_stop"), "{text}");
+    let captured = capture_rx.await.unwrap();
+    assert_eq!(captured.body["stream"], true);
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn anthropic_bridge_rejects_a_non_openai_backend_with_a_clear_error(pool: PgPool) {
+    let (backend_base, _capture_rx) = spawn_bridge_backend(
+        r#"{"choices":[{"message":{"role":"assistant","content":"unused"}}]}"#,
+        "application/json",
+    )
+    .await;
+    let (state, _ledger_rx) = build_state_for_route_flags(
+        pool,
+        backend_base,
+        "claude-bad-backend",
+        "claude-bad-backend",
+        "openai_chat",
+        true,
+    )
+    .await;
+    // Simulate a legacy/misconfigured DB row after the snapshot was loaded.
+    let old = state.cfg.load_full();
+    let mut backends = old.backends.clone();
+    backends.get_mut(&1).unwrap().format = BackendFormat::Anthropic;
+    let snapshot = ConfigSnapshot {
+        backends,
+        routes: old.routes.clone(),
+        teams: old.teams.clone(),
+        keys_by_hash: old.keys_by_hash.clone(),
+    };
+    state.cfg.store(Arc::new(snapshot));
+
+    let app = brighto_router::handlers::router(state);
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/messages")
+        .header("authorization", "Bearer test-key")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"model":"claude-bad-backend","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}"#,
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status().as_u16(), 502);
+    let body = to_bytes(resp.into_body(), 8192).await.unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["type"], "error");
+    assert!(
+        value["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Claude bridge requires an OpenAI Chat backend"),
+        "{value}"
+    );
 }

@@ -1,10 +1,10 @@
-# BrighTO-Router 1.2.0 adapters: embeddings, rerank, System One, ASR, and Model Groups
+# BrighTO-Router 1.3.0 adapters: embeddings, rerank, System One, ASR, and Model Groups
 
-This is the BrighTO-Router 1.2.0 adapter and routing scope: embeddings stay on the OpenAI-compatible route, rerank, System One, and ASR/transcription are task-specific adapters, and Model Groups add same-type route load balancing without changing the client API call.
+This is the BrighTO-Router 1.3.0 adapter and routing scope: embeddings stay on the OpenAI-compatible route, rerank, System One, and ASR/transcription are task-specific adapters, and Model Groups add same-type route load balancing without changing the client API call.
 
-Chat, OpenAI Responses, and Anthropic Messages are distinct native protocols. Select the matching task in Portal; compatible Model Groups preserve that protocol. [Agent client setup](docs/AGENT_CLIENTS.md) covers Claude Code, Codex, Hermes, OpenClaw, and HTTPS trust.
+Chat, OpenAI Responses, and Anthropic Messages are distinct native protocols. Select the matching task in Portal; compatible Model Groups preserve that protocol. The one explicit exception, in 1.3.0, is the Claude CLI bridge: an OpenAI Chat route can also accept `/v1/messages` when **Also accept Anthropic Messages (Claude CLI)** is enabled. [Agent client setup](docs/AGENT_CLIENTS.md) covers Claude Code, Codex, Hermes, OpenClaw, the bridge, and HTTPS trust.
 
-Implemented and tested in 1.1.0; unchanged in 1.2.0:
+Implemented and tested in 1.1.0; unchanged in 1.3.0:
 
 | Task | Public BrighTO endpoint | Route protocol | Request shape | Status |
 |---|---|---|---|---|
@@ -159,7 +159,7 @@ In **Models & Routes → Create Model Group**:
 4. Add existing tested routes from the compatible-route dropdown.
 5. Save enabled after at least two compatible routes are selected.
 
-Provider URL, provider model, auth mode, and provider key/reference stay on the source routes. The group wizard does not ask for provider keys. 1.2.0 Model Groups do not mix protocol shapes: Chat Completions group with Chat Completions, Completions with Completions, Responses with Responses, embeddings with embeddings, rerank with rerank, System One with System One, and ASR with ASR.
+Provider URL, provider model, auth mode, and provider key/reference stay on the source routes. The group wizard does not ask for provider keys. 1.3.0 Model Groups do not mix protocol shapes: Chat Completions group with Chat Completions, Completions with Completions, Responses with Responses, embeddings with embeddings, rerank with rerank, System One with System One, and ASR with ASR.
 
 ## Route creation status
 
@@ -184,9 +184,9 @@ Save enabled only after Test Connection passes. Save draft remains available for
 - ASR currently expects OpenAI-compatible `/v1/audio/transcriptions` multipart behavior.
 - Additional Qwen/Alibaba ASR or media adapters should wait for exact provider API proof before coding.
 
-## Validation in 1.2.0
+## Validation in 1.3.0
 
-1.2.0 keeps the 1.1.0 adapter and protocol surface. The release re-ran the deterministic Rust suite, Portal browser audit, single-file SDK matrix, and Docker HTTP/HTTPS gates. Live provider commands below remain optional and run only when the relevant provider keys are present; no paid-provider calls were made for the 1.2.0 release itself.
+1.3.0 keeps the 1.1.0 adapter surface and adds the explicit Claude CLI bridge on OpenAI Chat routes. The release re-ran the deterministic Rust suite, migration upgrade tests, Portal browser audit, single-file SDK matrix, and Docker HTTP/HTTPS gates. Live provider commands below remain optional and run only when the relevant provider keys are present; no paid-provider calls were made for the 1.3.0 release itself.
 
 - `cargo fmt --check`
 - `cargo check --locked`
