@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 IMAGE="${IMAGE:-thusinh1969/brighto_airouter}"
-TAG="${1:-${BRIGHTO_RELEASE_TAG:-v1.2.0}}"
+TAG="${1:-${BRIGHTO_RELEASE_TAG:-v1.3.0}}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 PUSH_LATEST="${PUSH_LATEST:-0}"
 CHECK_ONLY="${2:-}"

@@ -638,6 +638,9 @@ struct UpsertRoute {
     protocol: Option<String>,
     /// Model Group routing policy: least_loaded_weighted | round_robin | weighted_round_robin.
     routing_policy: Option<String>,
+    /// OpenAI-chat routes can also accept Anthropic Messages at /v1/messages.
+    /// None keeps the existing value on PATCH; new routes default to false.
+    accept_anthropic_messages: Option<bool>,
     /// Optional endpoint overrides for Model Group load balancing. Omitted = keep existing endpoint rows.
     endpoints: Option<Vec<UpsertRouteEndpoint>>,
 }
@@ -696,6 +699,7 @@ struct RouteResponse {
     auth_mode: String,
     protocol: String,
     routing_policy: String,
+    accept_anthropic_messages: bool,
     endpoints: Vec<RouteEndpointResponse>,
     /// route.enabled && có ít nhất 1 backend tham chiếu enabled.
     effective_enabled: bool,
@@ -1012,7 +1016,8 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
     let rows = sqlx::query::<sqlx::Postgres>(
         "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
-         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol, routing_policy \
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol, routing_policy, \
+         accept_anthropic_messages \
          FROM model_routes ORDER BY model_name",
     )
     .fetch_all(pool)
@@ -1062,6 +1067,7 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
             auth_mode: row.try_get("auth_mode")?,
             protocol: row.try_get("protocol")?,
             routing_policy: row.try_get("routing_policy")?,
+            accept_anthropic_messages: row.try_get("accept_anthropic_messages")?,
             endpoints,
             effective_enabled,
             disabled_reason,
@@ -2258,6 +2264,7 @@ struct ValidatedRoute {
     auth_mode: String,
     protocol: String,
     routing_policy: RoutingPolicy,
+    accept_anthropic_messages: bool,
     endpoints: Option<Vec<ValidatedRouteEndpoint>>,
 }
 
@@ -2389,6 +2396,21 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
             }
         }
     };
+    let accept_anthropic_messages = payload.accept_anthropic_messages.unwrap_or(false);
+    if accept_anthropic_messages {
+        if !ProviderProtocol::parse(&protocol).is_openai_chat_family() {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "accept_anthropic_messages is only supported on OpenAI Chat routes",
+            ));
+        }
+        if !matches!(auth_mode.as_str(), "bearer" | "none") {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "accept_anthropic_messages requires auth_mode bearer or none",
+            ));
+        }
+    }
     if payload.context_tokens.is_some_and(|n| n <= 0) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -2505,6 +2527,12 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
                     .unwrap_or_else(|| ProviderProtocol::parse(&protocol))
                     .as_str()
                     .to_string();
+                if accept_anthropic_messages && endpoint_auth == "anthropic" {
+                    return Err(ApiError::new(
+                        StatusCode::BAD_REQUEST,
+                        "accept_anthropic_messages requires endpoint auth_mode bearer or none",
+                    ));
+                }
                 if protocol_family(&endpoint_protocol) != protocol_family(&protocol) {
                     return Err(ApiError::new(
                         StatusCode::BAD_REQUEST,
@@ -2580,8 +2608,55 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
         auth_mode,
         protocol,
         routing_policy,
+        accept_anthropic_messages,
         endpoints,
     })
+}
+
+/// Bridge routes send an OpenAI Chat body to the upstream, so every referenced
+/// backend must use the OpenAI wire format. This is a DB check because
+/// validate_route is synchronous and pure.
+async fn validate_bridge_backends(pool: &PgPool, v: &ValidatedRoute) -> Result<(), ApiError> {
+    if !v.accept_anthropic_messages {
+        return Ok(());
+    }
+    let mut ids = v.backend_ids.clone();
+    if let Some(fallback) = v.fallback_backend_id
+        && !ids.contains(&fallback)
+    {
+        ids.push(fallback);
+    }
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "accept_anthropic_messages requires at least one backend",
+        ));
+    }
+    let rows = sqlx::query::<sqlx::Postgres>("SELECT id, format FROM backends WHERE id = ANY($1)")
+        .bind(&ids)
+        .fetch_all(pool)
+        .await?;
+    if rows.len() != ids.len() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "accept_anthropic_messages references a backend that does not exist",
+        ));
+    }
+    for row in rows {
+        let id: i64 = row.try_get("id")?;
+        let format: String = row.try_get("format")?;
+        if format != "openai" {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "accept_anthropic_messages requires OpenAI-format backends; backend {id} is {format}"
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn route_response(v: ValidatedRoute) -> RouteResponse {
@@ -2601,6 +2676,7 @@ fn route_response(v: ValidatedRoute) -> RouteResponse {
         auth_mode: v.auth_mode,
         protocol: v.protocol,
         routing_policy: v.routing_policy.as_str().to_string(),
+        accept_anthropic_messages: v.accept_anthropic_messages,
         endpoints: v
             .endpoints
             .unwrap_or_default()
@@ -2694,11 +2770,13 @@ async fn upsert_route(
         ));
     }
     let v = validate_route(payload)?;
+    validate_bridge_backends(pool, &v).await?;
     sqlx::query::<sqlx::Postgres>(
         "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
-         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol, routing_policy) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+         price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol, routing_policy, \
+         accept_anthropic_messages) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -2715,6 +2793,7 @@ async fn upsert_route(
     .bind(&v.auth_mode)
     .bind(&v.protocol)
     .bind(v.routing_policy.as_str())
+    .bind(v.accept_anthropic_messages)
     .execute(pool)
     .await?;
     replace_route_endpoints(pool, &v.model_name, v.endpoints.as_deref()).await?;
@@ -2733,11 +2812,24 @@ async fn patch_route(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(old_name): Path<String>,
-    Json(payload): Json<UpsertRoute>,
+    Json(mut payload): Json<UpsertRoute>,
 ) -> Result<Json<RouteResponse>, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
-    let v = validate_route(payload)?;
     let pool = state.pool().await?;
+    if payload.accept_anthropic_messages.is_none() {
+        // Omitted means preserve the existing flag, matching the route-edit UI.
+        let existing: Option<bool> = sqlx::query_scalar::<_, bool>(
+            "SELECT accept_anthropic_messages FROM model_routes WHERE model_name = $1",
+        )
+        .bind(&old_name)
+        .fetch_optional(pool)
+        .await?;
+        if let Some(flag) = existing {
+            payload.accept_anthropic_messages = Some(flag);
+        }
+    }
+    let v = validate_route(payload)?;
+    validate_bridge_backends(pool, &v).await?;
     if v.model_name != old_name {
         let exists =
             sqlx::query::<sqlx::Postgres>("SELECT 1 FROM model_routes WHERE model_name = $1")
@@ -2772,7 +2864,8 @@ async fn patch_route(
          context_tokens = $7, max_output_tokens = $8, price_input_per_mtok_usd = $9, \
          price_output_per_mtok_usd = $10, enabled = $11, \
          provider_key_ref = COALESCE($12, provider_key_ref), auth_mode = $13, \
-         protocol = $14, routing_policy = $15 WHERE model_name = $16",
+         protocol = $14, routing_policy = $15, accept_anthropic_messages = $16 \
+         WHERE model_name = $17",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -2789,6 +2882,7 @@ async fn patch_route(
     .bind(&v.auth_mode)
     .bind(&v.protocol)
     .bind(v.routing_policy.as_str())
+    .bind(v.accept_anthropic_messages)
     .bind(&old_name)
     .execute(pool)
     .await?;
@@ -4156,6 +4250,36 @@ mod tests {
             .unwrap();
             assert!(validate_route(route).is_err());
         }
+    }
+
+    #[test]
+    fn bridge_flag_requires_openai_chat_and_non_anthropic_auth() {
+        let route: UpsertRoute = serde_json::from_value(json!({
+            "model_name":"bridge-ok","backend_ids":[1],"auth_mode":"none",
+            "protocol":"openai_chat","accept_anthropic_messages":true
+        }))
+        .unwrap();
+        assert!(validate_route(route).unwrap().accept_anthropic_messages);
+
+        for protocol in [
+            "anthropic_messages",
+            "openai_responses",
+            "openai_embeddings",
+        ] {
+            let route: UpsertRoute = serde_json::from_value(json!({
+                "model_name":"bridge-bad","backend_ids":[1],"auth_mode":"none",
+                "protocol":protocol,"accept_anthropic_messages":true
+            }))
+            .unwrap();
+            assert!(validate_route(route).is_err(), "{protocol}");
+        }
+
+        let route: UpsertRoute = serde_json::from_value(json!({
+            "model_name":"bridge-anthropic-auth","backend_ids":[1],"auth_mode":"anthropic",
+            "protocol":"openai_chat","accept_anthropic_messages":true
+        }))
+        .unwrap();
+        assert!(validate_route(route).is_err());
     }
 
     #[test]

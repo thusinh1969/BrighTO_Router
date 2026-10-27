@@ -16,6 +16,7 @@ use futures::{Stream, StreamExt};
 use http_body::{Frame, SizeHint};
 use serde_json::Value;
 
+use crate::bridge::{self, BridgeContext};
 use crate::budget::{BudgetReservation, ConcurrencyGuard};
 use crate::contract::{ApiKey, AppState, BackendFormat, ModelRoute, ProviderProtocol, UsageEvent};
 use crate::route::{AcquireError, BackendExclusions, BackendLease};
@@ -666,6 +667,12 @@ impl RequestMeta {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseDialect {
+    OpenAi,
+    Anthropic,
+}
+
 /// Bối cảnh proxy: auth + route + budget reservation + concurrency guard.
 pub struct ProxyContext {
     pub api_key: ApiKey,
@@ -677,12 +684,23 @@ pub struct ProxyContext {
     pub protocol: ProviderProtocol,
     /// True only when proxy must rewrite top-level JSON model after endpoint selection.
     pub rewrite_model_in_proxy: bool,
+    /// Present only for a `/v1/messages` request served by an OpenAI-chat route.
+    /// The proxy translates the upstream response back to Anthropic Messages.
+    pub bridge: Option<BridgeContext>,
+    /// Shape of router-generated responses (errors) and bridge responses.
+    pub response_dialect: ResponseDialect,
     pub reservation: Option<BudgetReservation>,
     pub concurrency: Option<ConcurrencyGuard>,
     pub start: Instant,
     /// Ước lượng input tokens (body_len / chars_per_token) — dùng khi backend không trả usage,
     /// để không bao giờ commit/ghi 0 token.
     pub estimated_input_tokens: u64,
+}
+
+impl ProxyContext {
+    fn anthropic_errors(&self) -> bool {
+        self.response_dialect == ResponseDialect::Anthropic
+    }
 }
 
 /// Finalize 1 request khi stream kết thúc (hoặc Drop): commit budget, release guard + lease,
@@ -894,19 +912,268 @@ fn build_response(
     builder.body(body).expect("failed to build response")
 }
 
-fn no_backend_body(reason: impl Into<String>) -> Response<Body> {
-    build_response(
-        StatusCode::SERVICE_UNAVAILABLE,
-        reqwest::header::HeaderMap::new(),
-        Body::from(reason.into()),
-    )
+/// Router-generated error in the shape the client actually speaks. Anthropic
+/// clients (native routes and the Claude bridge) must never receive the
+/// OpenAI `{"error":{"type":"invalid_request_error"}}` envelope.
+fn proxy_error_response(
+    ctx: &ProxyContext,
+    status: StatusCode,
+    message: impl Into<String>,
+) -> Response<Body> {
+    let message = message.into();
+    if ctx.anthropic_errors() {
+        let body = bridge::anthropic_error_body(status.as_u16(), &message);
+        let mut builder = Response::builder()
+            .status(status)
+            .header(axum::http::header::CONTENT_TYPE, "application/json");
+        if let Ok(value) = HeaderValue::from_str(&ctx.request_id) {
+            builder = builder.header("request-id", value);
+        }
+        builder.body(Body::from(body)).unwrap_or_else(|_| {
+            build_response(
+                status,
+                reqwest::header::HeaderMap::new(),
+                Body::from(message),
+            )
+        })
+    } else {
+        build_response(
+            status,
+            reqwest::header::HeaderMap::new(),
+            Body::from(message),
+        )
+    }
+}
+
+fn bridge_json_response(status: StatusCode, body: Vec<u8>, request_id: &str) -> Response<Body> {
+    let mut builder = Response::builder()
+        .status(status)
+        .header(
+            axum::http::header::CONTENT_TYPE,
+            "application/json; charset=utf-8",
+        )
+        .header(axum::http::header::CACHE_CONTROL, "no-store");
+    if let Ok(value) = HeaderValue::from_str(request_id) {
+        builder = builder.header("request-id", value);
+    }
+    builder.body(Body::from(body)).unwrap_or_else(|_| {
+        build_response(status, reqwest::header::HeaderMap::new(), Body::empty())
+    })
+}
+
+fn bridge_sse_response(status: StatusCode, body: Body, request_id: &str) -> Response<Body> {
+    let mut builder = Response::builder()
+        .status(status)
+        .header(
+            axum::http::header::CONTENT_TYPE,
+            "text/event-stream; charset=utf-8",
+        )
+        .header(axum::http::header::CACHE_CONTROL, "no-cache")
+        .header("x-accel-buffering", "no");
+    if let Ok(value) = HeaderValue::from_str(request_id) {
+        builder = builder.header("request-id", value);
+    }
+    builder.body(body).unwrap_or_else(|_| {
+        build_response(
+            StatusCode::BAD_GATEWAY,
+            reqwest::header::HeaderMap::new(),
+            Body::empty(),
+        )
+    })
+}
+
+async fn forward_bridge_response(
+    response: reqwest::Response,
+    bridge: BridgeContext,
+    mut reporter: CompletionReporter,
+) -> Response<Body> {
+    let status = response.status();
+    let status_code = StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let stream_request = reporter.stream;
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    if status.as_u16() >= 400 {
+        let fallback = format!("upstream returned HTTP {}", status.as_u16());
+        let body = bridge::read_body_limited(response, bridge::ERROR_BODY_LIMIT)
+            .await
+            .unwrap_or_default();
+        let translated = bridge::translate_upstream_error(status.as_u16(), &body, &fallback);
+        reporter.finish(status.as_u16(), 0, 0, true, false, Some(fallback));
+        return bridge_json_response(status_code, translated, &bridge.request_id);
+    }
+
+    // A stream request may still receive a normal JSON document (some
+    // OpenAI-compatible servers ignore `stream`). Translate it, then synthesize
+    // the Anthropic SSE sequence.
+    let buffered_json = !stream_request
+        || content_type.contains("application/json")
+        || content_type.contains("+json");
+    if buffered_json {
+        let body = match bridge::read_body_limited(response, bridge::NONSTREAM_RESPONSE_LIMIT).await
+        {
+            Ok(body) => body,
+            Err(error) => {
+                let message = error.message();
+                reporter.finish(
+                    StatusCode::BAD_GATEWAY.as_u16(),
+                    0,
+                    0,
+                    true,
+                    false,
+                    Some(message.clone()),
+                );
+                return bridge_json_response(
+                    StatusCode::BAD_GATEWAY,
+                    bridge::anthropic_error_body(502, &message),
+                    &bridge.request_id,
+                );
+            }
+        };
+        let acc = parse_usage_from_body(&body, BackendFormat::OpenAi);
+        let estimated = !acc.seen_usage;
+        let message = match bridge::response::build_message(&body, &bridge) {
+            Ok(message) => message,
+            Err(error) => {
+                reporter.finish(
+                    StatusCode::BAD_GATEWAY.as_u16(),
+                    acc.input_tokens,
+                    acc.output_tokens,
+                    estimated,
+                    false,
+                    Some(error.to_string()),
+                );
+                return bridge_json_response(
+                    StatusCode::BAD_GATEWAY,
+                    bridge::anthropic_error_body(502, &error.message()),
+                    &bridge.request_id,
+                );
+            }
+        };
+        if stream_request {
+            let bytes = bridge::stream::message_to_sse(&message, &bridge);
+            reporter.finish(
+                status.as_u16(),
+                acc.input_tokens,
+                acc.output_tokens,
+                estimated,
+                false,
+                None,
+            );
+            return bridge_sse_response(status_code, Body::from(bytes), &bridge.request_id);
+        }
+        let bytes = match serde_json::to_vec(&message) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                reporter.finish(
+                    StatusCode::BAD_GATEWAY.as_u16(),
+                    acc.input_tokens,
+                    acc.output_tokens,
+                    estimated,
+                    false,
+                    Some(error.to_string()),
+                );
+                return bridge_json_response(
+                    StatusCode::BAD_GATEWAY,
+                    bridge::anthropic_error_body(502, "could not encode bridge response"),
+                    &bridge.request_id,
+                );
+            }
+        };
+        reporter.finish(
+            status.as_u16(),
+            acc.input_tokens,
+            acc.output_tokens,
+            estimated,
+            false,
+            None,
+        );
+        return bridge_json_response(status_code, bytes, &bridge.request_id);
+    }
+
+    // Real SSE upstream: tap the original OpenAI bytes for usage, feed the same
+    // bytes to the translator, and only forward Anthropic frames to the client.
+    let (mut tx, rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(1);
+    let mut acc = UsageAccumulator::default();
+    let mut tap = SseUsageTap::default();
+    let mut stream = response.bytes_stream();
+    let request_id = bridge.request_id.clone();
+    tokio::spawn(async move {
+        let mut translator = bridge::stream::SseTranslator::new(bridge);
+        let mut client_aborted = false;
+        let mut error_class: Option<String> = None;
+        loop {
+            let next = tokio::time::timeout(Duration::from_secs(60), stream.next()).await;
+            match next {
+                Ok(Some(Ok(bytes))) => {
+                    tap.feed(&bytes, BackendFormat::OpenAi, &mut acc);
+                    let output = translator.feed(&bytes);
+                    if !output.is_empty() && tx.send(Ok(Bytes::from(output))).await.is_err() {
+                        client_aborted = true;
+                        break;
+                    }
+                    if translator.is_finished() {
+                        break;
+                    }
+                }
+                Ok(Some(Err(error))) => {
+                    error_class = Some(error.to_string());
+                    let output = translator.abort(502, &format!("upstream stream failed: {error}"));
+                    if !output.is_empty() {
+                        let _ = tx.send(Ok(Bytes::from(output))).await;
+                    }
+                    break;
+                }
+                Ok(None) => {
+                    let output = translator.finish();
+                    if !output.is_empty() {
+                        let _ = tx.send(Ok(Bytes::from(output))).await;
+                    }
+                    break;
+                }
+                Err(_) => {
+                    let message = "upstream stream idle timeout";
+                    error_class = Some(message.to_string());
+                    let output = translator.abort(504, message);
+                    if !output.is_empty() {
+                        let _ = tx.send(Ok(Bytes::from(output))).await;
+                    }
+                    break;
+                }
+            }
+        }
+        tap.finish(BackendFormat::OpenAi, &mut acc);
+        if let Some(error) = translator.take_error() {
+            error_class = Some(error.to_string());
+        }
+        let estimated = !acc.seen_usage;
+        reporter.finish(
+            status.as_u16(),
+            acc.input_tokens,
+            acc.output_tokens,
+            estimated,
+            client_aborted,
+            error_class,
+        );
+        drop(tx);
+    });
+
+    bridge_sse_response(status_code, Body::from_stream(rx), &request_id)
 }
 
 async fn forward_backend_response(
     response: reqwest::Response,
     format: BackendFormat,
+    bridge: Option<BridgeContext>,
     mut reporter: CompletionReporter,
 ) -> Response<Body> {
+    if let Some(bridge) = bridge {
+        return forward_bridge_response(response, bridge, reporter).await;
+    }
     let status = response.status();
     let headers = response.headers().clone();
     let stream_request = reporter.stream;
@@ -1123,7 +1390,7 @@ pub async fn proxy_forward(
         Err(AcquireError::CounterUnavailable(msg)) => {
             request_total_for(&ctx, "", 503);
             return tag_router_headers(
-                no_backend_body(&msg),
+                proxy_error_response(&ctx, StatusCode::SERVICE_UNAVAILABLE, msg),
                 &ctx.request_id,
                 None,
                 start.elapsed().as_millis() as u64,
@@ -1136,7 +1403,11 @@ pub async fn proxy_forward(
             let report = state.backends.unavailable_report(&ctx.route);
             request_total_for(&ctx, "", 503);
             return tag_router_headers(
-                no_backend_body(format!("no healthy backend available: {report}")),
+                proxy_error_response(
+                    &ctx,
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    format!("no healthy backend available: {report}"),
+                ),
                 &ctx.request_id,
                 None,
                 start.elapsed().as_millis() as u64,
@@ -1153,7 +1424,11 @@ pub async fn proxy_forward(
             drop(l);
             request_total_for(&ctx, "", 503);
             return tag_router_headers(
-                no_backend_body("backend not available"),
+                proxy_error_response(
+                    &ctx,
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "backend not available",
+                ),
                 &ctx.request_id,
                 None,
                 start.elapsed().as_millis() as u64,
@@ -1162,13 +1437,40 @@ pub async fn proxy_forward(
 
         let endpoint = ctx.route.endpoint_for(backend_id);
 
+        // Defense in depth for legacy/bad rows: a bridge request is an OpenAI
+        // Chat request upstream. Never send it to an Anthropic-format backend
+        // or an endpoint declared as a different protocol.
+        if ctx.bridge.is_some() {
+            let endpoint_protocol = ProviderProtocol::parse(&endpoint.protocol);
+            if backend.format != BackendFormat::OpenAi || !endpoint_protocol.is_openai_chat_family()
+            {
+                drop(l);
+                request_total_for(&ctx, &backend.name, 502);
+                return tag_router_headers(
+                    proxy_error_response(
+                        &ctx,
+                        StatusCode::BAD_GATEWAY,
+                        format!(
+                            "Claude bridge requires an OpenAI Chat backend; backend '{}' is {:?}/{}",
+                            backend.name,
+                            backend.format,
+                            endpoint_protocol.as_str()
+                        ),
+                    ),
+                    &ctx.request_id,
+                    Some(&backend.name),
+                    start.elapsed().as_millis() as u64,
+                );
+            }
+        }
+
         let Some(body_for_attempt) = upload_body.take() else {
             request_total_for(&ctx, &backend.name, 502);
             return tag_router_headers(
-                build_response(
+                proxy_error_response(
+                    &ctx,
                     StatusCode::BAD_GATEWAY,
-                    reqwest::header::HeaderMap::new(),
-                    Body::from("request body already consumed"),
+                    "request body already consumed",
                 ),
                 &ctx.request_id,
                 Some(&backend.name),
@@ -1187,10 +1489,10 @@ pub async fn proxy_forward(
                         None => {
                             request_total_for(&ctx, &backend.name, 400);
                             return tag_router_headers(
-                                build_response(
+                                proxy_error_response(
+                                    &ctx,
                                     StatusCode::BAD_REQUEST,
-                                    reqwest::header::HeaderMap::new(),
-                                    Body::from("could not rewrite endpoint model field"),
+                                    "could not rewrite endpoint model field",
                                 ),
                                 &ctx.request_id,
                                 Some(&backend.name),
@@ -1231,10 +1533,10 @@ pub async fn proxy_forward(
             {
                 request_total_for(&ctx, &backend.name, 500);
                 return tag_router_headers(
-                    build_response(
+                    proxy_error_response(
+                        &ctx,
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        reqwest::header::HeaderMap::new(),
-                        Body::from("streaming upload cannot mutate request body"),
+                        "streaming upload cannot mutate request body",
                     ),
                     &ctx.request_id,
                     Some(&backend.name),
@@ -1286,7 +1588,7 @@ pub async fn proxy_forward(
                     Err(AcquireError::CounterUnavailable(msg)) => {
                         request_total_for(&ctx, "", 503);
                         return tag_router_headers(
-                            no_backend_body(&msg),
+                            proxy_error_response(&ctx, StatusCode::SERVICE_UNAVAILABLE, msg),
                             &ctx.request_id,
                             None,
                             start.elapsed().as_millis() as u64,
@@ -1295,11 +1597,7 @@ pub async fn proxy_forward(
                 }
             }
             return tag_router_headers(
-                build_response(
-                    StatusCode::BAD_GATEWAY,
-                    reqwest::header::HeaderMap::new(),
-                    Body::from("request build failed"),
-                ),
+                proxy_error_response(&ctx, StatusCode::BAD_GATEWAY, "request build failed"),
                 &ctx.request_id,
                 Some(&backend.name),
                 pre_forward_ms,
@@ -1332,7 +1630,11 @@ pub async fn proxy_forward(
                                 drop(l);
                                 request_total_for(&ctx, "", 503);
                                 return tag_router_headers(
-                                    no_backend_body(&msg),
+                                    proxy_error_response(
+                                        &ctx,
+                                        StatusCode::SERVICE_UNAVAILABLE,
+                                        msg,
+                                    ),
                                     &ctx.request_id,
                                     None,
                                     start.elapsed().as_millis() as u64,
@@ -1356,7 +1658,9 @@ pub async fn proxy_forward(
                     concurrency,
                     l,
                 );
-                let resp = forward_backend_response(resp, backend.format, reporter).await;
+                let resp =
+                    forward_backend_response(resp, backend.format, ctx.bridge.clone(), reporter)
+                        .await;
                 return tag_router_headers(
                     resp,
                     &ctx.request_id,
@@ -1382,7 +1686,7 @@ pub async fn proxy_forward(
                         Err(AcquireError::CounterUnavailable(msg)) => {
                             request_total_for(&ctx, "", 503);
                             return tag_router_headers(
-                                no_backend_body(&msg),
+                                proxy_error_response(&ctx, StatusCode::SERVICE_UNAVAILABLE, msg),
                                 &ctx.request_id,
                                 None,
                                 start.elapsed().as_millis() as u64,
@@ -1391,10 +1695,10 @@ pub async fn proxy_forward(
                     }
                 }
                 return tag_router_headers(
-                    build_response(
+                    proxy_error_response(
+                        &ctx,
                         StatusCode::BAD_GATEWAY,
-                        reqwest::header::HeaderMap::new(),
-                        Body::from(format!("backend connection failed: {e}")),
+                        format!("backend connection failed: {e}"),
                     ),
                     &ctx.request_id,
                     Some(&backend.name),
@@ -1419,7 +1723,7 @@ pub async fn proxy_forward(
                         Err(AcquireError::CounterUnavailable(msg)) => {
                             request_total_for(&ctx, "", 503);
                             return tag_router_headers(
-                                no_backend_body(&msg),
+                                proxy_error_response(&ctx, StatusCode::SERVICE_UNAVAILABLE, msg),
                                 &ctx.request_id,
                                 None,
                                 start.elapsed().as_millis() as u64,
@@ -1428,11 +1732,7 @@ pub async fn proxy_forward(
                     }
                 }
                 return tag_router_headers(
-                    build_response(
-                        StatusCode::GATEWAY_TIMEOUT,
-                        reqwest::header::HeaderMap::new(),
-                        Body::from("first byte timeout"),
-                    ),
+                    proxy_error_response(&ctx, StatusCode::GATEWAY_TIMEOUT, "first byte timeout"),
                     &ctx.request_id,
                     Some(&backend.name),
                     pre_forward_ms,

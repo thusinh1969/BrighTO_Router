@@ -1456,6 +1456,7 @@ function renderModels(c){
     mns.appendChild(mrow);
     mns.appendChild(el("div","cell-sub",group?("Model Group · "+routingPolicyLabel(r.routing_policy)):"Public route name"));
     if(group) mns.appendChild(pill((r.endpoints||[]).length+" endpoints","info"));
+    if(r.accept_anthropic_messages){ var bp=pill("Claude CLI bridge","info"); bp.title="Also accepts Anthropic Messages at /v1/messages"; mns.appendChild(bp); }
     mn.appendChild(mns); tr.appendChild(mn);
     var st=el("td");
     var statusTxt, statusKind;
@@ -1576,6 +1577,23 @@ function openGroupModal(route){
   var fn=el("div","field"); fn.appendChild(el("label",null,"API model group name")); var name=el("input"); name.placeholder="coding-fast"; name.value=route.model_name||""; fn.appendChild(name); fn.appendChild(el("p","hint","Clients send this single group name. Back-end routes stay private.")); def.appendChild(fn);
   m.appendChild(def);
 
+  var bridgeField=el("div","field hidden");
+  var bridgeLab=el("label","switch-field");
+  var bridgeCopy=el("span");
+  bridgeCopy.appendChild(el("b",null,"Also accept Anthropic Messages (Claude CLI)"));
+  bridgeCopy.appendChild(el("small",null,"Chat groups only. The same group name also answers /v1/messages; every selected route must be an OpenAI Chat route."));
+  var bridgeCb=el("input"); bridgeCb.type="checkbox"; bridgeCb.checked=route.accept_anthropic_messages===true; bridgeCb.id="group-bridge-toggle";
+  bridgeLab.appendChild(bridgeCopy); bridgeLab.appendChild(bridgeCb);
+  bridgeField.appendChild(bridgeLab);
+  m.appendChild(bridgeField);
+  function refreshGroupBridge(){
+    var eligible=ts.value==="chat";
+    bridgeField.classList.toggle("hidden",!eligible);
+    if(!eligible) bridgeCb.checked=false;
+    bridgeLab.classList.toggle("selected",bridgeCb.checked);
+  }
+  bridgeCb.onchange=function(){ bridgeLab.classList.toggle("selected",bridgeCb.checked); };
+
   var stat=el("div","connection-status","Choose at least two existing compatible routes."); m.appendChild(stat);
   m.appendChild(el("div","section-title","Add existing tested route"));
   var pickGrid=el("div","form-grid"); var fr=el("div","field"); fr.appendChild(el("label",null,"Compatible route")); var routeSel=el("select"); fr.appendChild(routeSel); fr.appendChild(el("p","hint","Routes must already be saved and enabled.")); pickGrid.appendChild(fr); var addWrap=el("div","field"); addWrap.appendChild(el("label",null,"Action")); var addBtn=el("button","btn primary","Add route to group"); addBtn.type="button"; addWrap.appendChild(addBtn); addWrap.appendChild(el("p","hint","No provider key is entered here.")); pickGrid.appendChild(addWrap); m.appendChild(pickGrid);
@@ -1616,7 +1634,7 @@ function openGroupModal(route){
   }
   function redraw(){ refreshChoices(); renderSelected(); }
   addBtn.onclick=function(){ var r=(routes||[]).find(function(x){return x.model_name===routeSel.value;}); if(!r){ toast("Choose a compatible route first","err"); return; } var ep=endpointFromRouteForGroup(r); if(selected.some(function(x){return Number(x.backend_id)===Number(ep.backend_id);})){ toast("Choose a route using a different provider endpoint. A group uses each endpoint once.","err"); return; } ep.weight=1; selected.push(ep); redraw(); };
-  ts.onchange=function(){ selected=[]; redraw(); };
+  ts.onchange=function(){ selected=[]; refreshGroupBridge(); redraw(); };
   policy.onchange=renderSelected;
 
   var act=el("div","actions"); var cancel=el("button","btn","Cancel"); cancel.onclick=closeModal; var saveDraft=el("button","btn","Save draft"); var save=el("button","btn primary","Save enabled"); act.appendChild(cancel); act.appendChild(saveDraft); act.appendChild(save); m.appendChild(act);
@@ -1629,6 +1647,7 @@ function openGroupModal(route){
     try{
       var endpointPayload=selected.map(function(ep){ var out={backend_id:ep.backend_id,provider_model_name:ep.provider_model_name,auth_mode:ep.auth||"bearer",protocol:ep.protocol||groupProtocolForTask(ts.value),weight:policy.value==="weighted_round_robin"?Math.max(1,Number(ep.weight)||1):1,max_inflight:Math.max(0,Number(ep.max_inflight)||0),enabled:ep.enabled!==false}; if(ep.provider_key_ref) out.provider_key_ref=ep.provider_key_ref; return out; });
       var payload={model_name:publicName,backend_ids:selected.map(function(ep){return ep.backend_id;}),chars_per_token:4.0,first_byte_timeout:Number(route.first_byte_timeout)||180,provider_model_name:publicName,enabled:enabledFlag,auth_mode:"bearer",protocol:groupProtocolForTask(ts.value),routing_policy:policy.value,endpoints:endpointPayload};
+      payload.accept_anthropic_messages = ts.value==="chat" && bridgeCb.checked;
       if(route.context_tokens) payload.context_tokens=route.context_tokens;
       if(route.max_output_tokens) payload.max_output_tokens=route.max_output_tokens;
       if(route.price_input_per_mtok_usd!=null) payload.price_input_per_mtok_usd=route.price_input_per_mtok_usd;
@@ -1639,6 +1658,7 @@ function openGroupModal(route){
   }
   save.onclick=function(){ doSave(true); };
   saveDraft.onclick=function(){ doSave(false); };
+  refreshGroupBridge();
   redraw();
   ov.appendChild(m); ov.classList.remove("hidden");
 }
@@ -1753,6 +1773,28 @@ function openRouteModal(route,opts){
   var keyHint=el("p","hint");
   fk.appendChild(keyRow); fk.appendChild(keyHint); providerGrid.appendChild(fk);
   m.appendChild(providerGrid);
+
+  // Claude CLI bridge: an OpenAI Chat route can additionally answer Anthropic
+  // Messages at /v1/messages. It is not a new task or protocol: the public
+  // model keeps serving /v1/chat/completions normally.
+  var bridgeField=el("div","field hidden");
+  var bridgeLab=el("label","switch-field");
+  var bridgeCopy=el("span");
+  bridgeCopy.appendChild(el("b",null,"Also accept Anthropic Messages (Claude CLI)"));
+  bridgeCopy.appendChild(el("small",null,"Serve the same public model at /v1/messages for Claude Code. Upstream must support function calling for tools."));
+  var bridgeCb=el("input"); bridgeCb.type="checkbox"; bridgeCb.checked=route.accept_anthropic_messages===true; bridgeCb.id="route-bridge-toggle";
+  bridgeLab.appendChild(bridgeCopy); bridgeLab.appendChild(bridgeCb);
+  bridgeField.appendChild(bridgeLab);
+  bridgeField.appendChild(el("p","hint","Only for OpenAI Chat Completions routes. Native Anthropic routes use Task type Anthropic Messages instead."));
+  m.appendChild(bridgeField);
+  function refreshBridgeField(){
+    var e=catEntry(ps.value);
+    var eligible=routeMode!=="group" && ts.value==="chat" && (e.dialect||"openai")==="openai";
+    bridgeField.classList.toggle("hidden",!eligible);
+    if(!eligible) bridgeCb.checked=false;
+    bridgeLab.classList.toggle("selected",bridgeCb.checked);
+  }
+  bridgeCb.onchange=function(){ bridgeLab.classList.toggle("selected",bridgeCb.checked); };
   var testState={ok:false};
   var endpointTest={ok:false,candidate:null};
 
@@ -1814,6 +1856,7 @@ function openRouteModal(route,opts){
     else if(task==="systemone") taskHint.textContent="System One calls /v1/systemone with a tiny decision request. Use Ollaya/Laya or a compatible decision endpoint.";
     else taskHint.textContent="Chat Completions calls /v1/chat/completions with one tiny prompt.";
     if(typeof updateModelMap==="function" && typeof ms!=="undefined" && ms && typeof mi!=="undefined" && mi) updateModelMap();
+    refreshBridgeField();
   }
   function setConnectionStatus(kind,msg){ stat.className="connection-status"+(kind?" "+kind:""); stat.textContent=msg; }
   function clearTest(msg){ testState.ok=false; endpointTest={ok:false,candidate:null}; if(typeof addEndpointBtn!=="undefined"&&addEndpointBtn) addEndpointBtn.disabled=true; updateSaveEnabled(); setConnectionStatus("",msg||"Run Test connection before saving an enabled route."); }
@@ -1981,6 +2024,7 @@ function openRouteModal(route,opts){
       if(catEntry(ps.value).dialect==="anthropic"){ refreshProviderOptions("custom-llm"); ps.value="custom-llm"; applyCat(true); }
     }
     renderGroupEndpoints();
+    refreshBridgeField();
     updateSaveEnabled();
   }
 
@@ -2136,6 +2180,7 @@ function openRouteModal(route,opts){
         }
         payload={model_name:name,backend_ids:[singleBackendId],chars_per_token:4.0,first_byte_timeout:Number(to.value)||180,provider_model_name:modelSel,enabled:enabledFlag};
         payload.auth_mode=da.auth; payload.protocol=da.protocol;
+        payload.accept_anthropic_messages = !bridgeField.classList.contains("hidden") && bridgeCb.checked;
         // On edit the provider key is write-only (the input is blank); only send a key when the
         // admin actually typed a new one. Otherwise the backend preserves the stored credential.
         if(isEdit){ if(pk.value.trim()) payload.provider_key=pk.value.trim(); }

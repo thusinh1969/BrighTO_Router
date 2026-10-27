@@ -1,6 +1,6 @@
 ---
 title: BrighTO-Router — Rust LLM Gateway, Model Load Balancer, and SystemOne Router
-description: Free open-source Rust LLM gateway with a single-file Python SDK, OpenAI/Anthropic APIs, Ollaya/Laya and Quyết SystemOne decisions, team keys, token budgets, and model load balancing.
+description: Free open-source Rust LLM gateway with a single-file Python SDK, OpenAI/Anthropic APIs, Claude Code bridging to OpenAI-compatible models, Ollaya/Laya and Quyết SystemOne decisions, team keys, token budgets, and model load balancing.
 ---
 
 # BrighTO-Router — Rust LLM Gateway, Model Load Balancer, and SystemOne Router
@@ -20,14 +20,15 @@ Most teams do not need a large hosted AI platform to start. They need a fast, un
 
 - OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`
 - Anthropic-compatible `/v1/messages`
-- [Native agent client setup](AGENT_CLIENTS.md) for Claude Code, Codex, Hermes, and OpenClaw, using matching protocols and tool-capable backends
+- Claude CLI bridge in 1.3.0: an OpenAI Chat route can also serve `/v1/messages`, so Claude Code can use an OpenAI-compatible model while the same public model keeps serving `/v1/chat/completions`. Qwen 3.8 local is validated through both protocols.
+- [Agent client setup](AGENT_CLIENTS.md) for Claude Code, Codex, Hermes, and OpenClaw, using matching protocols or the explicit Claude CLI bridge, with tool-capable backends
 - System One decisions through `/v1/systemone` and `/v1/decisions`
 - Single-file Python SDK for every public inference API, including Quyết-compatible System One decisions
 - Rerank and ASR adapter routes
 - Round-robin and weighted Model Groups for load balancing
 - Team API keys, expiry, token budgets, RPM limits, and concurrency limits
 - PostgreSQL usage ledger and Portal dashboard
-- Hardened admin auth (constant-time key check, per-IP rate limiting) and Portal security headers in 1.2.0
+- Hardened admin auth (constant-time key check, per-IP rate limiting) and Portal security headers since 1.2.0
 - No prompt or response content stored by default
 - One-line Docker install with amd64 and arm64 images; Linux servers, Windows through Docker Desktop/WSL2, and macOS through Docker Desktop
 
@@ -45,16 +46,17 @@ http://127.0.0.1:18080/
 
 ## Architecture
 
-- [v1.2.0 architecture](architecture/brighto-router-workflow.html) — Portal, Admin API, PostgreSQL snapshot, Rust hot path, adapters, Model Groups, SystemOne, ledger, and release gates.
+- [Architecture diagram](architecture/brighto-router-workflow.html) — Portal, Admin API, PostgreSQL snapshot, Rust hot path, adapters, Model Groups, SystemOne, ledger, and release gates.
 - [PostgreSQL data flow](postgresql-data-flow.html) — durable control plane, Model Group counters, usage ledger, and JSONL fallback.
+- [Migration 0008](MIGRATION_0008.md) — required additive database migration for the Claude CLI bridge, with backup, rolling-upgrade, rollback, and test coverage.
 - [Python SDK and API examples](API_EXAMPLES.md) — one-file client for chat, streaming, Responses, embeddings, rerank, ASR, System One, and Anthropic Messages, plus a Quyết backend example.
 - [Load-balancing test notes](REAL_LOAD_BALANCING_TESTS.md) — round-robin and weighted Model Group validation.
 
 ## Repository and Docker image
 
 - GitHub: [thusinh1969/BrighTO_Router](https://github.com/thusinh1969/BrighTO_Router)
-- Docker: `thusinh1969/brighto_airouter:v1.2.0` for `linux/amd64` and `linux/arm64`
-- Release: `v1.2.0`
+- Docker: `thusinh1969/brighto_airouter:v1.3.0` for `linux/amd64` and `linux/arm64`
+- Release: `v1.3.0`
 
 ## Benchmarks
 
@@ -62,4 +64,4 @@ BrighTO-Router publishes deterministic mock-backend benchmarks to measure router
 
 ## Keywords
 
-LLM gateway, LLM router, AI gateway, AI router, OpenAI API proxy, Anthropic API router, self-hosted LLM proxy, model router, model load balancer, SystemOne router, System One decisions, JEV router, DJEV router, Ollaya router, Laya model, Quyết decision model, Quyet-1.0-Small, Python SDK, fallback routing, token budget, cost reduction, LiteLLM alternative, Bifrost alternative, Rust API gateway.
+LLM gateway, LLM router, AI gateway, AI router, OpenAI API proxy, Anthropic API router, Claude Code gateway, Claude CLI bridge, Qwen3.8 Anthropic gateway, local Qwen gateway, Anthropic Messages proxy, self-hosted LLM proxy, model router, model load balancer, SystemOne router, System One decisions, JEV router, DJEV router, Ollaya router, Laya model, Quyết decision model, Quyet-1.0-Small, Python SDK, fallback routing, token budget, cost reduction, LiteLLM alternative, Bifrost alternative, Rust API gateway.

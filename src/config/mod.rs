@@ -115,7 +115,8 @@ impl DbConfigLoader {
             "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
              provider_model_name, context_tokens, max_output_tokens, \
              price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, \
-             provider_key_ref, auth_mode, protocol, routing_policy FROM model_routes",
+             provider_key_ref, auth_mode, protocol, routing_policy, \
+             accept_anthropic_messages FROM model_routes",
         )
         .await
         .context("load model_routes")?;
@@ -170,6 +171,7 @@ impl DbConfigLoader {
                 protocol,
                 provider_key,
                 routing_policy,
+                accept_anthropic_messages: g_bool(&row, 15)?,
                 endpoints,
             });
         }

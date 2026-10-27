@@ -36,3 +36,9 @@ audits/
 .venv*/
 backups/
 _launch/
+
+# isolated UAT local state is never part of the production image build context
+uat/work/
+uat/artifacts/
+uat/claude-config/
+uat/tls/

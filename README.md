@@ -11,24 +11,26 @@ Use it as a free, open-source LiteLLM or Bifrost alternative when you want a nar
 </p>
 
 
-Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Python SDK](#single-file-python-sdk) · [API examples](docs/API_EXAMPLES.md) · [Agent clients](docs/AGENT_CLIENTS.md) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
+Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Python SDK](#single-file-python-sdk) · [API examples](docs/API_EXAMPLES.md) · [Agent clients](docs/AGENT_CLIENTS.md) · [Migration 0008](docs/MIGRATION_0008.md) · [System One](#system-one--decision-routes) · [Model Groups](#first-model-group) · [Architecture](#how-it-works) · [Benchmarks](#benchmark-strategy) · [API support](#multimodal-and-media-support) · [Operations](#daily-operation) · [Privacy](#logging-analytics-and-privacy)
 
 - Official repository: `https://github.com/thusinh1969/BrighTO_Router`
-- Official Docker image: `thusinh1969/brighto_airouter:v1.2.0` (`linux/amd64` and `linux/arm64`)
-- Search keywords: open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, SystemOne router, System One decisions, JEV router, DJEV router, Ollaya router, Laya model, LiteLLM alternative
-- Release version: `1.2.0`
+- Official Docker image: `thusinh1969/brighto_airouter:v1.3.0` (`linux/amd64` and `linux/arm64`)
+- Search keywords: open-source LLM gateway, free LLM router, LLM gateway, LLM router, AI gateway, model router, Rust LLM proxy, OpenAI-compatible gateway, Anthropic-compatible router, Claude Code gateway, Claude CLI bridge, local Qwen gateway, Qwen3.8, SystemOne router, System One decisions, JEV router, DJEV router, Ollaya router, Laya model, LiteLLM alternative
+- Latest published release: `1.3.0`
+- Release `1.3.0` adds the Claude CLI bridge (Anthropic Messages ↔ OpenAI Chat), Qwen/local OpenAI-compatible routes exposed as Anthropic, and migration `0008`. Every OpenAI Chat model can now expose Anthropic Messages as an opt-in route option.
 
 ## Why teams choose BrighTO-Router
 
 | Strength | What it means |
 |---|---|
 | **Ultra-fast large-context routing** | Same-machine mock benchmarks show million-token pass-through overhead in low single-digit milliseconds over HTTP. |
-| **Dead-simple production stack** | One Rust binary, one Docker image, PostgreSQL as the durable store. No Redis required for 1.2.0. |
+| **Dead-simple production stack** | One Rust binary, one Docker image, PostgreSQL as the durable store. No Redis required for 1.3.0. |
 | **Multi-core by default** | The router uses all available CPU threads by default; set `ROUTER_WORKER_THREADS` only when you need to cap CPU use. |
 | **Load balancing built in** | Model Groups let one API model name spread traffic across compatible routes using round-robin or weighted round-robin. |
 | **Easy to run and maintain** | `./start.sh install`, `start`, `stop`, `status`, `logs`, `restart`; Portal for routes, teams, keys, budgets, and usage. |
 | **Private by design** | The router records metadata for usage analytics, not prompt text, uploaded media, tool payloads, or model answers. |
 | **Self-hosted control** | Works with OpenAI-compatible providers, Anthropic Messages, local llama.cpp/vLLM-style endpoints, embeddings, rerank, and ASR routes. |
+| **Claude CLI on your own models** | Enable the explicit Anthropic Messages bridge on an OpenAI Chat route, then use Claude Code with that public model while it keeps serving `/v1/chat/completions`. |
 
 Compared with broad AI gateway platforms, BrighTO-Router keeps the promise narrower: be the fast, understandable LLM gateway a team can own. It is not a hosted prompt suite or agent platform. It is the traffic path, policy point, model load balancer, and usage ledger for your AI endpoints.
 
@@ -49,14 +51,15 @@ These benchmarks use deterministic local Rust mock backends. They measure router
 
 Honest read: Model Groups add routing choice, per-endpoint model rewrite, PostgreSQL-backed round-robin counters, and fail-safe behavior. The table reports standalone Model Group overhead against a direct mock backend. We do not claim a negative Model Group delta versus single route; release validation uses a fair same-mock gate so impossible-looking benchmark wins cannot slip into public claims.
 
-Release scope: 1.2.0 is a security and correctness release. The benchmark table above is the existing 1.0/1.1 measurement set and was not re-run for 1.2.0; no new performance claim is made here.
+Release scope: 1.3.0 adds the explicit Claude CLI bridge and migration 0008. The benchmark table above is the existing 1.0/1.1 measurement set and was not re-run; no new performance claim is made here. The bridge is not part of these benchmark numbers.
 
 ## Core capabilities
 
-| Capability | Current 1.2.0 status |
+| Capability | Current status |
 |---|---|
 | Chat, completions, and Responses | OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, and `/v1/responses`. |
 | Anthropic Messages | `/v1/messages` with Anthropic-compatible upstreams. |
+| Claude CLI bridge | Yes: an OpenAI Chat route can also accept `/v1/messages` through explicit request/stream/tool translation. |
 | Embeddings | `/v1/embeddings` pass-through with usage logging. |
 | Rerank | `/v1/rerank` adapters for Qwen/DashScope, Jina, Voyage, Cohere, and OpenAI-compatible/custom endpoints. |
 | ASR / transcription | `/v1/audio/transcriptions` multipart proxy path. |
@@ -72,14 +75,16 @@ Token budgets block requests when their limit is reached. A configured money amo
 | Workload | Why it fits |
 |---|---|
 | Many team users with small and medium prompts | Fast Rust hot path: authenticate, check policy, choose route, forward stream, write usage asynchronously. |
-| Vibe-coding and agent traffic with huge contexts | Large JSON bodies stay pass-through; the router avoids storing prompt content and keeps memory behavior visible. |
+| Vibe-coding and agent traffic with huge contexts | Large JSON bodies stay pass-through on native routes; the explicit Claude CLI bridge buffers and translates its own request/response. The router avoids storing prompt content and keeps memory behavior visible. |
 | Multiple local and cloud backends | Model Groups can balance one client-facing model name across compatible endpoints while clients keep the same request. |
 
 ## Agent clients
 
 Claude Code, Codex, Hermes, and OpenClaw can use the router directly with a BrighTO client key and a matching native API route. Choose **Anthropic Messages** for Claude Code, **OpenAI Responses** for Codex, or **Chat** for Hermes and OpenClaw. Streaming and tool payloads are forwarded; the upstream must support that protocol and tool calling.
 
-[Client configuration and HTTPS trust](docs/AGENT_CLIENTS.md) · [Repeatable native CLI tool tests](smoke/agents/README.md)
+For Claude Code on an OpenAI-compatible model, enable **Also accept Anthropic Messages (Claude CLI)** on a Chat route. The same public model then serves both API shapes. See [Agent clients](docs/AGENT_CLIENTS.md) for the toggle, Claude custom-model setup, count-token estimate, and limitations.
+
+[Client configuration and HTTPS trust](docs/AGENT_CLIENTS.md) · [Repeatable native CLI tool tests](smoke/agents/README.md) · [Isolated HTTPS/Qwen Claude CLI UAT](uat/README.md)
 
 ## Quick start
 
@@ -109,7 +114,7 @@ cd BrighTO_Router
 ./start.sh install
 ```
 
-This 1.2.0 line pulls `thusinh1969/brighto_airouter:v1.2.0` by default. Docker automatically selects the matching `linux/amd64` or `linux/arm64` image. If you already have an old `.env`, make sure it contains `BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.2.0`, then run `./start.sh restart`.
+This 1.3.0 line pulls `thusinh1969/brighto_airouter:v1.3.0` by default. Docker automatically selects the matching `linux/amd64` or `linux/arm64` image. If you already have an old `.env`, make sure it contains `BRIGHTO_ROUTER_IMAGE=thusinh1969/brighto_airouter:v1.3.0`, then run `./start.sh restart`.
 
 Open the Portal on the server:
 
@@ -281,7 +286,7 @@ python3 test_router.py --router https://<router-host>:18443/v1 --ca ssl/cert.pem
 
 ## What install creates
 
-`./start.sh install` creates `.env` from `.env.example`, starts PostgreSQL in Docker, runs migrations, seeds default records, pulls `thusinh1969/brighto_airouter:v1.2.0`, and starts the router.
+`./start.sh install` creates `.env` from `.env.example`, starts PostgreSQL in Docker, runs migrations, seeds default records, pulls `thusinh1969/brighto_airouter:v1.3.0`, and starts the router.
 
 Default records:
 
@@ -299,7 +304,42 @@ The unlimited team default applies to new installations. Upgrading preserves exi
 
 ## Updating to a new version
 
-1.2.0 has no database schema change and introduces no new required environment variables. The published image is `thusinh1969/brighto_airouter:v1.2.0`; installs that pin `BRIGHTO_ROUTER_IMAGE` to `v1.1.0` must change that value, or pass `./start.sh upgrade --image thusinh1969/brighto_airouter:v1.2.0`, to deploy it.
+### Claude CLI bridge: migration 0008 is required
+
+Release 1.3.0 adds one additive database column for the Claude CLI bridge:
+
+```sql
+ALTER TABLE model_routes
+    ADD COLUMN IF NOT EXISTS accept_anthropic_messages BOOLEAN NOT NULL DEFAULT FALSE;
+```
+
+Existing routes are backfilled to `FALSE`; enabling the bridge is still an explicit per-route or per-group choice. The old v1.2.0 binary ignores the extra column, so a rolling migration-first deployment is safe. The new bridge binary **must not** start against an unmigrated database: it will fail while loading routes or listing routes with `column "accept_anthropic_messages" does not exist`.
+
+Run the migration before starting the bridge image:
+
+```bash
+./start.sh backup                       # or use ./start.sh upgrade, which backs up first
+./start.sh migrate
+# then pull/start the bridge image or run ./start.sh upgrade --image <bridge-image>
+```
+
+Verify before sending traffic:
+
+```bash
+./start.sh status
+docker compose exec -T postgres psql -U "${DB_USER:-brighto_router}" -d "${DB_NAME:-brighto_router}" \
+  -c "SELECT model_name, protocol, accept_anthropic_messages FROM model_routes ORDER BY model_name;"
+```
+
+Every pre-existing route must show `f`. Then open the Portal, edit a Chat route, enable **Also accept Anthropic Messages (Claude CLI)**, Test connection, save enabled, and make a real `/v1/messages` call. Test Connection alone is not bridge proof.
+
+Rollback is safe to the v1.2.0 binary because the column is additive; do not drop the column on a live database to roll back the feature. Full runbook, compatibility matrix, backup/restore, Kubernetes order, failure modes, and test coverage: [Migration 0008](docs/MIGRATION_0008.md). The migration has dedicated SQLx tests:
+
+```bash
+cargo test --locked --test migration_0008
+```
+
+The previous v1.2.0 image has no schema change and introduces no new required environment variables. Release 1.3.0 requires migration 0008. Installs that pin `BRIGHTO_ROUTER_IMAGE` to `v1.1.0` or `v1.2.0` must change that value, or pass `./start.sh upgrade --image thusinh1969/brighto_airouter:v1.3.0`, for the published image.
 
 **Python client, examples, or documentation only:**
 
@@ -322,7 +362,7 @@ docker compose ps router
 
 This replaces the router container without running migrations or default-data seeding, editing `.env`, or recreating PostgreSQL. Your teams, routes, keys, and usage history stay in PostgreSQL. The router still writes normal usage records while serving traffic. After the restart, check `/readyz` on your configured HTTP or HTTPS address and make a request through an existing route. Pulling Git alone does **not** deploy Rust or embedded Portal changes; the Docker image must also be updated. If the new release needs a different image tag, change `BRIGHTO_ROUTER_IMAGE` in `.env` deliberately before pulling it.
 
-If the release changes the database schema, configuration, or install defaults, use the full upgrade below instead. Do not run `./start.sh upgrade` for a code-only update: it runs migrations and seeds defaults.
+If the release changes the database schema, configuration, or install defaults, use the full upgrade below instead. Do not run `./start.sh upgrade` for a code-only update: it runs migrations and seeds defaults. The Claude CLI bridge is a schema-changing release because of migration 0008; use the migration/full-upgrade path, never the code-only Docker image replacement.
 
 ### Full upgrade without export/import pain
 
@@ -340,7 +380,7 @@ Upgrade also protects existing users from the old LAN-only admin default. If `.e
 To pin a new image tag explicitly:
 
 ```bash
-./start.sh upgrade --image thusinh1969/brighto_airouter:v1.2.0
+./start.sh upgrade --image thusinh1969/brighto_airouter:v1.3.0
 ```
 
 Manual safety commands are available when moving servers or before a risky maintenance window:
@@ -422,12 +462,13 @@ Why use Kubernetes if the router is already very fast? Availability and operatio
 
 More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROVIDERS.md), [k8s/README.md](k8s/README.md).
 
-## What teams get in 1.2.0
+## What teams get in 1.3.0
 
 - One internal endpoint for multiple model providers.
 - OpenAI-style routes: `/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/embeddings`, `/v1/models`.
 - Anthropic Messages route: `/v1/messages`.
-- Adapter routes: `/v1/rerank`, `/v1/audio/transcriptions`, `/v1/systemone`, and `/v1/decisions` are implemented, Portal task-aware, and covered by the inherited 1.1.0 live smokes plus the 1.2.0 mock, Portal, SDK, and Docker gates.
+- Claude CLI bridge: an OpenAI Chat route with **Also accept Anthropic Messages** also serves `/v1/messages`; `/v1/messages/count_tokens` returns a local estimate. Qwen/local OpenAI-compatible models can be exposed as Anthropic without a separate native backend.
+- Adapter routes: `/v1/rerank`, `/v1/audio/transcriptions`, `/v1/systemone`, and `/v1/decisions` are implemented, Portal task-aware, and covered by the inherited 1.1.0 live smokes plus the 1.3.0 mock/integration, Portal, SDK, and Docker gates.
 - Multimodal LLM JSON pass-through when the selected backend supports that request shape.
 - Model aliases and provider-backed model routes.
 - Weighted backend routing, fallback backend support, and circuit breaking.
@@ -438,6 +479,14 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 - User Portal for issued client keys.
 - Health endpoints: `/healthz`, `/readyz`.
 - Prometheus metrics endpoint: `/metrics`.
+
+### Claude CLI bridge and Qwen in 1.3.0
+
+- An OpenAI Chat route can opt in to Anthropic Messages with **Also accept Anthropic Messages (Claude CLI)**. The same public model then serves `/v1/chat/completions` and `/v1/messages`.
+- The bridge translates system/messages/tools/tool results/images, streams Anthropic SSE, maps usage and errors, and answers `/v1/messages/count_tokens` with a local estimate.
+- Local Qwen 3.8 Flash Next is validated through both protocols, Claude Code text, and a real `Read` tool round trip. See [Agent clients](docs/AGENT_CLIENTS.md).
+- Release 1.3.0 requires migration `0008`; follow [Migration 0008](docs/MIGRATION_0008.md), back up first, and never start the 1.3.0 binary against an unmigrated database.
+- The isolated UAT is intentionally single-model (`qwen3.8-flash-next`), HTTPS, and one-shot rebuildable: [uat/README.md](uat/README.md).
 
 ### Security and correctness hardening in 1.2.0
 
@@ -450,11 +499,11 @@ More detail: [INSTALL.md](INSTALL.md), [HTTPS.md](HTTPS.md), [PROVIDERS.md](PROV
 
 ## Logging, analytics, and privacy
 
-BrighTO-Router records one usage row for each request that reaches a provider backend, including provider errors and client aborts. It does not store chat content, prompts, uploaded media, tool payloads, or model responses. Requests rejected before forwarding — invalid key, model permission, budget/concurrency limit, or no healthy backend — return an error to the caller but are not written to `usage_ledger`. In 1.2.0, a "session" in the router means request-level traffic metadata, not a stored conversation transcript.
+BrighTO-Router records one usage row for each request that reaches a provider backend, including provider errors and client aborts. It does not store chat content, prompts, uploaded media, tool payloads, or model responses. Requests rejected before forwarding — invalid key, model permission, budget/concurrency limit, or no healthy backend — return an error to the caller but are not written to `usage_ledger`. In 1.3.0, a "session" in the router means request-level traffic metadata, not a stored conversation transcript.
 
 Usage records are written to PostgreSQL in `usage_ledger`. If PostgreSQL is temporarily unavailable, the router writes usage events to the local JSONL file configured by `LEDGER_FALLBACK_FILE` (`/var/lib/brighto-router/ledger-fallback.jsonl` in the default Docker setup) and replays them when the database is available again. PostgreSQL is the source for Portal reporting, budget counters, historical analytics, and Grafana SQL dashboards. The fallback file is only a durability buffer during database outages.
 
-| Customer question | 1.2.0 answer | Why it matters |
+| Customer question | 1.3.0 answer | Why it matters |
 |---|---|---|
 | Do we log request size? | Yes, by `input_tokens`, `output_tokens`, and an `estimated` flag when the provider did not return exact usage. | Enough for budget, cost, and capacity analysis without storing content. |
 | Do we log speed? | Yes: `ttfb_ms` (time until upstream response headers; streamed first-token latency can be later), `total_ms` (whole request), and `router_overhead_ms` (router work before provider forwarding). Token-per-second values are derived from token counts and duration. | Admins can see whether latency comes from the provider, large payloads, or router overhead. |
@@ -469,20 +518,21 @@ If a customer needs full transcript auditing, that should be an explicit enterpr
 
 ## Multimodal and media support
 
-BrighTO-Router 1.2.0 routes LLM, OpenAI Responses, embeddings, rerank, System One decisions, and OpenAI-compatible ASR/transcription requests. It does not try to be a full media-generation gateway yet. The router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not inspect, transform, store, resize, transcode, or normalize media content.
+BrighTO-Router 1.3.0 routes LLM, OpenAI Responses, embeddings, rerank, System One decisions, and OpenAI-compatible ASR/transcription requests. It does not try to be a full media-generation gateway yet. For native routes, the router authenticates the client, checks policy, chooses the configured model route, and forwards the JSON body to the selected backend. It does not store, resize, transcode, or normalize media content. The explicit Claude CLI bridge converts Anthropic image blocks to OpenAI `image_url` parts in transit; it still does not store the image.
 
-| Capability | 1.2.0 status | What it means |
+| Capability | 1.3.0 status | What it means |
 |---|---|---|
 | Text chat/completions | Yes | Supported through OpenAI-style `/v1/chat/completions` and `/v1/completions`. |
 | OpenAI Responses | Proxy yes | Supported through `/v1/responses` when the backend exposes the Responses API. Useful for Codex-style clients. |
 | Embeddings | Proxy yes | Supported through OpenAI-style `/v1/embeddings` when the backend provides embeddings. BrighTO-Router forwards the request and returns the vector response unchanged. |
 | Anthropic Messages | Yes | Supported through `/v1/messages` for Anthropic-compatible backends. |
-| Image input inside LLM chat JSON | Conditional yes | Passed through when the selected backend accepts that JSON shape and the request stays under `MAX_BODY_BYTES`. |
+| Anthropic Messages via OpenAI Chat bridge | Yes | An explicit route toggle translates `/v1/messages` to `/v1/chat/completions`, including streaming, tools, images, usage, and errors. |
+| Image input inside LLM chat JSON | Conditional yes | Passed through when the selected backend accepts that JSON shape and the request stays under `MAX_BODY_BYTES`. For the Claude CLI bridge, Anthropic image blocks are converted to OpenAI `image_url` content. |
 | Audio input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts audio data in the same JSON endpoint. This is separate from the multipart ASR adapter below. |
 | Video input inside LLM chat JSON | Conditional yes | Passed through only when the backend accepts video data in the same JSON endpoint and the body-size limit allows it. |
-| OpenAI Images API such as `/v1/images/generations` | No | Planned as a future media adapter, not part of 1.2.0. |
-| Audio generation / TTS | No | Planned as future media adapters. 1.2.0 supports ASR/transcription only for OpenAI-compatible multipart providers. |
-| Video generation routes | No | Planned as future media adapters, not part of 1.2.0. |
+| OpenAI Images API such as `/v1/images/generations` | No | Planned as a future media adapter, not part of 1.3.0. |
+| Audio generation / TTS | No | Planned as future media adapters. 1.3.0 supports ASR/transcription only for OpenAI-compatible multipart providers. |
+| Video generation routes | No | Planned as future media adapters, not part of 1.3.0. |
 | Reranking APIs | Yes | `/v1/rerank` supports Jina, Voyage, Cohere, Qwen/DashScope, and OpenAI-compatible/custom rerank adapters. |
 | Multipart ASR upload | Yes | `/v1/audio/transcriptions` supports OpenAI-compatible transcription providers and has live OpenAI smoke coverage. |
 | System One / decisions | Yes | `/v1/systemone` and `/v1/decisions` forward TypeSafe/Jev-compatible decision requests and return answers unchanged. |
@@ -496,7 +546,7 @@ The practical rule is simple: if a provider exposes a model through a supported 
 
 `/v1/embeddings` is a proxy route, not an embedding engine. The backend creates the vector. BrighTO-Router only applies authentication, model-route policy, budget checks, provider credential handling, response forwarding, and usage logging. It does not store vectors, build a vector index, run semantic search, or convert one provider's embedding format into another.
 
-BGE or Qwen text embedding models can be routed when they are exposed by an OpenAI-compatible backend that accepts `/v1/embeddings`; the 1.1.0 validation live-smoked Qwen `qwen3.7-text-embedding` this way and 1.2.0 keeps that surface. Qwen `tongyi-embedding-vision-flash` is a multimodal embedding model, but it uses DashScope multimodal embedding APIs and should be handled by a future dedicated adapter. Reranking is implemented as a separate adapter endpoint because reranking has a different request and response shape from embeddings.
+BGE or Qwen text embedding models can be routed when they are exposed by an OpenAI-compatible backend that accepts `/v1/embeddings`; the 1.1.0 validation live-smoked Qwen `qwen3.7-text-embedding` this way and 1.3.0 keeps that surface. Qwen `tongyi-embedding-vision-flash` is a multimodal embedding model, but it uses DashScope multimodal embedding APIs and should be handled by a future dedicated adapter. Reranking is implemented as a separate adapter endpoint because reranking has a different request and response shape from embeddings.
 
 ## Why Rust instead of Python
 
@@ -538,7 +588,7 @@ Runtime state is split deliberately:
 | Ledger fallback | Local JSONL file from `LEDGER_FALLBACK_FILE` | Keeps serving during a temporary PostgreSQL outage. |
 | Backend recovery probe | `BACKEND_CIRCUIT_OPEN_SECONDS`, default `30` | How long a failed backend stays out of rotation before a half-open test request can let it rejoin. |
 
-PostgreSQL is intentionally narrow: durable control plane, cross-pod Model Group counters, and usage metadata. It is not in the per-token provider streaming path. See the interactive diagrams: [v1.2.0 architecture](docs/architecture/brighto-router-workflow.html) and [PostgreSQL data flow](docs/postgresql-data-flow.html).
+PostgreSQL is intentionally narrow: durable control plane, cross-pod Model Group counters, and usage metadata. It is not in the per-token provider streaming path. See the interactive diagrams: [Architecture diagram](docs/architecture/brighto-router-workflow.html) and [PostgreSQL data flow](docs/postgresql-data-flow.html).
 
 **JSONL** means one JSON record per line.
 
@@ -640,8 +690,8 @@ The script builds the release binary, builds the Docker image, updates `.env` to
 For an official multi-architecture Docker release, publish a manifest that contains both common server platforms:
 
 ```bash
-PUSH_LATEST=1 ./scripts/docker_multiarch_release.sh v1.2.0
-docker buildx imagetools inspect thusinh1969/brighto_airouter:v1.2.0
+PUSH_LATEST=1 ./scripts/docker_multiarch_release.sh v1.3.0
+docker buildx imagetools inspect thusinh1969/brighto_airouter:v1.3.0
 docker buildx imagetools inspect thusinh1969/brighto_airouter:latest
 ```
 
@@ -682,6 +732,20 @@ Dedicated media APIs should also be future adapters, not hidden preview promises
 make test
 make check
 ./start.sh smoke
+cargo test --locked --test migration_0008
+```
+
+The database migration upgrade tests run against real PostgreSQL and prove the
+v1.2.0 → 0008 path, backfill, idempotency, old-binary query compatibility, and
+new-binary config loading. The isolated UAT stack, including HTTPS, local Qwen
+3.8, mock, Claude Code text/tools, group routing, and Portal payload checks:
+
+```bash
+./uat/start.sh up
+./uat/start.sh test
+./uat/start.sh portal
+./uat/start.sh claude
+./uat/start.sh qwen
 ```
 
 The release gate is stricter:

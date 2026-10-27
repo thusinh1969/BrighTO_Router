@@ -1,0 +1,59 @@
+# Isolated UAT stack for the Claude CLI (Anthropic Messages -> OpenAI Chat)
+# bridge. It never uses the production compose project, ports, database, or
+# volumes. Host access is bound to loopback only.
+#
+# Run through uat/start.sh so the image, migrations, seed, and tool file are
+# prepared consistently.
+
+name: brighto-uat
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: brighto_router
+      POSTGRES_USER: brighto_router
+      POSTGRES_PASSWORD: ${DB_PASS:-brighto_router_uat}
+    ports: ["127.0.0.1:55433:5432"]
+    volumes:
+      - brighto-uat-pg:/var/lib/postgresql/data
+      - ../migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brighto_router -d brighto_router"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  router:
+    image: ${BRIGHTO_ROUTER_IMAGE:-thusinh1969/brighto_airouter:uat-qwen-dual}
+    pull_policy: never
+    env_file: .env.uat
+    environment:
+      DATABASE_URL: postgres://brighto_router:${DB_PASS:-brighto_router_uat}@postgres:5432/brighto_router
+      LISTEN_ADDR: 0.0.0.0:18081
+      DATA_DIR: /var/lib/brighto-router
+      LEDGER_FALLBACK_FILE: /var/lib/brighto-router/ledger-fallback.jsonl
+      PORTAL_STATIC_FILE: ""
+      TLS_CERT_PATH: ${UAT_TLS_CERT_PATH:-}
+      TLS_KEY_PATH: ${UAT_TLS_KEY_PATH:-}
+      RUST_LOG: brighto_router=info,tower_http=warn
+    # UAT is intentionally reachable from other machines on the host network.
+    # Restrict this port with the host firewall if the host has a public IP.
+    ports: ["0.0.0.0:18081:18081"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - brighto-uat-router-data:/var/lib/brighto-router
+      - ./tls:/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  brighto-uat-pg:
+    name: brighto-uat-pg
+  brighto-uat-router-data:
+    name: brighto-uat-router-data

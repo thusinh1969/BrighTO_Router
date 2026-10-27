@@ -194,7 +194,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await inputs.nth(0).fill(baseUrl);
           await modal.getByRole('button', {{ name: /Load models/i }}).click();
           await choosePickerModel(page, providerModel);
-          await inputs.nth(3).fill(publicName);
+          await inputs.nth(4).fill(publicName);
           await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
           await expect(modal.locator('.connection-status')).toContainText('Connected', {{ timeout: 15000 }});
           await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
@@ -219,7 +219,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
           await inputs.nth(0).fill(mockURL);
           await modal.getByRole('button', {{ name: /Load models/i }}).click();
           await choosePickerModel(page, 'mock-model');
-          await inputs.nth(3).fill('browser-chat-a');
+          await inputs.nth(4).fill('browser-chat-a');
           await modal.getByRole('button', {{ name: /^Test connection$/ }}).click();
           await expect(modal.locator('.connection-status')).toContainText('Connected', {{ timeout: 15000 }});
           await modal.getByRole('button', {{ name: /^Save enabled$/ }}).click();
@@ -530,10 +530,10 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await providerSelect.selectOption('qwen');
             await expect(modal.locator('input').nth(0)).toHaveAttribute('placeholder', /workspace/);
             await expect(modal).toContainText('your workspace root');
-            await expect(modal.locator('input').nth(2)).toHaveValue('qwen3-rerank');
+            await expect(modal.locator('input').nth(3)).toHaveValue('qwen3-rerank');
             await providerSelect.selectOption('cohere');
-            await expect(modal.locator('input').nth(2)).toHaveValue('rerank-v3.5');
             await expect(modal.locator('input').nth(3)).toHaveValue('rerank-v3.5');
+            await expect(modal.locator('input').nth(4)).toHaveValue('rerank-v3.5');
             await modal.getByRole('button', {{ name: /Load models/i }}).click();
             const picker = page.locator('.picker-overlay .modal').last();
             await expect(picker).toContainText('rerank-v3.5');
@@ -562,7 +562,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await expect(providerSelect.locator('option[value="ollaya"]')).toHaveCount(1);
             await providerSelect.selectOption('ollaya');
             await expect(modal.locator('input').nth(0)).toHaveValue(/11435\/v1/);
-            await expect(modal.locator('input').nth(2)).toHaveValue('laya');
+            await expect(modal.locator('input').nth(3)).toHaveValue('laya');
             await expect(modal).toContainText('System One calls /v1/systemone');
             await modal.getByRole('button', {{ name: 'Cancel' }}).click();
             await expect(page.locator('#modal-overlay')).toHaveClass(/hidden/);
