@@ -1003,6 +1003,14 @@ mod tests {
             provider_key: None,
             routing_policy: RoutingPolicy::LeastLoadedWeighted,
             accept_anthropic_messages: false,
+            display_name: None,
+            owned_by: None,
+            input_modalities: None,
+            output_modalities: None,
+            effort_levels: None,
+            effort_default: None,
+            system_prompt_update: None,
+            deepseek_compat: false,
             endpoints: std::collections::HashMap::new(),
         }
     }
@@ -1226,6 +1234,14 @@ mod tests {
             provider_key: None,
             routing_policy: RoutingPolicy::LeastLoadedWeighted,
             accept_anthropic_messages: false,
+            display_name: None,
+            owned_by: None,
+            input_modalities: None,
+            output_modalities: None,
+            effort_levels: None,
+            effort_default: None,
+            system_prompt_update: None,
+            deepseek_compat: false,
             endpoints: std::collections::HashMap::new(),
         }
     }

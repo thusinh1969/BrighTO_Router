@@ -257,6 +257,16 @@ pub struct ModelRoute {
     /// Translation happens in the bridge module; the same public model keeps
     /// serving /v1/chat/completions normally.
     pub accept_anthropic_messages: bool,
+    /// Cloud-shaped model card fields for /v1/models (NULL = omitted).
+    pub display_name: Option<String>,
+    pub owned_by: Option<String>,
+    pub input_modalities: Option<Vec<String>>,
+    pub output_modalities: Option<Vec<String>>,
+    pub effort_levels: Option<Vec<String>>,
+    pub effort_default: Option<String>,
+    pub system_prompt_update: Option<String>,
+    /// Local vLLM route: enable the DeepSeek-cloud request/response rewrite.
+    pub deepseek_compat: bool,
     /// Per-backend endpoint overrides for true mixed-provider groups. Empty keeps legacy single-endpoint behavior.
     pub endpoints: HashMap<i64, ModelEndpoint>,
 }

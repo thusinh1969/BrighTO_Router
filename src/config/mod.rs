@@ -116,7 +116,9 @@ impl DbConfigLoader {
              provider_model_name, context_tokens, max_output_tokens, \
              price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, \
              provider_key_ref, auth_mode, protocol, routing_policy, \
-             accept_anthropic_messages FROM model_routes",
+             accept_anthropic_messages, display_name, owned_by, input_modalities, \
+             output_modalities, effort_levels, effort_default, system_prompt_update, \
+             deepseek_compat FROM model_routes",
         )
         .await
         .context("load model_routes")?;
@@ -172,6 +174,14 @@ impl DbConfigLoader {
                 provider_key,
                 routing_policy,
                 accept_anthropic_messages: g_bool(&row, 15)?,
+                display_name: g_opt_str(&row, 16)?,
+                owned_by: g_opt_str(&row, 17)?,
+                input_modalities: g_opt_json_list(&row, 18)?,
+                output_modalities: g_opt_json_list(&row, 19)?,
+                effort_levels: g_opt_json_list(&row, 20)?,
+                effort_default: g_opt_str(&row, 21)?,
+                system_prompt_update: g_opt_str(&row, 22)?,
+                deepseek_compat: g_bool(&row, 23)?,
                 endpoints,
             });
         }
@@ -335,6 +345,14 @@ fn g_str(row: &PgRow, idx: usize) -> anyhow::Result<String> {
 }
 fn g_opt_str(row: &PgRow, idx: usize) -> anyhow::Result<Option<String>> {
     Ok(row.try_get::<Option<String>, _>(idx)?)
+}
+fn g_opt_json_list(row: &PgRow, idx: usize) -> anyhow::Result<Option<Vec<String>>> {
+    let raw: Option<String> = row.try_get::<Option<String>, _>(idx)?;
+    match raw {
+        None => Ok(None),
+        Some(text) if text.trim().is_empty() => Ok(None),
+        Some(text) => Ok(serde_json::from_str::<Vec<String>>(&text).ok()),
+    }
 }
 fn g_bool(row: &PgRow, idx: usize) -> anyhow::Result<bool> {
     Ok(row.try_get::<bool, _>(idx)?)

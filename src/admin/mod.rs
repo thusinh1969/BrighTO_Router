@@ -641,6 +641,16 @@ struct UpsertRoute {
     /// OpenAI-chat routes can also accept Anthropic Messages at /v1/messages.
     /// None keeps the existing value on PATCH; new routes default to false.
     accept_anthropic_messages: Option<bool>,
+    /// Cloud-shaped model card fields (NULL/omitted = leave unchanged / omitted).
+    display_name: Option<String>,
+    owned_by: Option<String>,
+    input_modalities: Option<Vec<String>>,
+    output_modalities: Option<Vec<String>>,
+    effort_levels: Option<Vec<String>>,
+    effort_default: Option<String>,
+    system_prompt_update: Option<String>,
+    /// Local vLLM: enable the DeepSeek-cloud request/response rewrite.
+    deepseek_compat: Option<bool>,
     /// Optional endpoint overrides for Model Group load balancing. Omitted = keep existing endpoint rows.
     endpoints: Option<Vec<UpsertRouteEndpoint>>,
 }
@@ -700,6 +710,14 @@ struct RouteResponse {
     protocol: String,
     routing_policy: String,
     accept_anthropic_messages: bool,
+    display_name: Option<String>,
+    owned_by: Option<String>,
+    input_modalities: Option<Vec<String>>,
+    output_modalities: Option<Vec<String>>,
+    effort_levels: Option<Vec<String>>,
+    effort_default: Option<String>,
+    system_prompt_update: Option<String>,
+    deepseek_compat: bool,
     endpoints: Vec<RouteEndpointResponse>,
     /// route.enabled && có ít nhất 1 backend tham chiếu enabled.
     effective_enabled: bool,
@@ -919,6 +937,22 @@ fn parse_backend_ids(value: &str) -> Result<Vec<i64>, ApiError> {
     })
 }
 
+/// JSON-array TEXT column -> Vec<String> (NULL / empty / malformed -> None).
+fn parse_json_list(value: Option<String>) -> Option<Vec<String>> {
+    let text = value?;
+    if text.trim().is_empty() {
+        return None;
+    }
+    serde_json::from_str::<Vec<String>>(&text).ok().filter(|v| !v.is_empty())
+}
+
+/// Option<Vec<String>> -> Option<String> JSON text for the TEXT columns.
+fn json_list(value: &Option<Vec<String>>) -> Option<String> {
+    value
+        .as_ref()
+        .and_then(|items| serde_json::to_string(items).ok())
+}
+
 /// Aux data cho lifecycle: enabled map + usage theo backend/model + active route theo backend.
 struct LifecycleData {
     backends_enabled: HashMap<i64, bool>,
@@ -1017,7 +1051,8 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
         "SELECT model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
          price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol, routing_policy, \
-         accept_anthropic_messages \
+         accept_anthropic_messages, display_name, owned_by, input_modalities, output_modalities, \
+         effort_levels, effort_default, system_prompt_update, deepseek_compat \
          FROM model_routes ORDER BY model_name",
     )
     .fetch_all(pool)
@@ -1068,6 +1103,14 @@ async fn list_routes_from_pool(pool: &PgPool) -> Result<Vec<RouteResponse>, ApiE
             protocol: row.try_get("protocol")?,
             routing_policy: row.try_get("routing_policy")?,
             accept_anthropic_messages: row.try_get("accept_anthropic_messages")?,
+            display_name: row.try_get("display_name")?,
+            owned_by: row.try_get("owned_by")?,
+            input_modalities: parse_json_list(row.try_get("input_modalities")?),
+            output_modalities: parse_json_list(row.try_get("output_modalities")?),
+            effort_levels: parse_json_list(row.try_get("effort_levels")?),
+            effort_default: row.try_get("effort_default")?,
+            system_prompt_update: row.try_get("system_prompt_update")?,
+            deepseek_compat: row.try_get("deepseek_compat")?,
             endpoints,
             effective_enabled,
             disabled_reason,
@@ -2265,6 +2308,14 @@ struct ValidatedRoute {
     protocol: String,
     routing_policy: RoutingPolicy,
     accept_anthropic_messages: bool,
+    display_name: Option<String>,
+    owned_by: Option<String>,
+    input_modalities: Option<Vec<String>>,
+    output_modalities: Option<Vec<String>>,
+    effort_levels: Option<Vec<String>>,
+    effort_default: Option<String>,
+    system_prompt_update: Option<String>,
+    deepseek_compat: bool,
     endpoints: Option<Vec<ValidatedRouteEndpoint>>,
 }
 
@@ -2411,6 +2462,56 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
             ));
         }
     }
+    let clean_list = |items: Option<Vec<String>>| -> Option<Vec<String>> {
+        let v: Vec<String> = items?
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        (!v.is_empty()).then_some(v)
+    };
+    let display_name = payload
+        .display_name
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let owned_by = payload
+        .owned_by
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let input_modalities = clean_list(payload.input_modalities);
+    let output_modalities = clean_list(payload.output_modalities);
+    let effort_levels = clean_list(payload.effort_levels);
+    if let Some(levels) = &effort_levels
+        && levels.iter().any(|l| l.eq_ignore_ascii_case("none"))
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "effort_levels must not contain 'none' (cloud rule)",
+        ));
+    }
+    let effort_default = payload
+        .effort_default
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if let Some(default) = &effort_default {
+        let Some(levels) = &effort_levels else {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "effort_default requires effort_levels",
+            ));
+        };
+        if !levels.iter().any(|l| l.eq_ignore_ascii_case(default)) {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!("effort_default '{default}' is not in effort_levels"),
+            ));
+        }
+    }
+    let system_prompt_update = payload
+        .system_prompt_update
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let deepseek_compat = payload.deepseek_compat.unwrap_or(false);
     if payload.context_tokens.is_some_and(|n| n <= 0) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -2609,6 +2710,14 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
         protocol,
         routing_policy,
         accept_anthropic_messages,
+        display_name,
+        owned_by,
+        input_modalities,
+        output_modalities,
+        effort_levels,
+        effort_default,
+        system_prompt_update,
+        deepseek_compat,
         endpoints,
     })
 }
@@ -2677,6 +2786,14 @@ fn route_response(v: ValidatedRoute) -> RouteResponse {
         protocol: v.protocol,
         routing_policy: v.routing_policy.as_str().to_string(),
         accept_anthropic_messages: v.accept_anthropic_messages,
+        display_name: v.display_name,
+        owned_by: v.owned_by,
+        input_modalities: v.input_modalities,
+        output_modalities: v.output_modalities,
+        effort_levels: v.effort_levels,
+        effort_default: v.effort_default,
+        system_prompt_update: v.system_prompt_update,
+        deepseek_compat: v.deepseek_compat,
         endpoints: v
             .endpoints
             .unwrap_or_default()
@@ -2775,8 +2892,9 @@ async fn upsert_route(
         "INSERT INTO model_routes (model_name, backend_ids, fallback_backend_id, chars_per_token, first_byte_timeout, \
          provider_model_name, context_tokens, max_output_tokens, \
          price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, provider_key_ref, auth_mode, protocol, routing_policy, \
-         accept_anthropic_messages) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
+         accept_anthropic_messages, display_name, owned_by, input_modalities, output_modalities, \
+         effort_levels, effort_default, system_prompt_update, deepseek_compat) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -2794,6 +2912,14 @@ async fn upsert_route(
     .bind(&v.protocol)
     .bind(v.routing_policy.as_str())
     .bind(v.accept_anthropic_messages)
+    .bind(&v.display_name)
+    .bind(&v.owned_by)
+    .bind(json_list(&v.input_modalities))
+    .bind(json_list(&v.output_modalities))
+    .bind(json_list(&v.effort_levels))
+    .bind(&v.effort_default)
+    .bind(&v.system_prompt_update)
+    .bind(v.deepseek_compat)
     .execute(pool)
     .await?;
     replace_route_endpoints(pool, &v.model_name, v.endpoints.as_deref()).await?;
@@ -2816,16 +2942,42 @@ async fn patch_route(
 ) -> Result<Json<RouteResponse>, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
     let pool = state.pool().await?;
-    if payload.accept_anthropic_messages.is_none() {
-        // Omitted means preserve the existing flag, matching the route-edit UI.
-        let existing: Option<bool> = sqlx::query_scalar::<_, bool>(
-            "SELECT accept_anthropic_messages FROM model_routes WHERE model_name = $1",
-        )
-        .bind(&old_name)
-        .fetch_optional(pool)
-        .await?;
-        if let Some(flag) = existing {
-            payload.accept_anthropic_messages = Some(flag);
+    // Omitted fields keep the existing values (the route-edit UI may not send them yet).
+    let existing_row = sqlx::query::<sqlx::Postgres>(
+        "SELECT accept_anthropic_messages, display_name, owned_by, input_modalities, \
+         output_modalities, effort_levels, effort_default, system_prompt_update, deepseek_compat \
+         FROM model_routes WHERE model_name = $1",
+    )
+    .bind(&old_name)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(row) = existing_row {
+        if payload.accept_anthropic_messages.is_none() {
+            payload.accept_anthropic_messages = row.try_get("accept_anthropic_messages").ok();
+        }
+        if payload.display_name.is_none() {
+            payload.display_name = row.try_get("display_name").ok();
+        }
+        if payload.owned_by.is_none() {
+            payload.owned_by = row.try_get("owned_by").ok();
+        }
+        if payload.input_modalities.is_none() {
+            payload.input_modalities = parse_json_list(row.try_get("input_modalities").ok().flatten());
+        }
+        if payload.output_modalities.is_none() {
+            payload.output_modalities = parse_json_list(row.try_get("output_modalities").ok().flatten());
+        }
+        if payload.effort_levels.is_none() {
+            payload.effort_levels = parse_json_list(row.try_get("effort_levels").ok().flatten());
+        }
+        if payload.effort_default.is_none() {
+            payload.effort_default = row.try_get("effort_default").ok();
+        }
+        if payload.system_prompt_update.is_none() {
+            payload.system_prompt_update = row.try_get("system_prompt_update").ok();
+        }
+        if payload.deepseek_compat.is_none() {
+            payload.deepseek_compat = row.try_get("deepseek_compat").ok();
         }
     }
     let v = validate_route(payload)?;
@@ -2864,8 +3016,11 @@ async fn patch_route(
          context_tokens = $7, max_output_tokens = $8, price_input_per_mtok_usd = $9, \
          price_output_per_mtok_usd = $10, enabled = $11, \
          provider_key_ref = COALESCE($12, provider_key_ref), auth_mode = $13, \
-         protocol = $14, routing_policy = $15, accept_anthropic_messages = $16 \
-         WHERE model_name = $17",
+         protocol = $14, routing_policy = $15, accept_anthropic_messages = $16, \
+         display_name = $17, owned_by = $18, input_modalities = $19, output_modalities = $20, \
+         effort_levels = $21, effort_default = $22, system_prompt_update = $23, \
+         deepseek_compat = $24 \
+         WHERE model_name = $25",
     )
     .bind(&v.model_name)
     .bind(&v.backend_ids_json)
@@ -2883,6 +3038,14 @@ async fn patch_route(
     .bind(&v.protocol)
     .bind(v.routing_policy.as_str())
     .bind(v.accept_anthropic_messages)
+    .bind(&v.display_name)
+    .bind(&v.owned_by)
+    .bind(json_list(&v.input_modalities))
+    .bind(json_list(&v.output_modalities))
+    .bind(json_list(&v.effort_levels))
+    .bind(&v.effort_default)
+    .bind(&v.system_prompt_update)
+    .bind(v.deepseek_compat)
     .bind(&old_name)
     .execute(pool)
     .await?;

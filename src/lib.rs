@@ -4,6 +4,7 @@
 pub mod admin;
 pub mod auth;
 pub mod bridge;
+pub mod compat;
 pub mod budget;
 pub mod config;
 pub mod contract;

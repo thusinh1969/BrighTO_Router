@@ -342,6 +342,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/messages", post(messages))
         .route("/v1/messages/count_tokens", post(messages_count_tokens))
         .route("/v1/models", get(models))
+        .route("/v1/models/{id}", get(model_by_id))
         .route("/metrics", get(metrics))
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
@@ -470,17 +471,95 @@ async fn messages_count_tokens(
     resp
 }
 
+/// Cloud-shaped model card (LLM_guide_needed.md §A): expose the optional
+/// DeepSeek-cloud fields only when the route carries them, so a route without
+/// them keeps exactly today's `{"id","object"}` output.
+fn model_card(route: &crate::contract::ModelRoute) -> serde_json::Value {
+    let mut card = serde_json::Map::new();
+    card.insert(
+        "id".to_string(),
+        serde_json::Value::String(route.model_name.clone()),
+    );
+    card.insert(
+        "object".to_string(),
+        serde_json::Value::String("model".to_string()),
+    );
+    if let Some(name) = &route.display_name {
+        card.insert("name".to_string(), serde_json::Value::String(name.clone()));
+    }
+    if let Some(owned_by) = &route.owned_by {
+        card.insert(
+            "owned_by".to_string(),
+            serde_json::Value::String(owned_by.clone()),
+        );
+    }
+    if let Some(context) = route.context_tokens {
+        card.insert("context_window".to_string(), serde_json::Value::from(context));
+    }
+    if let Some(max_output) = route.max_output_tokens {
+        card.insert(
+            "max_output_tokens".to_string(),
+            serde_json::Value::from(max_output),
+        );
+    }
+    if let Some(modalities) = &route.input_modalities {
+        card.insert(
+            "input_modalities".to_string(),
+            serde_json::json!(modalities),
+        );
+    }
+    if let Some(modalities) = &route.output_modalities {
+        card.insert(
+            "output_modalities".to_string(),
+            serde_json::json!(modalities),
+        );
+    }
+    if let Some(levels) = &route.effort_levels {
+        let mut effort = serde_json::Map::new();
+        effort.insert(
+            "supported_levels".to_string(),
+            serde_json::json!(levels),
+        );
+        if let Some(default) = &route.effort_default {
+            effort.insert(
+                "default_level".to_string(),
+                serde_json::Value::String(default.clone()),
+            );
+        }
+        card.insert("effort".to_string(), serde_json::Value::Object(effort));
+    }
+    if let Some(update) = &route.system_prompt_update {
+        card.insert(
+            "api_capabilities".to_string(),
+            serde_json::json!({"anthropic_messages": {"system_prompt_update": update}}),
+        );
+    }
+    serde_json::Value::Object(card)
+}
+
 async fn models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let cfg = state.cfg.load_full();
-    let data: Vec<serde_json::Value> = cfg
-        .routes
-        .keys()
-        .map(|m| serde_json::json!({"id": m, "object": "model"}))
-        .collect();
+    let data: Vec<serde_json::Value> = cfg.routes.values().map(model_card).collect();
     (
         StatusCode::OK,
         axum::Json(serde_json::json!({ "object": "list", "data": data })),
     )
+}
+
+async fn model_by_id(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(model): axum::extract::Path<String>,
+) -> Response<Body> {
+    let cfg = state.cfg.load_full();
+    match cfg.routes.get(&model) {
+        Some(route) => axum::Json(model_card(route)).into_response(),
+        None => build_error_mode(
+            &generate_request_id(),
+            StatusCode::NOT_FOUND,
+            "model not found",
+            false,
+        ),
+    }
 }
 
 async fn metrics(State(state): State<Arc<AppState>>) -> String {
@@ -696,6 +775,7 @@ async fn handle_generate(
         && route.fallback_backend_id.is_none()
         && route.endpoints.is_empty()
         && !json_proxy_body_needs_rewrite(&route, model, protocol)
+        && !route.deepseek_compat
         && protocol != ProviderProtocol::SystemOne;
     let body_len = incoming.body_len();
     let mut est_tokens = estimate_tokens_len(body_len, &route);
@@ -791,6 +871,19 @@ async fn handle_generate(
                     StatusCode::BAD_REQUEST,
                     "streaming upload requires no model or adapter body rewrite",
                 );
+            }
+        }
+    }
+    // DeepSeek-cloud compatibility (local vLLM routes, LLM_guide_needed.md §B/C):
+    // translate thinking/effort into chat_template_kwargs, drop the cloud keys,
+    // and collapse duplicated reasoning fields in the assistant history.
+    if route.deepseek_compat {
+        if let ProxyRequestBody::Buffered(body) = &proxy_body {
+            if let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(body) {
+                crate::compat::convert_request(&mut value);
+                if let Ok(bytes) = serde_json::to_vec(&value) {
+                    proxy_body = ProxyRequestBody::Buffered(Bytes::from(bytes));
+                }
             }
         }
     }
@@ -1191,6 +1284,14 @@ fn rewrite_model_field(body: &[u8], new_model: &str) -> Option<Vec<u8>> {
         provider_key: None,
         routing_policy: RoutingPolicy::LeastLoadedWeighted,
         accept_anthropic_messages: false,
+        display_name: None,
+        owned_by: None,
+        input_modalities: None,
+        output_modalities: None,
+        effort_levels: None,
+        effort_default: None,
+        system_prompt_update: None,
+        deepseek_compat: false,
         endpoints: std::collections::HashMap::new(),
     };
     rewrite_json_proxy_body(body, &route, ProviderProtocol::OpenAiChat)
@@ -1325,6 +1426,14 @@ mod tests {
             provider_key: None,
             routing_policy: RoutingPolicy::LeastLoadedWeighted,
             accept_anthropic_messages: false,
+            display_name: None,
+            owned_by: None,
+            input_modalities: None,
+            output_modalities: None,
+            effort_levels: None,
+            effort_default: None,
+            system_prompt_update: None,
+            deepseek_compat: false,
             endpoints: std::collections::HashMap::new(),
         }
     }
@@ -1454,6 +1563,14 @@ mod tests {
             provider_key: None,
             routing_policy: RoutingPolicy::LeastLoadedWeighted,
             accept_anthropic_messages: false,
+            display_name: None,
+            owned_by: None,
+            input_modalities: None,
+            output_modalities: None,
+            effort_levels: None,
+            effort_default: None,
+            system_prompt_update: None,
+            deepseek_compat: false,
             endpoints: std::collections::HashMap::new(),
         };
         let body = Bytes::from_static(b"hello world");

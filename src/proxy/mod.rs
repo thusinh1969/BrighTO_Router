@@ -1169,6 +1169,7 @@ async fn forward_backend_response(
     response: reqwest::Response,
     format: BackendFormat,
     bridge: Option<BridgeContext>,
+    compat: bool,
     mut reporter: CompletionReporter,
 ) -> Response<Body> {
     if let Some(bridge) = bridge {
@@ -1183,6 +1184,7 @@ async fn forward_backend_response(
         let (mut tx, rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(1);
         let mut acc = UsageAccumulator::default();
         let mut tap = SseUsageTap::default();
+        let mut fixer = crate::compat::SseFixer::new();
         let mut stream = response.bytes_stream();
 
         tokio::spawn(async move {
@@ -1193,9 +1195,21 @@ async fn forward_backend_response(
                 match next {
                     Ok(Some(Ok(bytes))) => {
                         tap.feed(&bytes, format, &mut acc);
-                        if tx.send(Ok(bytes)).await.is_err() {
-                            client_aborted = true;
-                            break;
+                        let out = if compat {
+                            let fixed = fixer.feed(&bytes);
+                            if fixed.is_empty() {
+                                None
+                            } else {
+                                Some(Bytes::from(fixed))
+                            }
+                        } else {
+                            Some(bytes)
+                        };
+                        if let Some(out) = out {
+                            if tx.send(Ok(out)).await.is_err() {
+                                client_aborted = true;
+                                break;
+                            }
                         }
                     }
                     Ok(Some(Err(e))) => {
@@ -1207,6 +1221,12 @@ async fn forward_backend_response(
                         error_class = Some("idle timeout".to_string());
                         break;
                     }
+                }
+            }
+            if compat {
+                let tail = fixer.finish();
+                if !tail.is_empty() {
+                    let _ = tx.send(Ok(Bytes::from(tail))).await;
                 }
             }
             tap.finish(format, &mut acc);
@@ -1237,6 +1257,11 @@ async fn forward_backend_response(
         {
             return match response.bytes().await {
                 Ok(body_bytes) => {
+                    let body_bytes = if compat {
+                        crate::compat::fix_body(&body_bytes)
+                    } else {
+                        body_bytes.to_vec()
+                    };
                     let acc = parse_usage_from_body(&body_bytes, format);
                     let estimated = !acc.seen_usage;
                     reporter.finish(
@@ -1659,8 +1684,14 @@ pub async fn proxy_forward(
                     l,
                 );
                 let resp =
-                    forward_backend_response(resp, backend.format, ctx.bridge.clone(), reporter)
-                        .await;
+                    forward_backend_response(
+                        resp,
+                        backend.format,
+                        ctx.bridge.clone(),
+                        ctx.route.deepseek_compat,
+                        reporter,
+                    )
+                    .await;
                 return tag_router_headers(
                     resp,
                     &ctx.request_id,
