@@ -45,6 +45,9 @@ pub enum ProviderProtocol {
     AnthropicMessages,
     LocalOpenAiChat,
     CustomOpenAiChat,
+    /// Google Gemini: OpenAI-compatible endpoint with a stricter schema (it rejects
+    /// several OpenAI fields such as store/seed/logprobs/frequency_penalty).
+    GeminiChat,
 }
 
 impl ProviderProtocol {
@@ -68,6 +71,7 @@ impl ProviderProtocol {
             "anthropic_messages" | "messages" => ProviderProtocol::AnthropicMessages,
             "local_openai_chat" => ProviderProtocol::LocalOpenAiChat,
             "custom_openai_chat" => ProviderProtocol::CustomOpenAiChat,
+            "gemini_chat" | "gemini" | "google_gemini" => ProviderProtocol::GeminiChat,
             _ => ProviderProtocol::OpenAiChat,
         }
     }
@@ -88,6 +92,7 @@ impl ProviderProtocol {
             ProviderProtocol::AnthropicMessages => "anthropic_messages",
             ProviderProtocol::LocalOpenAiChat => "local_openai_chat",
             ProviderProtocol::CustomOpenAiChat => "custom_openai_chat",
+            ProviderProtocol::GeminiChat => "gemini_chat",
         }
     }
 
@@ -96,7 +101,8 @@ impl ProviderProtocol {
         match self {
             ProviderProtocol::OpenAiChat
             | ProviderProtocol::LocalOpenAiChat
-            | ProviderProtocol::CustomOpenAiChat => "/v1/chat/completions",
+            | ProviderProtocol::CustomOpenAiChat
+            | ProviderProtocol::GeminiChat => "/v1/chat/completions",
             ProviderProtocol::OpenAiResponses => "/v1/responses",
             ProviderProtocol::OpenAiCompletions => "/v1/completions",
             ProviderProtocol::OpenAiEmbeddings => "/v1/embeddings",
@@ -124,6 +130,7 @@ impl ProviderProtocol {
             ProviderProtocol::OpenAiChat
                 | ProviderProtocol::LocalOpenAiChat
                 | ProviderProtocol::CustomOpenAiChat
+                | ProviderProtocol::GeminiChat
         )
     }
 
@@ -144,6 +151,7 @@ impl ProviderProtocol {
             ProviderProtocol::AnthropicMessages => "Anthropic Messages",
             ProviderProtocol::LocalOpenAiChat => "Local OpenAI-compatible Chat",
             ProviderProtocol::CustomOpenAiChat => "Custom OpenAI-compatible",
+            ProviderProtocol::GeminiChat => "Google Gemini (OpenAI-compatible)",
         }
     }
 }

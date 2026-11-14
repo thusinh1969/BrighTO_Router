@@ -1204,6 +1204,7 @@ fn json_proxy_body_needs_rewrite(
     protocol: ProviderProtocol,
 ) -> bool {
     route.provider_model_name != public_model
+        || protocol == ProviderProtocol::GeminiChat
         || matches!(
             protocol,
             ProviderProtocol::QwenRerank | ProviderProtocol::VoyageRerank
@@ -1218,6 +1219,10 @@ fn rewrite_json_proxy_body(
 ) -> Option<Vec<u8>> {
     let mut value: serde_json::Value = serde_json::from_slice(body).ok()?;
     let mut changed = false;
+    if protocol == ProviderProtocol::GeminiChat {
+        // Gemini validates the payload strictly; drop the fields it does not implement.
+        changed |= crate::gemini::normalize_request(&mut value);
+    }
     if let Some(obj) = value.as_object_mut() {
         if obj.get("model").and_then(|v| v.as_str()) != Some(route.provider_model_name.as_str()) {
             obj.insert(

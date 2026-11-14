@@ -2323,7 +2323,8 @@ fn protocol_family(protocol: &str) -> &'static str {
     match ProviderProtocol::parse(protocol) {
         ProviderProtocol::OpenAiChat
         | ProviderProtocol::LocalOpenAiChat
-        | ProviderProtocol::CustomOpenAiChat => "openai_chat",
+        | ProviderProtocol::CustomOpenAiChat
+        | ProviderProtocol::GeminiChat => "openai_chat",
         ProviderProtocol::OpenAiResponses => "openai_responses",
         ProviderProtocol::OpenAiCompletions => "openai_completions",
         ProviderProtocol::OpenAiEmbeddings => "openai_embeddings",
