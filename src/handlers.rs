@@ -494,7 +494,10 @@ fn model_card(route: &crate::contract::ModelRoute) -> serde_json::Value {
         );
     }
     if let Some(context) = route.context_tokens {
-        card.insert("context_window".to_string(), serde_json::Value::from(context));
+        card.insert(
+            "context_window".to_string(),
+            serde_json::Value::from(context),
+        );
     }
     if let Some(max_output) = route.max_output_tokens {
         card.insert(
@@ -516,10 +519,7 @@ fn model_card(route: &crate::contract::ModelRoute) -> serde_json::Value {
     }
     if let Some(levels) = &route.effort_levels {
         let mut effort = serde_json::Map::new();
-        effort.insert(
-            "supported_levels".to_string(),
-            serde_json::json!(levels),
-        );
+        effort.insert("supported_levels".to_string(), serde_json::json!(levels));
         if let Some(default) = &route.effort_default {
             effort.insert(
                 "default_level".to_string(),

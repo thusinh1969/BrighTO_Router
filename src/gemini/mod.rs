@@ -104,7 +104,13 @@ mod tests {
         });
         assert!(!normalize_request(&mut body));
         let obj = body.as_object().unwrap();
-        for field in ["n", "presence_penalty", "parallel_tool_calls", "stream", "max_tokens"] {
+        for field in [
+            "n",
+            "presence_penalty",
+            "parallel_tool_calls",
+            "stream",
+            "max_tokens",
+        ] {
             assert!(obj.contains_key(field), "{field} must survive");
         }
     }

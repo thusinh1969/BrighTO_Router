@@ -1683,15 +1683,14 @@ pub async fn proxy_forward(
                     concurrency,
                     l,
                 );
-                let resp =
-                    forward_backend_response(
-                        resp,
-                        backend.format,
-                        ctx.bridge.clone(),
-                        ctx.route.deepseek_compat,
-                        reporter,
-                    )
-                    .await;
+                let resp = forward_backend_response(
+                    resp,
+                    backend.format,
+                    ctx.bridge.clone(),
+                    ctx.route.deepseek_compat,
+                    reporter,
+                )
+                .await;
                 return tag_router_headers(
                     resp,
                     &ctx.request_id,

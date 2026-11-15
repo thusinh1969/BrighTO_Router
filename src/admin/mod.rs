@@ -943,7 +943,9 @@ fn parse_json_list(value: Option<String>) -> Option<Vec<String>> {
     if text.trim().is_empty() {
         return None;
     }
-    serde_json::from_str::<Vec<String>>(&text).ok().filter(|v| !v.is_empty())
+    serde_json::from_str::<Vec<String>>(&text)
+        .ok()
+        .filter(|v| !v.is_empty())
 }
 
 /// Option<Vec<String>> -> Option<String> JSON text for the TEXT columns.
@@ -2963,10 +2965,12 @@ async fn patch_route(
             payload.owned_by = row.try_get("owned_by").ok();
         }
         if payload.input_modalities.is_none() {
-            payload.input_modalities = parse_json_list(row.try_get("input_modalities").ok().flatten());
+            payload.input_modalities =
+                parse_json_list(row.try_get("input_modalities").ok().flatten());
         }
         if payload.output_modalities.is_none() {
-            payload.output_modalities = parse_json_list(row.try_get("output_modalities").ok().flatten());
+            payload.output_modalities =
+                parse_json_list(row.try_get("output_modalities").ok().flatten());
         }
         if payload.effort_levels.is_none() {
             payload.effort_levels = parse_json_list(row.try_get("effort_levels").ok().flatten());

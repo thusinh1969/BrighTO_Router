@@ -83,10 +83,7 @@ pub fn convert_request(body: &mut Value) {
                 // Cloud `none` means "no thinking at all", not "lowest effort".
                 kwargs.insert("thinking".to_string(), Value::Bool(false));
             } else if let Some(n) = effort.as_i64() {
-                kwargs.insert(
-                    "reasoning_effort".to_string(),
-                    Value::from(n.clamp(1, 100)),
-                );
+                kwargs.insert("reasoning_effort".to_string(), Value::from(n.clamp(1, 100)));
             } else {
                 let level = effort.as_str().unwrap_or("high").to_ascii_lowercase();
                 kwargs.insert(
@@ -274,7 +271,11 @@ mod tests {
         let mut body = json!({"reasoning_effort": "none", "messages": []});
         convert_request(&mut body);
         assert_eq!(body["chat_template_kwargs"]["thinking"], json!(false));
-        assert!(body["chat_template_kwargs"].get("reasoning_effort").is_none());
+        assert!(
+            body["chat_template_kwargs"]
+                .get("reasoning_effort")
+                .is_none()
+        );
     }
 
     #[test]
@@ -291,10 +292,16 @@ mod tests {
     fn nested_effort_shapes_are_read() {
         let mut body = json!({"reasoning": {"effort": "max"}, "messages": []});
         convert_request(&mut body);
-        assert_eq!(body["chat_template_kwargs"]["reasoning_effort"], json!("max"));
+        assert_eq!(
+            body["chat_template_kwargs"]["reasoning_effort"],
+            json!("max")
+        );
         let mut body = json!({"output_config": {"effort": "low"}, "messages": []});
         convert_request(&mut body);
-        assert_eq!(body["chat_template_kwargs"]["reasoning_effort"], json!("low"));
+        assert_eq!(
+            body["chat_template_kwargs"]["reasoning_effort"],
+            json!("low")
+        );
     }
 
     #[test]
@@ -307,7 +314,10 @@ mod tests {
         });
         convert_request(&mut body);
         assert_eq!(body["chat_template_kwargs"]["thinking"], json!(true));
-        assert_eq!(body["chat_template_kwargs"]["reasoning_effort"], json!("max"));
+        assert_eq!(
+            body["chat_template_kwargs"]["reasoning_effort"],
+            json!("max")
+        );
     }
 
     #[test]
@@ -344,7 +354,10 @@ mod tests {
                       "prompt_tokens_details": {"cached_tokens": 40}}
         });
         fix_response(&mut value);
-        assert_eq!(value["choices"][0]["message"]["reasoning_content"], json!("think"));
+        assert_eq!(
+            value["choices"][0]["message"]["reasoning_content"],
+            json!("think")
+        );
         assert_eq!(value["choices"][0]["message"]["reasoning"], json!("think"));
         assert_eq!(value["usage"]["prompt_cache_hit_tokens"], json!(40));
         assert_eq!(value["usage"]["prompt_cache_miss_tokens"], json!(60));
@@ -365,7 +378,10 @@ mod tests {
         let text = String::from_utf8(out).unwrap();
         assert!(text.starts_with("data: "));
         let value: Value = serde_json::from_str(&text[6..]).unwrap();
-        assert_eq!(value["choices"][0]["delta"]["reasoning_content"], json!("x"));
+        assert_eq!(
+            value["choices"][0]["delta"]["reasoning_content"],
+            json!("x")
+        );
     }
 
     #[test]
@@ -381,7 +397,10 @@ mod tests {
         assert!(text.starts_with("data: "));
         assert!(text.ends_with('\n'));
         let value: Value = serde_json::from_str(text.trim_start_matches("data: ").trim()).unwrap();
-        assert_eq!(value["choices"][0]["delta"]["reasoning_content"], json!("x"));
+        assert_eq!(
+            value["choices"][0]["delta"]["reasoning_content"],
+            json!("x")
+        );
     }
 
     #[test]
@@ -389,7 +408,10 @@ mod tests {
         let body = br#"{"choices":[{"message":{"reasoning":"r"}}],"usage":{"prompt_tokens":5}}"#;
         let out = fix_body(body);
         let value: Value = serde_json::from_slice(&out).unwrap();
-        assert_eq!(value["choices"][0]["message"]["reasoning_content"], json!("r"));
+        assert_eq!(
+            value["choices"][0]["message"]["reasoning_content"],
+            json!("r")
+        );
         assert_eq!(value["usage"]["prompt_cache_miss_tokens"], json!(5));
     }
 
