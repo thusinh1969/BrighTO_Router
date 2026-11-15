@@ -19,6 +19,11 @@ Quick menu: [Install](#quick-start) · [First route](#first-model-route) · [Pyt
 - Latest published release: `1.3.0`
 - Release `1.3.0` adds the Claude CLI bridge (Anthropic Messages ↔ OpenAI Chat), Qwen/local OpenAI-compatible routes exposed as Anthropic, and migration `0008`. Every OpenAI Chat model can now expose Anthropic Messages as an opt-in route option.
 
+## Releases and changelog
+
+Every release is documented in [CHANGELOG.md](CHANGELOG.md): new protocols
+(`gemini_chat`, `deepseek_compat`), migrations, timeouts and rollback notes.
+
 ## Why teams choose BrighTO-Router
 
 | Strength | What it means |
