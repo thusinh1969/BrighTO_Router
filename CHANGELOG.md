@@ -63,12 +63,34 @@ compatibility for local vLLM routes, and realistic thinking timeouts.
 
 Both are additive and safe for the previous binary.
 
+### Tool calling — thought_signature carry-over
+
+Gemini binds every returned `functionCall` to an opaque `thought_signature`
+(`tool_calls[].extra_content.google.thought_signature`) and **requires it back**
+for the most recent assistant tool call:
+
+```text
+400 Function call is missing a thought_signature in functionCall parts.
+```
+
+Generic OpenAI clients rebuild `tool_calls` from id/name/arguments and drop
+`extra_content`, so the signature is lost. `src/gemini/thought.rs` keeps a small
+bounded cache (`tool_call_id -> signature`, 4096 entries): signatures are
+recorded from every Gemini response (non-stream body, chunked body and SSE
+deltas) and re-injected into the last assistant tool call of the next request.
+Only the last call is touched — an older tool call followed by another assistant
+answer needs no signature (verified). Covered by 4 unit tests.
+
 ### Verified on B300 (production `:8000`)
 
 - 3 Gemini routes, `/v1/chat/completions` **and** `/v1/messages`:
   `200 "OK"` even while sending `store`, `seed`, `logprobs`, `top_logprobs`,
   `frequency_penalty`, `metadata` in the same request.
-- Streaming (`SSE`), long output (`max_tokens=8192`) and tool calling all `200`.
+- **Tool round trip**: first turn returns the tool call with its signature; the
+  follow-up replaying `tool_calls` **without** `extra_content` (what the harness
+  sends) is `200` — the router re-attaches the signature.
+- Streaming (`SSE`), streaming tool call, long output (`max_tokens=8192`),
+  Anthropic `/v1/messages` with tools: all `200`.
 - No regression: 22 routes intact, embeddings/rerank/systemone unchanged.
 
 ### Rollback

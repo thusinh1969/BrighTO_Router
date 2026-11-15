@@ -1170,6 +1170,7 @@ async fn forward_backend_response(
     format: BackendFormat,
     bridge: Option<BridgeContext>,
     compat: bool,
+    gemini: bool,
     mut reporter: CompletionReporter,
 ) -> Response<Body> {
     if let Some(bridge) = bridge {
@@ -1194,6 +1195,23 @@ async fn forward_backend_response(
                 let next = tokio::time::timeout(Duration::from_secs(60), stream.next()).await;
                 match next {
                     Ok(Some(Ok(bytes))) => {
+                        if gemini {
+                            // Gemini binds each functionCall to a thought_signature; keep it
+                            // so the next request can replay it for the client.
+                            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                                crate::gemini::thought::record_from_response(&value);
+                            } else {
+                                for line in bytes.split(|b| *b == b'\n') {
+                                    if let Some(rest) = line.strip_prefix(b"data:") {
+                                        if let Ok(value) =
+                                            serde_json::from_slice::<serde_json::Value>(rest)
+                                        {
+                                            crate::gemini::thought::record_from_response(&value);
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         tap.feed(&bytes, format, &mut acc);
                         let out = if compat {
                             let fixed = fixer.feed(&bytes);
@@ -1262,6 +1280,12 @@ async fn forward_backend_response(
                     } else {
                         body_bytes.to_vec()
                     };
+                    if gemini {
+                        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body_bytes)
+                        {
+                            crate::gemini::thought::record_from_response(&value);
+                        }
+                    }
                     let acc = parse_usage_from_body(&body_bytes, format);
                     let estimated = !acc.seen_usage;
                     reporter.finish(
@@ -1329,6 +1353,11 @@ async fn forward_backend_response(
                 }
             }
 
+            if gemini && can_parse_usage {
+                if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body_buf) {
+                    crate::gemini::thought::record_from_response(&value);
+                }
+            }
             let acc = if can_parse_usage {
                 parse_usage_from_body(&body_buf, format)
             } else {
@@ -1688,6 +1717,7 @@ pub async fn proxy_forward(
                     backend.format,
                     ctx.bridge.clone(),
                     ctx.route.deepseek_compat,
+                    ctx.protocol == ProviderProtocol::GeminiChat,
                     reporter,
                 )
                 .await;

@@ -1222,6 +1222,9 @@ fn rewrite_json_proxy_body(
     if protocol == ProviderProtocol::GeminiChat {
         // Gemini validates the payload strictly; drop the fields it does not implement.
         changed |= crate::gemini::normalize_request(&mut value);
+        // Tool calls must carry the thought_signature Gemini issued; generic clients drop
+        // it, so re-attach the cached one for the most recent assistant tool call.
+        changed |= crate::gemini::thought::inject_into_request(&mut value);
     }
     if let Some(obj) = value.as_object_mut() {
         if obj.get("model").and_then(|v| v.as_str()) != Some(route.provider_model_name.as_str()) {

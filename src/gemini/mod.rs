@@ -18,6 +18,8 @@
 //! This module owns that knowledge so routes only declare `protocol:
 //! gemini_chat`; no per-route field list is needed.
 
+pub mod thought;
+
 use serde_json::Value;
 
 /// OpenAI request fields Google's endpoint rejects outright.
