@@ -2948,7 +2948,10 @@ async fn patch_route(
     // Omitted fields keep the existing values (the route-edit UI may not send them yet).
     let existing_row = sqlx::query::<sqlx::Postgres>(
         "SELECT accept_anthropic_messages, display_name, owned_by, input_modalities, \
-         output_modalities, effort_levels, effort_default, system_prompt_update, deepseek_compat \
+         output_modalities, effort_levels, effort_default, system_prompt_update, deepseek_compat, \
+         protocol, context_tokens, max_output_tokens, chars_per_token, first_byte_timeout, \
+         fallback_backend_id, price_input_per_mtok_usd, price_output_per_mtok_usd, enabled, \
+         auth_mode, routing_policy, provider_model_name \
          FROM model_routes WHERE model_name = $1",
     )
     .bind(&old_name)
@@ -2983,6 +2986,48 @@ async fn patch_route(
         }
         if payload.deepseek_compat.is_none() {
             payload.deepseek_compat = row.try_get("deepseek_compat").ok();
+        }
+        // A PATCH that omits a scalar must keep it: dropping protocol silently turned
+        // gemini_chat routes back into plain openai_chat (losing the field/thought adapters).
+        if payload.protocol.is_none() {
+            payload.protocol = row.try_get("protocol").ok();
+        }
+        if payload.context_tokens.is_none() {
+            payload.context_tokens = row.try_get("context_tokens").ok();
+        }
+        if payload.max_output_tokens.is_none() {
+            payload.max_output_tokens = row.try_get("max_output_tokens").ok();
+        }
+        if payload.chars_per_token.is_none() {
+            payload.chars_per_token = row.try_get("chars_per_token").ok();
+        }
+        if payload.first_byte_timeout.is_none() {
+            // Column is BIGINT; the API type is u64.
+            payload.first_byte_timeout = row
+                .try_get::<i64, _>("first_byte_timeout")
+                .ok()
+                .and_then(|v| u64::try_from(v).ok());
+        }
+        if payload.fallback_backend_id.is_none() {
+            payload.fallback_backend_id = row.try_get("fallback_backend_id").ok();
+        }
+        if payload.price_input_per_mtok_usd.is_none() {
+            payload.price_input_per_mtok_usd = row.try_get("price_input_per_mtok_usd").ok();
+        }
+        if payload.price_output_per_mtok_usd.is_none() {
+            payload.price_output_per_mtok_usd = row.try_get("price_output_per_mtok_usd").ok();
+        }
+        if payload.enabled.is_none() {
+            payload.enabled = row.try_get("enabled").ok();
+        }
+        if payload.auth_mode.is_none() {
+            payload.auth_mode = row.try_get("auth_mode").ok();
+        }
+        if payload.routing_policy.is_none() {
+            payload.routing_policy = row.try_get("routing_policy").ok();
+        }
+        if payload.provider_model_name.is_none() {
+            payload.provider_model_name = row.try_get("provider_model_name").ok();
         }
     }
     let v = validate_route(payload)?;
