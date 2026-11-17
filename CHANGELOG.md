@@ -6,6 +6,74 @@ versions follow the `Cargo.toml` release line (`1.3.x`).
 
 ---
 
+## [1.3.1] — 2026-11-17
+
+Follow-up hardening after a coding-agent field report: route edits silently
+downgraded Gemini routes, tool signatures were lost on restart, and defaults
+were too small for long-context coding work.
+
+### Fixed
+
+- **`PATCH /admin/routes/{name}` no longer resets omitted fields**
+  (`src/admin/mod.rs`). `patch_route` only carried over 9 columns, so saving a
+  route from the portal without resending `protocol` reset it to `openai_chat`.
+  For a Gemini route that silently dropped the `gemini_chat` adapter (field
+  normalisation **and** thought-signature handling), and the next tool call
+  failed with `400 Function call is missing a thought_signature`. It now keeps
+  every omitted scalar: `protocol`, `context_tokens`, `max_output_tokens`,
+  `first_byte_timeout`, `chars_per_token`, `fallback_backend_id`,
+  `price_input_per_mtok_usd`, `price_output_per_mtok_usd`, `enabled`,
+  `auth_mode`, `routing_policy`, `provider_model_name` (`first_byte_timeout` is
+  decoded as BIGINT and converted to the API's `u64`).
+
+### Changed
+
+- **`thought_signature` cache is now persistent and evicts oldest-first**
+  (`src/gemini/thought.rs`). It is journalled to
+  `$DATA_DIR/thought_signatures.jsonl` (mode 0600, compacted past 8192 lines) and
+  replayed on boot, so a router restart no longer strands an in-flight agent
+  turn. Eviction removes the oldest entry instead of clearing the whole map.
+  - Unit test `eviction_is_oldest_first_and_bounded` covers the bound.
+  - Verified live: record a tool call, restart the container, replay the same
+    `tool_call_id` with no signature → `200`.
+
+- **Default route limits raised** to **1M context / 256k output** for chat
+  protocols (`src/admin/mod.rs`). Applies to routes created from now on; existing
+  routes were backfilled explicitly.
+
+### Verified (B300 production, `brighto-airouter:v1.3.0-gemini4`)
+
+Coding-agent flow with a 23k-token system prompt, tools, several turns and text
+interleaved between tool calls:
+
+| Case | qwen4-max | qwen3.8-max-0902 | gemini-4-hydrogen |
+|---|---|---|---|
+| long-context tool call | 200 | 200 | 200 |
+| multi-turn agent loop | 200 | 200 | 200 |
+| `/v1/messages` tool_use | 200 | 200 (after enabling the bridge) | 200 |
+| `/v1/messages` tool_result replay | 200 | 200 | 200 |
+| parallel tool calls + replay | 200 | 200 | 200 |
+
+Route limits corrected against upstream documentation:
+
+| Route | context | max output | source |
+|---|---|---|---|
+| `gemini-4-argon` / `carbon` | 1,048,576 | 32,768 | Gemini `models.list` |
+| `gemini-4-hydrogen` | 1,048,576 | 65,536 | Gemini `models.list` |
+| `qwen4-max` | 1,000,000 | 131,072 | QwenCloud model page |
+| `qwen3.8-max-0902` | 1,048,576 | 131,072 | probed: 131072 accepted, 262144 rejected |
+| `google/gemma-4-31B-it` | 262,144 | 262,144 | HuggingFace model card (256K) |
+
+### Removed
+
+- Dead local Qwen routes `Qwen3.8-27B-Uncensored-NVFP4` and
+  `Qwen/Qwen3.8-Flash-Next-NVFP4` (their vLLM processes are down), together with
+  their `usage_ledger` history (5,429 + 541,464 rows) and route rows.
+- `qwen3.8-max-0902` now accepts Anthropic Messages; the coding agent could not
+  use it through `/v1/messages` before.
+
+---
+
 ## [1.3.0-gemini] — 2026-11-15
 
 Operational release on top of `v1.3.0`: first-class Gemini support, DeepSeek-cloud

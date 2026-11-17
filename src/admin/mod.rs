@@ -2527,17 +2527,24 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
             "max_output_tokens must be positive when provided",
         ));
     }
+    // Defaults are generous (1M context / 256k output) because every modern chat
+    // route in this deployment supports them; an operator can always lower them.
+    let chat_family = matches!(
+        ProviderProtocol::parse(&protocol),
+        ProviderProtocol::OpenAiChat
+            | ProviderProtocol::LocalOpenAiChat
+            | ProviderProtocol::CustomOpenAiChat
+            | ProviderProtocol::OpenAiCompletions
+            | ProviderProtocol::OpenAiResponses
+            | ProviderProtocol::AnthropicMessages
+            | ProviderProtocol::GeminiChat
+    );
     let context_tokens =
         payload
             .context_tokens
             .or_else(|| match ProviderProtocol::parse(&protocol) {
                 ProviderProtocol::SystemOne => Some(8_192),
-                ProviderProtocol::OpenAiChat
-                | ProviderProtocol::LocalOpenAiChat
-                | ProviderProtocol::CustomOpenAiChat
-                | ProviderProtocol::OpenAiCompletions
-                | ProviderProtocol::OpenAiResponses
-                | ProviderProtocol::AnthropicMessages => Some(262_144),
+                _ if chat_family => Some(1_048_576),
                 _ => None,
             });
     // Ghi provider key (plaintext) ra file secrets nếu được cung cấp; chỉ lưu ref.
@@ -2704,7 +2711,7 @@ fn validate_route(payload: UpsertRoute) -> Result<ValidatedRoute, ApiError> {
         first_byte_timeout,
         provider_model_name,
         context_tokens,
-        max_output_tokens: payload.max_output_tokens,
+        max_output_tokens: payload.max_output_tokens.or(chat_family.then_some(262_144)),
         price_input_per_mtok_usd: payload.price_input_per_mtok_usd,
         price_output_per_mtok_usd: payload.price_output_per_mtok_usd,
         enabled,

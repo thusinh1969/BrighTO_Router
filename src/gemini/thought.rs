@@ -14,41 +14,153 @@
 //! `tool_calls[].extra_content.google.thought_signature`.)
 //!
 //! Generic OpenAI clients rebuild `tool_calls` from id/name/arguments and drop
-//! `extra_content`, so the signature is lost. The router therefore keeps a small
-//! bounded cache `tool_call_id -> signature`, records it when a Gemini response
-//! goes by, and re-injects it into the last assistant tool call of the next
-//! request.
+//! `extra_content`, so the signature is lost. The router therefore keeps a
+//! `tool_call_id -> signature` cache, records it whenever a Gemini response goes
+//! by, and re-injects it into the last assistant tool call of the next request.
+//!
+//! The cache is **persisted** to `$DATA_DIR/thought_signatures.jsonl` (mode 0600)
+//! so a router restart does not strand an in-flight agent turn, and eviction is
+//! oldest-first instead of dropping the whole map.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 use serde_json::Value;
 
-/// Cap the cache so a long-running router cannot grow without bound. Entries are
-/// short-lived by nature (one tool turn); overflow simply clears the map.
+/// Cap the cache so a long-running router cannot grow without bound.
 const MAX_ENTRIES: usize = 4096;
+/// Rewrite the journal once it holds this many lines (compaction).
+const COMPACT_AT: usize = MAX_ENTRIES * 2;
 
-fn cache() -> &'static Mutex<HashMap<String, String>> {
-    static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+fn cache_path() -> PathBuf {
+    let dir = std::env::var("DATA_DIR").unwrap_or_else(|_| "/var/lib/brighto-router".to_string());
+    PathBuf::from(dir).join("thought_signatures.jsonl")
 }
 
-/// Remember the signature of one tool call.
+struct Store {
+    map: HashMap<String, String>,
+    /// Insertion order, used for oldest-first eviction.
+    order: VecDeque<String>,
+    loaded: bool,
+    lines: usize,
+}
+
+fn store() -> &'static Mutex<Store> {
+    static STORE: OnceLock<Mutex<Store>> = OnceLock::new();
+    STORE.get_or_init(|| {
+        Mutex::new(Store {
+            map: HashMap::new(),
+            order: VecDeque::new(),
+            loaded: false,
+            lines: 0,
+        })
+    })
+}
+
+fn line_for(id: &str, signature: &str) -> String {
+    serde_json::json!({ "id": id, "sig": signature }).to_string()
+}
+
+/// Load the journal once, so a restart keeps signatures recorded before it.
+fn ensure_loaded(st: &mut Store) {
+    if st.loaded {
+        return;
+    }
+    st.loaded = true;
+    let Ok(text) = fs::read_to_string(cache_path()) else {
+        return;
+    };
+    for line in text.lines() {
+        st.lines += 1;
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let (Some(id), Some(sig)) = (
+            v.get("id").and_then(|x| x.as_str()),
+            v.get("sig").and_then(|x| x.as_str()),
+        ) else {
+            continue;
+        };
+        if st.map.insert(id.to_string(), sig.to_string()).is_none() {
+            st.order.push_back(id.to_string());
+        }
+    }
+    while st.map.len() > MAX_ENTRIES {
+        evict_oldest(st);
+    }
+}
+
+fn evict_oldest(st: &mut Store) {
+    while let Some(old) = st.order.pop_front() {
+        if st.map.remove(&old).is_some() {
+            return;
+        }
+    }
+}
+
+fn push(st: &mut Store, id: &str, signature: &str) {
+    if st
+        .map
+        .insert(id.to_string(), signature.to_string())
+        .is_none()
+    {
+        st.order.push_back(id.to_string());
+    }
+    while st.map.len() > MAX_ENTRIES {
+        evict_oldest(st);
+    }
+}
+
+fn rewrite_journal(st: &mut Store) {
+    let mut out = String::new();
+    for (id, sig) in &st.map {
+        out.push_str(&line_for(id, sig));
+        out.push('\n');
+    }
+    let path = cache_path();
+    let tmp = path.with_extension("jsonl.tmp");
+    if fs::write(&tmp, out).is_ok() {
+        let _ = fs::set_permissions(&tmp, std::os::unix::fs::PermissionsExt::from_mode(0o600));
+        if fs::rename(&tmp, &path).is_ok() {
+            st.lines = st.map.len();
+        }
+    }
+}
+
+/// Remember the signature of one tool call (and persist it).
 pub fn record(id: &str, signature: &str) {
     if id.is_empty() || signature.is_empty() {
         return;
     }
-    if let Ok(mut map) = cache().lock() {
-        if map.len() >= MAX_ENTRIES {
-            map.clear();
+    let Ok(mut st) = store().lock() else {
+        return;
+    };
+    ensure_loaded(&mut st);
+    push(&mut st, id, signature);
+
+    let path = cache_path();
+    let is_new = !path.exists();
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{}", line_for(id, signature));
+        let _ = f.flush();
+        if is_new {
+            let _ = fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o600));
         }
-        map.insert(id.to_string(), signature.to_string());
+        st.lines += 1;
+    }
+    if st.lines > COMPACT_AT {
+        rewrite_journal(&mut st);
     }
 }
 
 /// Signature previously seen for this tool call id.
 pub fn lookup(id: &str) -> Option<String> {
-    cache().lock().ok()?.get(id).cloned()
+    let mut st = store().lock().ok()?;
+    ensure_loaded(&mut st);
+    st.map.get(id).cloned()
 }
 
 fn signature_of(tool_call: &Value) -> Option<&str> {
@@ -80,8 +192,6 @@ pub fn record_from_response(value: &Value) {
                 else {
                     continue;
                 };
-                // A streamed tool call may arrive in pieces (id in the first chunk,
-                // extra_content later or vice versa); only record complete pairs.
                 if !id.is_empty() {
                     record(id, sig);
                 }
@@ -215,5 +325,21 @@ mod tests {
         ]}}]});
         record_from_response(&chunk);
         assert_eq!(lookup("call_s").as_deref(), Some("S"));
+    }
+
+    #[test]
+    fn eviction_is_oldest_first_and_bounded() {
+        let mut st = Store {
+            map: HashMap::new(),
+            order: VecDeque::new(),
+            loaded: true,
+            lines: 0,
+        };
+        for i in 0..MAX_ENTRIES + 10 {
+            push(&mut st, &format!("id{i}"), "sig");
+        }
+        assert_eq!(st.map.len(), MAX_ENTRIES);
+        assert!(!st.map.contains_key("id0"));
+        assert!(st.map.contains_key(&format!("id{}", MAX_ENTRIES + 9)));
     }
 }
