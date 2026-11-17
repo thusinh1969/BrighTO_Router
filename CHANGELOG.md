@@ -72,6 +72,30 @@ Route limits corrected against upstream documentation:
 - `qwen3.8-max-0902` now accepts Anthropic Messages; the coding agent could not
   use it through `/v1/messages` before.
 
+### Fixed (second pass — Anthropic bridge)
+
+- **`/v1/messages` tool turns on Gemini routes lost their thought signature.**
+  `forward_bridge_response` returns before the normal response path, so a
+  Claude-CLI style call never cached the signature and the follow-up
+  `tool_result` failed with `400 upstream returned HTTP 400`. The bridge now
+  records signatures from the upstream OpenAI body — buffered JSON **and** SSE
+  chunks — before translating.
+
+### Final matrix (B300, `brighto-airouter:v1.3.0-gemini5`)
+
+Coding-agent flow: 23k-token system prompt, tools, several turns and text
+interleaved between tool calls.
+
+| case | qwen4-max | qwen3.8-max-0902 | gemini-4-hydrogen |
+|---|---|---|---|
+| long-context tool call | PASS | PASS | PASS |
+| multi-turn agent loop | PASS | PASS | PASS |
+| `/v1/messages` tool_use | PASS | PASS | PASS |
+| `/v1/messages` tool_result replay | PASS | PASS | PASS |
+
+**12/12 PASS.** Cache persistence re-verified separately: record a tool call,
+`docker restart`, replay the same `tool_call_id` without a signature → `200`.
+
 ---
 
 ## [1.3.0-gemini] — 2026-11-15
