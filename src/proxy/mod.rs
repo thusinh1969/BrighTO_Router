@@ -985,6 +985,7 @@ fn bridge_sse_response(status: StatusCode, body: Body, request_id: &str) -> Resp
 async fn forward_bridge_response(
     response: reqwest::Response,
     bridge: BridgeContext,
+    gemini: bool,
     mut reporter: CompletionReporter,
 ) -> Response<Body> {
     let status = response.status();
@@ -1034,6 +1035,13 @@ async fn forward_bridge_response(
                 );
             }
         };
+        if gemini {
+            // The bridge returns before the normal path records signatures; a
+            // /v1/messages tool turn still needs them on the next request.
+            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) {
+                crate::gemini::thought::record_from_response(&value);
+            }
+        }
         let acc = parse_usage_from_body(&body, BackendFormat::OpenAi);
         let estimated = !acc.seen_usage;
         let message = match bridge::response::build_message(&body, &bridge) {
@@ -1110,6 +1118,21 @@ async fn forward_bridge_response(
             let next = tokio::time::timeout(Duration::from_secs(60), stream.next()).await;
             match next {
                 Ok(Some(Ok(bytes))) => {
+                    if gemini {
+                        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                            crate::gemini::thought::record_from_response(&value);
+                        } else {
+                            for line in bytes.split(|b| *b == b'\n') {
+                                if let Some(rest) = line.strip_prefix(b"data:") {
+                                    if let Ok(value) =
+                                        serde_json::from_slice::<serde_json::Value>(rest)
+                                    {
+                                        crate::gemini::thought::record_from_response(&value);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     tap.feed(&bytes, BackendFormat::OpenAi, &mut acc);
                     let output = translator.feed(&bytes);
                     if !output.is_empty() && tx.send(Ok(Bytes::from(output))).await.is_err() {
@@ -1174,7 +1197,7 @@ async fn forward_backend_response(
     mut reporter: CompletionReporter,
 ) -> Response<Body> {
     if let Some(bridge) = bridge {
-        return forward_bridge_response(response, bridge, reporter).await;
+        return forward_bridge_response(response, bridge, gemini, reporter).await;
     }
     let status = response.status();
     let headers = response.headers().clone();
