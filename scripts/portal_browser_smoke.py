@@ -457,7 +457,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             await expect(selects.nth(0).locator('option[value="chat"]')).toContainText('/v1/chat/completions');
             await expect(selects.nth(0).locator('option[value="completion"]')).toContainText('/v1/completions');
             await expect(selects.nth(0).locator('option[value="responses"]')).toContainText('/v1/responses');
-            await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('262144');
+            await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('1048576');
             await selects.nth(1).selectOption('openai');
             await modal.locator('input').nth(1).fill('test-key');
             let openaiModelListPayload = null;
@@ -515,7 +515,7 @@ def playwright_spec(base_url: str, admin_key: str, mock_url: str) -> str:
             modal = page.locator('#modal-overlay .modal').last();
             await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('1050000');
             await modal.locator('.route-model-grid .field').nth(0).locator('input').fill('different-cloud-model');
-            await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('262144');
+            await expect(modal.locator('.route-model-grid .field').nth(2).locator('input')).toHaveValue('1048576');
             await modal.getByRole('button', {{ name: /^Cancel$/ }}).click();
             modal = await openAddModel(page);
             selects = modal.locator('select');
