@@ -6,6 +6,37 @@ versions follow the `Cargo.toml` release line (`1.3.x`).
 
 ---
 
+## [1.3.3] — 2026-11-23
+
+Dashboard summary is now precomputed instead of computed on demand.
+
+### Changed
+
+- **`/admin/summary` is served from a background snapshot.** The handler runs
+  seven scans over the whole `usage_ledger` — three of them `percentile_cont`
+  sorts — and measured **~40 s** on the live 23.4M-row table. It is now rebuilt
+  every five minutes by a task started with the admin router, and the unfiltered
+  30-day shape the dashboard asks for is answered from cache immediately.
+  Refreshes are logged, and a failed precompute retries after 60 s instead of
+  waiting for the next tick.
+
+- The result cache TTL went 300 s → 360 s so a refresh always lands before the
+  entry expires, and the cache key is built by a shared helper
+  (`summary_cache_key`) so the timer and the handler cannot drift.
+
+- Filtered shapes (`team`, `key`, `backend`, `model`, `status`, `from`/`to`) still
+  compute on demand and are cached the same way.
+
+- **Portal: the dashboard no longer races the summary against a timeout.** With
+  the snapshot in place that guard was dead weight, so `/admin/summary` is a plain
+  awaited read again; the per-model stats stay as the fallback if it is ever
+  unavailable.
+
+`cargo fmt --check`, `cargo clippy --all-targets -D warnings` and 142 unit tests
+all pass.
+
+---
+
 ## [1.3.2] — 2026-11-23
 
 Portal fix after a "select OpenRouter → Test model → Pick a provider model

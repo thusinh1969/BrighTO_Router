@@ -1166,17 +1166,10 @@ async function renderDashboard(c,seq){
   var stats=[], logs=[], sum=null, me=null;
   try{ stats=await api(mode==="admin"?"/admin/stats?days=30":"/portal/me/stats?days=30","GET"); }catch(e){}
   try{ logs=await api(mode==="admin"?"/admin/usage":"/portal/me/usage","GET"); }catch(e){}
-  if(mode==="admin"){
-    // /admin/summary aggregates the whole ledger and can take tens of seconds on a
-    // cold cache; it used to block the whole dashboard so the page stayed blank.
-    // Cap the wait and fall back to the per-model stats already fetched above.
-    try{
-      sum = await Promise.race([
-        api("/admin/summary?days=30","GET"),
-        new Promise(function(_,reject){ setTimeout(function(){ reject(new Error("summary timeout")); }, 2000); })
-      ]);
-    }catch(e){ sum=null; }
-  }
+  // The router rebuilds this snapshot every five minutes and serves it from cache,
+  // so this is a cheap read. The per-model stats above stay the fallback if it is
+  // ever unavailable.
+  if(mode==="admin"){ try{ sum=await api("/admin/summary?days=30","GET"); }catch(e){ sum=null; } }
   else { try{ me=await api("/portal/me","GET"); }catch(e){} }
   if(!isCurrentRender(c,seq)) return;
   if(skel.parentNode) skel.remove();

@@ -366,6 +366,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 /// Router con cho /admin/* — được nest_service vào router chính.
 pub fn router(runtime: Arc<AppState>) -> Router {
     let state = Arc::new(AdminState::from_env(runtime));
+    spawn_summary_refresher(Arc::clone(&state));
 
     Router::new()
         .route("/", get(portal))
@@ -4157,7 +4158,8 @@ static SUMMARY_CACHE: std::sync::OnceLock<
     std::sync::Mutex<HashMap<String, (std::time::Instant, String)>>,
 > = std::sync::OnceLock::new();
 
-const SUMMARY_CACHE_TTL_SECS: u64 = 300;
+/// Slightly longer than SUMMARY_REFRESH_SECS so a refresh always lands first.
+const SUMMARY_CACHE_TTL_SECS: u64 = 360;
 
 fn summary_cache_get(key: &str) -> Option<String> {
     let c = SUMMARY_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
@@ -4180,6 +4182,64 @@ fn summary_cache_put(key: String, value: String) {
     }
 }
 
+/// Cache key for one summary shape.
+///
+/// Built from the RAW `from`/`days` query rather than the resolved
+/// `now - days*86400`, which moves every second and would miss on every request.
+fn summary_cache_key(params: &SummaryQuery) -> String {
+    let days = params.days.unwrap_or(30).clamp(1, 365);
+    let status_key = params.status.as_deref().unwrap_or("-");
+    format!(
+        "d={days}|t={:?}|k={:?}|b={:?}|m={:?}|s={status_key}|f={:?}|to={:?}",
+        params.team, params.key, params.backend, params.model, params.from, params.to
+    )
+}
+
+/// The unfiltered 30-day shape the dashboard renders.
+fn dashboard_summary_query() -> SummaryQuery {
+    SummaryQuery {
+        team: None,
+        key: None,
+        backend: None,
+        model: None,
+        status: None,
+        from: None,
+        to: None,
+        days: Some(30),
+    }
+}
+
+/// How often the dashboard snapshot is recomputed in the background.
+const SUMMARY_REFRESH_SECS: u64 = 300;
+
+/// Recompute the dashboard summary on a timer.
+///
+/// The summary is seven scans over the whole usage ledger, three of them
+/// percentile sorts, and measures ~40 s on the live 23.4M-row table. A dashboard
+/// load should never pay for that, so the unfiltered 30-day snapshot is rebuilt
+/// every five minutes and `/admin/summary` answers from the cache immediately.
+fn spawn_summary_refresher(state: Arc<AdminState>) {
+    // router() is also constructed from tests; skip the timer without a runtime.
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    handle.spawn(async move {
+        loop {
+            let wait = match build_summary(&state, &dashboard_summary_query()).await {
+                Ok((cache_key, _)) => {
+                    tracing::debug!(cache_key = %cache_key, "dashboard summary snapshot refreshed");
+                    SUMMARY_REFRESH_SECS
+                }
+                Err(error) => {
+                    tracing::warn!(error = ?error, "dashboard summary precompute failed; retrying in 60s");
+                    60
+                }
+            };
+            tokio::time::sleep(Duration::from_secs(wait)).await;
+        }
+    });
+}
+
 async fn get_summary(
     Extension(state): Extension<Arc<AdminState>>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -4187,7 +4247,21 @@ async fn get_summary(
     Query(params): Query<SummaryQuery>,
 ) -> Result<Response, ApiError> {
     check_admin_auth(&state.master_key, &state.allow_cidrs, &headers, peer.ip())?;
+    let cache_key = summary_cache_key(&params);
+    if let Some(cached) = summary_cache_get(&cache_key) {
+        return Ok(([(header::CONTENT_TYPE, "application/json")], cached).into_response());
+    }
+    let (_, body) = build_summary(&state, &params).await?;
+    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
+}
+
+/// Compute one summary shape, cache it, and return `(cache_key, body)`.
+async fn build_summary(
+    state: &AdminState,
+    params: &SummaryQuery,
+) -> Result<(String, String), ApiError> {
     let pool = state.pool().await?;
+    let cache_key = summary_cache_key(params);
     let days = params.days.unwrap_or(30).clamp(1, 365);
     let from = params
         .from
@@ -4198,16 +4272,6 @@ async fn get_summary(
     let model = params.model.as_deref();
     let status = normalize_status(params.status.as_deref())?;
     let to = params.to;
-
-    let status_key = params.status.as_deref().unwrap_or("-");
-    // Dùng params.from GỐC (không dùng `from` đã tính = now-days*86400 vì đổi mỗi giây -> cache miss).
-    let cache_key = format!(
-        "d={days}|t={team:?}|k={key:?}|b={backend:?}|m={model:?}|s={status_key}|f={:?}|to={to:?}",
-        params.from
-    );
-    if let Some(cached) = summary_cache_get(&cache_key) {
-        return Ok(([(header::CONTENT_TYPE, "application/json")], cached).into_response());
-    }
 
     // Giá route (cả input + output) cho phép tính cost ước lượng per model.
     let snap = state.runtime.cfg.load_full();
@@ -4463,8 +4527,8 @@ async fn get_summary(
         by_backend,
     };
     let body = serde_json::to_string(&resp).unwrap_or_else(|_| "{}".to_string());
-    summary_cache_put(cache_key, body.clone());
-    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
+    summary_cache_put(cache_key.clone(), body.clone());
+    Ok((cache_key, body))
 }
 
 #[cfg(test)]
