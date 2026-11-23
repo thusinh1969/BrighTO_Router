@@ -1123,12 +1123,11 @@ async fn forward_bridge_response(
                             crate::gemini::thought::record_from_response(&value);
                         } else {
                             for line in bytes.split(|b| *b == b'\n') {
-                                if let Some(rest) = line.strip_prefix(b"data:") {
-                                    if let Ok(value) =
+                                if let Some(rest) = line.strip_prefix(b"data:")
+                                    && let Ok(value) =
                                         serde_json::from_slice::<serde_json::Value>(rest)
-                                    {
-                                        crate::gemini::thought::record_from_response(&value);
-                                    }
+                                {
+                                    crate::gemini::thought::record_from_response(&value);
                                 }
                             }
                         }
@@ -1225,12 +1224,11 @@ async fn forward_backend_response(
                                 crate::gemini::thought::record_from_response(&value);
                             } else {
                                 for line in bytes.split(|b| *b == b'\n') {
-                                    if let Some(rest) = line.strip_prefix(b"data:") {
-                                        if let Ok(value) =
+                                    if let Some(rest) = line.strip_prefix(b"data:")
+                                        && let Ok(value) =
                                             serde_json::from_slice::<serde_json::Value>(rest)
-                                        {
-                                            crate::gemini::thought::record_from_response(&value);
-                                        }
+                                    {
+                                        crate::gemini::thought::record_from_response(&value);
                                     }
                                 }
                             }
@@ -1246,11 +1244,11 @@ async fn forward_backend_response(
                         } else {
                             Some(bytes)
                         };
-                        if let Some(out) = out {
-                            if tx.send(Ok(out)).await.is_err() {
-                                client_aborted = true;
-                                break;
-                            }
+                        if let Some(out) = out
+                            && tx.send(Ok(out)).await.is_err()
+                        {
+                            client_aborted = true;
+                            break;
                         }
                     }
                     Ok(Some(Err(e))) => {
@@ -1303,11 +1301,10 @@ async fn forward_backend_response(
                     } else {
                         body_bytes.to_vec()
                     };
-                    if gemini {
-                        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body_bytes)
-                        {
-                            crate::gemini::thought::record_from_response(&value);
-                        }
+                    if gemini
+                        && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body_bytes)
+                    {
+                        crate::gemini::thought::record_from_response(&value);
                     }
                     let acc = parse_usage_from_body(&body_bytes, format);
                     let estimated = !acc.seen_usage;
@@ -1376,10 +1373,11 @@ async fn forward_backend_response(
                 }
             }
 
-            if gemini && can_parse_usage {
-                if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body_buf) {
-                    crate::gemini::thought::record_from_response(&value);
-                }
+            if gemini
+                && can_parse_usage
+                && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body_buf)
+            {
+                crate::gemini::thought::record_from_response(&value);
             }
             let acc = if can_parse_usage {
                 parse_usage_from_body(&body_buf, format)

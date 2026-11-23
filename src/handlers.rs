@@ -877,14 +877,13 @@ async fn handle_generate(
     // DeepSeek-cloud compatibility (local vLLM routes, LLM_guide_needed.md §B/C):
     // translate thinking/effort into chat_template_kwargs, drop the cloud keys,
     // and collapse duplicated reasoning fields in the assistant history.
-    if route.deepseek_compat {
-        if let ProxyRequestBody::Buffered(body) = &proxy_body {
-            if let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(body) {
-                crate::compat::convert_request(&mut value);
-                if let Ok(bytes) = serde_json::to_vec(&value) {
-                    proxy_body = ProxyRequestBody::Buffered(Bytes::from(bytes));
-                }
-            }
+    if route.deepseek_compat
+        && let ProxyRequestBody::Buffered(body) = &proxy_body
+        && let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(body)
+    {
+        crate::compat::convert_request(&mut value);
+        if let Ok(bytes) = serde_json::to_vec(&value) {
+            proxy_body = ProxyRequestBody::Buffered(Bytes::from(bytes));
         }
     }
     if protocol == ProviderProtocol::QwenRerank {

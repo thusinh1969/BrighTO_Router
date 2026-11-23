@@ -963,23 +963,21 @@ struct LifecycleData {
     active_by_backend: HashMap<i64, Vec<String>>,
 }
 
-/// Cache for the whole-ledger usage aggregates.
-///
-/// The previous implementation ran `SELECT backend_id, model, COUNT(*)
-/// FROM usage_ledger GROUP BY backend_id, model` on EVERY admin request
-/// (backends, routes, teams, keys all call load_lifecycle_data), which was a
-/// sequential scan over millions of rows and cost ~1.5 s per request. The
-/// numbers only feed "has N logged request(s)" delete-blocker hints, so a short
-/// cache is plenty. Pair with migration 0011 so the aggregate can be answered
-/// by an index-only scan instead of a seq scan.
-static LIFECYCLE_USAGE_CACHE: std::sync::OnceLock<
-    std::sync::Mutex<
-        Option<(
-            std::time::Instant,
-            (HashMap<i64, i64>, HashMap<String, i64>),
-        )>,
-    >,
-> = std::sync::OnceLock::new();
+// Cache for the whole-ledger usage aggregates.
+//
+// The previous implementation ran `SELECT backend_id, model, COUNT(*) FROM
+// usage_ledger GROUP BY backend_id, model` on EVERY admin request (backends,
+// routes, teams, keys all call load_lifecycle_data), which was a sequential
+// scan over millions of rows and cost ~1.5 s per request. The numbers only feed
+// "has N logged request(s)" delete-blocker hints, so a short cache is plenty.
+// Pair with migration 0011 so the aggregate can be answered by an index-only
+// scan instead of a seq scan.
+type UsageByBackend = HashMap<i64, i64>;
+type UsageByModel = HashMap<String, i64>;
+type LifecycleUsage = (UsageByBackend, UsageByModel);
+type LifecycleUsageCell = std::sync::Mutex<Option<(std::time::Instant, LifecycleUsage)>>;
+
+static LIFECYCLE_USAGE_CACHE: std::sync::OnceLock<LifecycleUsageCell> = std::sync::OnceLock::new();
 
 const LIFECYCLE_USAGE_TTL: Duration = Duration::from_secs(10);
 

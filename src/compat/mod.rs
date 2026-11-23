@@ -77,20 +77,20 @@ pub fn convert_request(body: &mut Value) {
         }
     }
 
-    if !kwargs.contains_key("reasoning_effort") {
-        if let Some(effort) = effort {
-            if effort.as_str() == Some("none") {
-                // Cloud `none` means "no thinking at all", not "lowest effort".
-                kwargs.insert("thinking".to_string(), Value::Bool(false));
-            } else if let Some(n) = effort.as_i64() {
-                kwargs.insert("reasoning_effort".to_string(), Value::from(n.clamp(1, 100)));
-            } else {
-                let level = effort.as_str().unwrap_or("high").to_ascii_lowercase();
-                kwargs.insert(
-                    "reasoning_effort".to_string(),
-                    Value::String(map_effort(&level).to_string()),
-                );
-            }
+    if !kwargs.contains_key("reasoning_effort")
+        && let Some(effort) = effort
+    {
+        if effort.as_str() == Some("none") {
+            // Cloud `none` means "no thinking at all", not "lowest effort".
+            kwargs.insert("thinking".to_string(), Value::Bool(false));
+        } else if let Some(n) = effort.as_i64() {
+            kwargs.insert("reasoning_effort".to_string(), Value::from(n.clamp(1, 100)));
+        } else {
+            let level = effort.as_str().unwrap_or("high").to_ascii_lowercase();
+            kwargs.insert(
+                "reasoning_effort".to_string(),
+                Value::String(map_effort(&level).to_string()),
+            );
         }
     }
 
@@ -127,32 +127,30 @@ pub fn fix_response(value: &mut Value) {
                 continue;
             };
             for key in ["message", "delta"] {
-                if let Some(msg) = choice.get_mut(key).and_then(|v| v.as_object_mut()) {
-                    if msg.get("reasoning_content").is_none() {
-                        if let Some(reasoning) = msg.get("reasoning").cloned() {
-                            if !reasoning.is_null() {
-                                msg.insert("reasoning_content".to_string(), reasoning);
-                            }
-                        }
-                    }
+                if let Some(msg) = choice.get_mut(key).and_then(|v| v.as_object_mut())
+                    && msg.get("reasoning_content").is_none()
+                    && let Some(reasoning) = msg.get("reasoning").cloned()
+                    && !reasoning.is_null()
+                {
+                    msg.insert("reasoning_content".to_string(), reasoning);
                 }
             }
         }
     }
-    if let Some(usage) = value.get_mut("usage").and_then(|v| v.as_object_mut()) {
-        if let Some(prompt_tokens) = usage.get("prompt_tokens").and_then(|v| v.as_i64()) {
-            let hit = usage
-                .get("prompt_tokens_details")
-                .and_then(|d| d.get("cached_tokens"))
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-            usage
-                .entry("prompt_cache_hit_tokens".to_string())
-                .or_insert_with(|| Value::from(hit));
-            usage
-                .entry("prompt_cache_miss_tokens".to_string())
-                .or_insert_with(|| Value::from(prompt_tokens - hit));
-        }
+    if let Some(usage) = value.get_mut("usage").and_then(|v| v.as_object_mut())
+        && let Some(prompt_tokens) = usage.get("prompt_tokens").and_then(|v| v.as_i64())
+    {
+        let hit = usage
+            .get("prompt_tokens_details")
+            .and_then(|d| d.get("cached_tokens"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        usage
+            .entry("prompt_cache_hit_tokens".to_string())
+            .or_insert_with(|| Value::from(hit));
+        usage
+            .entry("prompt_cache_miss_tokens".to_string())
+            .or_insert_with(|| Value::from(prompt_tokens - hit));
     }
 }
 
