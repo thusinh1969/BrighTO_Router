@@ -4489,15 +4489,36 @@ mod tests {
 
     #[test]
     fn route_output_limit_metadata_is_optional_and_positive() {
-        for value in [serde_json::Value::Null, json!(128_000)] {
-            let route: UpsertRoute = serde_json::from_value(json!({
-                "model_name":"test-model","backend_ids":[1],"auth_mode":"none",
-                "max_output_tokens":value
-            }))
-            .unwrap();
-            let validated = validate_route(route).unwrap();
-            assert_eq!(validated.max_output_tokens, value.as_i64());
-        }
+        // A chat-family route with no explicit cap now inherits the 1M/256K
+        // defaults, so "omitted" no longer round-trips to None. Pinning the
+        // default here keeps the 1.3.1 behaviour from silently regressing.
+        let without_cap: UpsertRoute = serde_json::from_value(json!({
+            "model_name":"test-model","backend_ids":[1],"auth_mode":"none"
+        }))
+        .unwrap();
+        let validated = validate_route(without_cap).unwrap();
+        assert_eq!(validated.max_output_tokens, Some(262_144));
+        assert_eq!(validated.context_tokens, Some(1_048_576));
+
+        // Outside the chat family there is no sensible default, so it stays None.
+        let embeddings: UpsertRoute = serde_json::from_value(json!({
+            "model_name":"test-embed","backend_ids":[1],"auth_mode":"none",
+            "protocol":"openai_embeddings"
+        }))
+        .unwrap();
+        assert_eq!(validate_route(embeddings).unwrap().max_output_tokens, None);
+
+        // An explicit positive cap is preserved verbatim.
+        let explicit: UpsertRoute = serde_json::from_value(json!({
+            "model_name":"test-model","backend_ids":[1],"auth_mode":"none",
+            "max_output_tokens":128_000
+        }))
+        .unwrap();
+        assert_eq!(
+            validate_route(explicit).unwrap().max_output_tokens,
+            Some(128_000)
+        );
+
         for value in [0, -1] {
             let route: UpsertRoute = serde_json::from_value(json!({
                 "model_name":"test-model","backend_ids":[1],"auth_mode":"none",
