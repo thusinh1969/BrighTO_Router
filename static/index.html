@@ -1744,6 +1744,20 @@ function openRouteModal(route,opts){
     if(task==="systemone"){
       if(k==="ollaya") return ["laya", "laya:en", "laya:multilingual"];
     }
+    if(task==="chat" || task==="completion" || task==="responses" || task==="messages"){
+      if(k==="openai") return ["gpt-6.1-sol","gpt-6-luna","gpt-6.1-terra"];
+      if(k==="openrouter") return ["openai/gpt-6.1","anthropic/claude-sonnet-5-5","google/gemini-4-pro"];
+      if(k==="anthropic") return ["claude-sonnet-5-5","claude-haiku-5-5"];
+      if(k==="gemini") return ["gemini-4-hydrogen","gemini-4-carbon","gemini-4-argon"];
+      if(k==="deepseek") return ["deepseek-v4-pro","deepseek-v41-flash","deepseek-flash"];
+      if(k==="qwen") return ["qwen3.8-max-0902","qwen3.8-flash"];
+      if(k==="kimi") return ["kimi-k3.1-pro","kimi-k3"];
+      if(k==="zai") return ["glm-5.2","glm-5"];
+      if(k==="meta-muse") return ["muse-4"];
+      // A custom/local endpoint: nothing to guess, the user loads or types the name.
+      if(k==="custom-llm" || k==="custom") return [];
+      return [];
+    }
     return [];
   }
   function refreshProviderOptions(keepValue){
@@ -1897,13 +1911,13 @@ function openRouteModal(route,opts){
   f.appendChild(el("p","hint","The model name your apps send. Use the same name or a shorter team alias."));
 	  modelGrid.appendChild(f);
 	  var fc=el("div","field"); fc.appendChild(el("label",null,"Context window (tokens)"));
-	  var ct=el("input"); ct.type="number"; ct.min="1"; ct.value=route.context_tokens||(ts.value==="systemone"?8192:(["chat","messages","completion","responses"].indexOf(ts.value)>=0?262144:"")); fc.appendChild(ct);
+	  var ct=el("input"); ct.type="number"; ct.min="1"; ct.value=route.context_tokens||(ts.value==="systemone"?8192:(["chat","messages","completion","responses"].indexOf(ts.value)>=0?1048576:"")); fc.appendChild(ct);
 	  var contextHint=el("p","hint",route.context_tokens?"Saved model context; edit if needed. This is metadata, not an output cap.":"Fallback estimate when provider metadata is unavailable; edit if needed. This does not cap output."); fc.appendChild(contextHint);
 	  modelGrid.appendChild(fc);
 	  var contextSource=route.context_tokens?"saved":"fallback";
 	  function refreshContextFallback(){
 	    if(contextSource==="custom"||contextSource==="saved") return;
-	    ct.value=ts.value==="systemone"?8192:(["chat","messages","completion","responses"].indexOf(ts.value)>=0?262144:"");
+	    ct.value=ts.value==="systemone"?8192:(["chat","messages","completion","responses"].indexOf(ts.value)>=0?1048576:"");
 	    contextHint.textContent="Fallback estimate when provider metadata is unavailable; edit if needed. This does not cap output.";
 	    contextSource="fallback";
 	  }
@@ -1931,6 +1945,12 @@ function openRouteModal(route,opts){
 	  }
 	  ms.oninput=function(){ if(ms.value && !mi.value) mi.value=ms.value; contextSource="fallback"; refreshContextFallback(); clearTest(""); updateModelMap(); };
 	  mi.oninput=function(){ clearTest(""); updateModelMap(); };
+	  // The first applyCat() ran before these inputs existed (var hoisting left ms
+	  // undefined), which is why the very first provider choice showed an empty
+	  // model field. Run it again now that the picker is wired up.
+	  applyCat();
+	  if(!ms.value && !route.provider_model_name){ var _sug=suggestedModels(catEntry(ps.value),ts.value); if(_sug.length){ ms.value=_sug[0]; if(!mi.value) mi.value=_sug[0]; } }
+	  updateModelMap();
 	  updateModelMap();
 	  applyCat();
 
@@ -2106,7 +2126,14 @@ function openRouteModal(route,opts){
   testBtn.onclick=async function(){
     var da=dialAuth();
     if(!url.value.trim()){ toast("Enter a Base URL","err"); return; }
-    if(!ms.value.trim()){ toast("Pick a provider model first","err"); return; }
+    if(!ms.value.trim()){
+      // Nothing picked yet: fetch the provider's own list (needs the key) and let
+      // the user choose, rather than dead-ending on "Pick a provider model first".
+      setConnectionStatus("","No model picked yet — loading the provider's model list…");
+      if(typeof loadBtn!=="undefined" && loadBtn) loadBtn.click();
+      else toast("Pick a provider model first","err");
+      return;
+    }
     testBtn.disabled=true; testBtn.textContent="Testing…"; setConnectionStatus("","Testing provider and selected model…");
     try{
       var payload=Object.assign({base_url:url.value.trim(), dialect:da.dialect, auth_mode:da.auth, provider_model_name:ms.value.trim(), protocol:da.protocol}, keyPayload());

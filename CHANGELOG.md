@@ -6,6 +6,38 @@ versions follow the `Cargo.toml` release line (`1.3.x`).
 
 ---
 
+## [1.3.2] — 2026-11-23
+
+Portal fix after a "select OpenRouter → Test model → Pick a provider model
+first" report.
+
+### Fixed
+
+- **The model field is seeded as soon as a provider is chosen.** `suggestedModels()`
+  returned an empty list for the chat family (only embedding/rerank/ASR/SystemOne
+  had defaults), so picking OpenRouter/OpenAI/Anthropic/… left the provider-model
+  input blank and `Test connection` dead-ended on *Pick a provider model first*.
+  Chat suggestions now exist per provider (OpenRouter, OpenAI, Anthropic, Gemini,
+  DeepSeek, Qwen, Kimi, Z.AI, Meta Muse); custom/local endpoints stay blank on
+  purpose because their model names cannot be guessed.
+
+- **`Test connection` no longer dead-ends.** With no model selected it now fetches
+  the provider's own model list (`Load models`) and shows the picker, instead of a
+  bare error.
+
+- **The very first modal open also seeds the model.** The first `applyCat()` ran
+  before `ms`/`mi` existed (`var` hoisting left them `undefined`), so the initial
+  provider never populated the field; it is now re-run once the picker is wired up.
+
+- **Modal context default raised to 1M** for chat/messages/completion/responses,
+  matching the router default introduced in 1.3.1.
+
+Portal is embedded in the binary (`include_str!`), so this ships as
+`brighto-airouter:v1.3.0-gemini6`. Served HTML verified after deploy: chat
+suggestions, test auto-load, first-open seed and the 1M default are all present.
+
+---
+
 ## [1.3.1] — 2026-11-17
 
 Follow-up hardening after a coding-agent field report: route edits silently
