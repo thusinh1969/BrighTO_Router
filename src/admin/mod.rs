@@ -963,6 +963,26 @@ struct LifecycleData {
     active_by_backend: HashMap<i64, Vec<String>>,
 }
 
+/// Cache for the whole-ledger usage aggregates.
+///
+/// The previous implementation ran `SELECT backend_id, model, COUNT(*)
+/// FROM usage_ledger GROUP BY backend_id, model` on EVERY admin request
+/// (backends, routes, teams, keys all call load_lifecycle_data), which was a
+/// sequential scan over millions of rows and cost ~1.5 s per request. The
+/// numbers only feed "has N logged request(s)" delete-blocker hints, so a short
+/// cache is plenty. Pair with migration 0011 so the aggregate can be answered
+/// by an index-only scan instead of a seq scan.
+static LIFECYCLE_USAGE_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<
+        Option<(
+            std::time::Instant,
+            (HashMap<i64, i64>, HashMap<String, i64>),
+        )>,
+    >,
+> = std::sync::OnceLock::new();
+
+const LIFECYCLE_USAGE_TTL: Duration = Duration::from_secs(10);
+
 async fn load_lifecycle_data(pool: &PgPool) -> Result<LifecycleData, ApiError> {
     let backends = sqlx::query::<sqlx::Postgres>("SELECT id, enabled FROM backends")
         .fetch_all(pool)
@@ -972,20 +992,36 @@ async fn load_lifecycle_data(pool: &PgPool) -> Result<LifecycleData, ApiError> {
         backends_enabled.insert(b.try_get::<i64, _>("id")?, b.try_get::<bool, _>("enabled")?);
     }
 
-    let usage = sqlx::query::<sqlx::Postgres>(
-        "SELECT backend_id, model, COUNT(*) AS c FROM usage_ledger GROUP BY backend_id, model",
-    )
-    .fetch_all(pool)
-    .await?;
-    let mut usage_by_backend: HashMap<i64, i64> = HashMap::new();
-    let mut usage_by_model: HashMap<String, i64> = HashMap::new();
-    for u in &usage {
-        let bid: i64 = u.try_get("backend_id")?;
-        let model: String = u.try_get("model")?;
-        let c: i64 = u.try_get("c")?;
-        *usage_by_backend.entry(bid).or_insert(0) += c;
-        *usage_by_model.entry(model).or_insert(0) += c;
-    }
+    let cached = LIFECYCLE_USAGE_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+    let hit = cached.lock().ok().and_then(|g| {
+        g.as_ref()
+            .and_then(|(t, v)| (t.elapsed() < LIFECYCLE_USAGE_TTL).then(|| v.clone()))
+    });
+
+    let (usage_by_backend, usage_by_model) = match hit {
+        Some(v) => v,
+        None => {
+            let usage = sqlx::query::<sqlx::Postgres>(
+                "SELECT backend_id, model, COUNT(*) AS c FROM usage_ledger GROUP BY backend_id, model",
+            )
+            .fetch_all(pool)
+            .await?;
+            let mut by_backend: HashMap<i64, i64> = HashMap::new();
+            let mut by_model: HashMap<String, i64> = HashMap::new();
+            for u in &usage {
+                let bid: i64 = u.try_get("backend_id")?;
+                let model: String = u.try_get("model")?;
+                let c: i64 = u.try_get("c")?;
+                *by_backend.entry(bid).or_insert(0) += c;
+                *by_model.entry(model).or_insert(0) += c;
+            }
+            let v = (by_backend, by_model);
+            if let Ok(mut g) = cached.lock() {
+                *g = Some((std::time::Instant::now(), v.clone()));
+            }
+            v
+        }
+    };
 
     let routes = sqlx::query::<sqlx::Postgres>(
         "SELECT model_name, backend_ids, fallback_backend_id, enabled FROM model_routes",
@@ -4123,7 +4159,7 @@ static SUMMARY_CACHE: std::sync::OnceLock<
     std::sync::Mutex<HashMap<String, (std::time::Instant, String)>>,
 > = std::sync::OnceLock::new();
 
-const SUMMARY_CACHE_TTL_SECS: u64 = 45;
+const SUMMARY_CACHE_TTL_SECS: u64 = 300;
 
 fn summary_cache_get(key: &str) -> Option<String> {
     let c = SUMMARY_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));

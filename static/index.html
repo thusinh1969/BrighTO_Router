@@ -481,6 +481,19 @@ table.conn-table td:first-child .cell-main{display:block!important;white-space:n
 .toast.ok{border-left-color:var(--green)} .toast.err{border-left-color:var(--red)}
 @keyframes slide{from{transform:translateX(18px);opacity:0}to{transform:none;opacity:1}}
 
+/* Dashboard skeleton — painted immediately so the view never sits empty while
+   /admin/stats, /admin/usage and /admin/summary are in flight. */
+@keyframes skel-shimmer{from{background-position:-420px 0}to{background-position:420px 0}}
+.dash-skeleton{display:flex;flex-direction:column;gap:16px}
+.dash-skeleton .sk{border-radius:12px;border:1px solid var(--border);
+  background:linear-gradient(90deg,rgba(30,41,59,.55) 25%,rgba(51,65,85,.75) 50%,rgba(30,41,59,.55) 75%);
+  background-size:840px 100%;animation:skel-shimmer 1.35s linear infinite}
+.dash-skeleton .sk-hero{height:132px}
+.dash-skeleton .sk-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px}
+.dash-skeleton .sk-card{height:96px}
+.dash-skeleton .sk-chart{height:260px}
+@media (prefers-reduced-motion:reduce){.dash-skeleton .sk{animation:none}}
+
 /* ---------- Charts ---------- */
 .chart-wrap{width:100%;max-width:100%;min-width:0;overflow-x:auto}
 .chart-wrap svg{display:block}
@@ -1142,12 +1155,31 @@ function diagnosticDetails(nodes){
 /* ===== Dashboard ===== */
 async function renderDashboard(c,seq){
   c.innerHTML="";
+  // Paint the shape of the page before any await: the three admin calls below can
+  // take seconds, and an empty #content for that long reads as a broken page.
+  var skel=document.createElement("div");
+  skel.className="dash-skeleton";
+  skel.innerHTML='<div class="sk sk-hero"></div><div class="sk-row">'
+    +'<div class="sk sk-card"></div><div class="sk sk-card"></div><div class="sk sk-card"></div>'
+    +'<div class="sk sk-card"></div></div><div class="sk sk-chart"></div>';
+  c.appendChild(skel);
   var stats=[], logs=[], sum=null, me=null;
   try{ stats=await api(mode==="admin"?"/admin/stats?days=30":"/portal/me/stats?days=30","GET"); }catch(e){}
   try{ logs=await api(mode==="admin"?"/admin/usage":"/portal/me/usage","GET"); }catch(e){}
-  if(mode==="admin"){ try{ sum=await api("/admin/summary?days=30","GET"); }catch(e){} }
+  if(mode==="admin"){
+    // /admin/summary aggregates the whole ledger and can take tens of seconds on a
+    // cold cache; it used to block the whole dashboard so the page stayed blank.
+    // Cap the wait and fall back to the per-model stats already fetched above.
+    try{
+      sum = await Promise.race([
+        api("/admin/summary?days=30","GET"),
+        new Promise(function(_,reject){ setTimeout(function(){ reject(new Error("summary timeout")); }, 2000); })
+      ]);
+    }catch(e){ sum=null; }
+  }
   else { try{ me=await api("/portal/me","GET"); }catch(e){} }
   if(!isCurrentRender(c,seq)) return;
+  if(skel.parentNode) skel.remove();
   var inT=sum?sum.totals.input_tokens:stats.reduce(function(a,s){return a+s.input_tokens},0);
   var outT=sum?sum.totals.output_tokens:stats.reduce(function(a,s){return a+s.output_tokens},0);
   var req=sum?sum.totals.requests:stats.reduce(function(a,s){return a+s.requests},0);
@@ -1762,6 +1794,20 @@ function openRouteModal(route,opts){
   }
   function refreshProviderOptions(keepValue){
     var cur=keepValue||ps.value;
+    // The dashboard refresh loads backends/routes/teams/keys/catalog sequentially
+    // (~5 s). Opening this modal before it finishes left `catalog` empty, so the
+    // provider list showed only "Custom LLM". Fetch it on demand and repaint.
+    if(!catalog || !catalog.length){
+      if(!refreshProviderOptions._fetching){
+        refreshProviderOptions._fetching=true;
+        api("/admin/provider-catalog","GET").then(function(list){
+          catalog = Array.isArray(list) ? list : [];
+        }).catch(function(){}).then(function(){
+          refreshProviderOptions._fetching=false;
+          if(ps && ps.isConnected){ refreshProviderOptions(ps.value); applyCat(true); }
+        });
+      }
+    }
     ps.innerHTML="";
     var list=(catalog||[]).filter(function(e){return providerSupportsTask(e,ts.value) && !(routeMode==="group" && e.dialect==="anthropic");});
     if(!list.length){ list=[{key:"custom-llm",label:"Custom LLM",base_url:"",dialect:"openai",key_env:"",key_set:false,enabled:true}]; }

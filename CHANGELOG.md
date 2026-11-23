@@ -36,6 +36,40 @@ Portal is embedded in the binary (`include_str!`), so this ships as
 `brighto-airouter:v1.3.0-gemini6`. Served HTML verified after deploy: chat
 suggestions, test auto-load, first-open seed and the 1M default are all present.
 
+### Performance — admin API was paying a full-table scan per request
+
+A 23.4M-row `usage_ledger` with **no index** made every admin view slow, and the
+dashboard could stay blank for ~37 s.
+
+- **`usage_ledger` is now indexed** (`migrations/0011`): `(backend_id, model)`,
+  `(ts)`, and `(ts, backend_id, model)`. The migration keeps plain `CREATE INDEX`
+  so it stays transactional for the runner and `sqlx::test`; the live 23.4M-row
+  table was built with `CREATE INDEX CONCURRENTLY` by hand so the router was
+  never write-blocked. `VACUUM (ANALYZE) usage_ledger` is **required** afterwards:
+  without a visibility map Postgres keeps fetching heap pages and the index-only
+  scan ends up slower than the seq scan it replaced (measured 3.3 s vs 0.6 s).
+
+- **`load_lifecycle_data()` no longer re-scans the ledger on every call.** It ran
+  `SELECT backend_id, model, COUNT(*) FROM usage_ledger GROUP BY backend_id, model`
+  for `backends`, `routes`, `teams` and `keys` alike (the numbers only feed the
+  *"has N logged request(s)"* delete-blocker hint). Results are now cached for
+  10 s. Measured on the live 23.4M-row table: `list_backends` 1.5 s → 0.09 s
+  (cache hit), GROUP BY 1201 ms → 593 ms after indexing + vacuum.
+
+- **Dashboard paints a skeleton immediately.** `renderDashboard` cleared
+  `#content` and awaited `/admin/stats`, `/admin/usage` and `/admin/summary`, so
+  a slow summary meant an empty page. The view now renders a shimmering
+  placeholder first, and is replaced as soon as the data lands.
+
+- **`/admin/summary` can no longer block the dashboard.** It aggregates the whole
+  ledger (three `percentile_cont` sorts) and took 32–39 s cold. The call is capped
+  at 2 s and falls back to the per-model stats already in hand; its result cache
+  TTL went 45 s → 300 s. Warm latency 38.5 s → 0.055 s.
+
+Dashboard first paint measured on the live portal: **~37 s → 5 s**, with content
+visible immediately. Full portal audit: 17/17 PASS, 0 page errors, 0 console
+errors, 0 admin 5xx. Ships as `brighto-airouter:v1.3.0-gemini11`.
+
 ---
 
 ## [1.3.1] — 2026-11-17
