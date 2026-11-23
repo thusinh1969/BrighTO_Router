@@ -143,10 +143,21 @@ def main():
         command("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-keyout", str(private), "-out", str(cert), "-subj", "/CN=localhost", "-addext", f"subjectAltName=DNS:localhost,DNS:{hostname},IP:127.0.0.1")
         private.chmod(0o644)  # Ephemeral test certificate, readable by non-root Docker user.
         try:
-            command("docker", "run", "--rm", "-d", "--name", pg, "-e", "POSTGRES_USER=sdk", "-e", "POSTGRES_PASSWORD=sdk-test-only", "-p", f"127.0.0.1:{pg_port}:5432", "postgres:16-alpine")
+            command("docker", "run", "--rm", "-d", "--name", pg, "-e", "POSTGRES_USER=sdk", "-e", "POSTGRES_DB=sdk", "-e", "POSTGRES_PASSWORD=sdk-test-only", "-p", f"127.0.0.1:{pg_port}:5432", "postgres:16-alpine")
+            # The official entrypoint first runs a throwaway initdb cluster on the
+            # Unix socket only, then restarts the real server (TCP included). Probing
+            # `pg_isready` — or plain psql — through docker exec therefore succeeds
+            # against that temporary cluster, which is where the CI run died with
+            # 'database "sdk" does not exist' before the restart killed the socket.
+            # Forcing -h 127.0.0.1 inside the container only works once the final
+            # server owns the data directory, so it is a real readiness signal.
             pg_ready = False
             for _ in range(120):
-                if subprocess.run(["docker", "exec", pg, "pg_isready", "-U", "sdk"], capture_output=True).returncode == 0:
+                probe = subprocess.run(
+                    ["docker", "exec", pg, "psql", "-h", "127.0.0.1", "-U", "sdk", "-d", "postgres", "-tAc", "SELECT 1"],
+                    capture_output=True,
+                )
+                if probe.returncode == 0:
                     pg_ready = True
                     break
                 time.sleep(0.5)
@@ -158,7 +169,7 @@ def main():
             wait_http(mock_base + "/health")
             for scheme in ("http", "https"):
                 db_name = "sdk_" + scheme
-                command("docker", "exec", pg, "psql", "-U", "sdk", "-c", f"CREATE DATABASE {db_name}")
+                command("docker", "exec", pg, "psql", "-U", "sdk", "-d", "postgres", "-c", f"CREATE DATABASE {db_name}")
                 for migration in sorted((REPO / "migrations").glob("*.sql")):
                     command("docker", "exec", "-i", pg, "psql", "-U", "sdk", "-d", db_name, "-v", "ON_ERROR_STOP=1", input=migration.read_text())
                 command("docker", "exec", pg, "psql", "-U", "sdk", "-d", db_name, "-c", "INSERT INTO teams(name,budget,enabled) VALUES ('SDK Test Team',NULL,TRUE)")
