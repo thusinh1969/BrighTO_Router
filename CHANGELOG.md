@@ -66,9 +66,15 @@ dashboard could stay blank for ~37 s.
   at 2 s and falls back to the per-model stats already in hand; its result cache
   TTL went 45 s → 300 s. Warm latency 38.5 s → 0.055 s.
 
-Dashboard first paint measured on the live portal: **~37 s → 5 s**, with content
-visible immediately. Full portal audit: 17/17 PASS, 0 page errors, 0 console
-errors, 0 admin 5xx. Ships as `brighto-airouter:v1.3.0-gemini11`.
+Dashboard first paint measured on the live portal: **~37 s → 5 s** warm
+(up to ~12 s on the first load after a restart, while `/admin/summary` is still
+cold), with the skeleton visible immediately. Full portal audit: 17/17 PASS,
+0 page errors, 0 console errors, 0 admin 5xx.
+
+Published as `thusinh1969/brighto_airouter:v1.3.2` (multi-arch: `linux/amd64` +
+`linux/arm64`, also `:latest`). CI is green again: `cargo fmt --check`,
+`cargo clippy --all-targets -D warnings` and 142 unit tests all pass, and the
+release workflow's own Docker smoke now runs end to end.
 
 ---
 
