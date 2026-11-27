@@ -6,6 +6,57 @@ versions follow the `Cargo.toml` release line (`1.3.x`).
 
 ---
 
+## [1.3.6] — 2026-11-27
+
+The real cause of the "400 tooling nonstop" reports: streamed parallel tool calls
+were merged into one malformed call.
+
+### Fixed
+
+- **Gemini streams `tool_calls` deltas without the `index` field** the OpenAI
+  streaming schema requires to tell fragments apart. A conformant client — the
+  OpenAI SDK, the Vercel AI SDK, DSH, Claude Code — therefore defaults every entry
+  to index 0 and concatenates them. Five parallel calls came back to the router as
+
+  ```json
+  {"name": "list_dirgrepread_filerun_testsgit_status",
+   "arguments": "{\"path\":\"/src\"}{\"path\":\"TODO\"}{\"path\":\"Cargo.toml\"}"}
+  ```
+
+  and the next step was rejected with `400 INVALID_ARGUMENT "Request contains an
+  invalid argument."` It only fires when the model asks for more than one tool in a
+  step, which is why it read as random tooling failures. Measured on the live
+  router before the fix: **4 of 6** three-step streaming loops failed at step 2.
+
+- New `gemini::stream::ToolCallIndexer` rewrites those frames and numbers the
+  calls in first-seen order, reusing an index for repeated ids and treating an
+  id-less fragment as a continuation of the call in flight. Frames that already
+  carry an index — and every non-`data:` line — are forwarded byte for byte.
+
+- Applied to both the direct OpenAI path and the Anthropic `/v1/messages` bridge,
+  where the translator's position fallback had the same effect on `tool_use`
+  blocks.
+
+Seven unit tests cover the ordering, the untouched pass-through, split lines, a
+repeated id, an id-less continuation, `[DONE]`/comment lines and the tail flush.
+
+### Changed
+
+- **Every upstream error is handled once, before the four downstream shapes.**
+  The digest from 1.3.5 only ran on the buffered branch, so a rejection that
+  arrived chunked still recorded nothing. `forward_backend_response` now answers
+  any status >= 400 up front, which also fixes a latent framing bug: forwarding
+  the upstream's `transfer-encoding: chunked` on a fixed-size body made hyper drop
+  the connection, so the client got an empty reply instead of the provider's
+  message. The error response is rebuilt with only `content-type` and
+  `retry-after`.
+
+Verified on the live router: a deliberate 400 now returns its JSON body to the
+client **and** lands in `usage_ledger.error_class` as
+`Request contains an invalid argument.`
+
+---
+
 ## [1.3.5] — 2026-11-27
 
 A 4xx from a provider is now diagnosable instead of a bare status code.

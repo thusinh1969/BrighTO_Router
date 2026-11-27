@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::body::{Body, BodyDataStream, Bytes};
-use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, Uri};
+use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, Uri, header};
 use axum::response::Response;
 use futures::SinkExt;
 use futures::channel::mpsc;
@@ -1108,6 +1108,10 @@ async fn forward_bridge_response(
     let (mut tx, rx) = mpsc::channel::<Result<Bytes, reqwest::Error>>(1);
     let mut acc = UsageAccumulator::default();
     let mut tap = SseUsageTap::default();
+    // Same missing-`index` defect as the direct path: the Anthropic translator
+    // falls back to the delta position, which is 0 for every single-call frame, so
+    // parallel tool calls collapse into one tool_use block.
+    let mut indexer = gemini.then(crate::gemini::stream::ToolCallIndexer::new);
     let mut stream = response.bytes_stream();
     let request_id = bridge.request_id.clone();
     tokio::spawn(async move {
@@ -1117,7 +1121,10 @@ async fn forward_bridge_response(
         loop {
             let next = tokio::time::timeout(Duration::from_secs(60), stream.next()).await;
             match next {
-                Ok(Some(Ok(bytes))) => {
+                Ok(Some(Ok(mut bytes))) => {
+                    if let Some(indexer) = indexer.as_mut() {
+                        bytes = Bytes::from(indexer.feed(&bytes));
+                    }
                     if gemini {
                         if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
                             crate::gemini::thought::record_from_response(&value);
@@ -1165,6 +1172,15 @@ async fn forward_bridge_response(
                         let _ = tx.send(Ok(Bytes::from(output))).await;
                     }
                     break;
+                }
+            }
+        }
+        if let Some(indexer) = indexer.as_mut() {
+            let tail = indexer.finish();
+            if !tail.is_empty() {
+                let output = translator.feed(&tail);
+                if !output.is_empty() {
+                    let _ = tx.send(Ok(Bytes::from(output))).await;
                 }
             }
         }
@@ -1228,6 +1244,48 @@ async fn forward_backend_response(
     }
     let status = response.status();
     let headers = response.headers().clone();
+
+    // A provider rejection is never valid SSE and never carries usage worth
+    // parsing, so handle it once here instead of in each of the four downstream
+    // shapes. The body is the only place the provider explains itself — tooling
+    // and signature rejections always arrive this way — so digest it into the
+    // ledger before handing the original bytes to the client.
+    if status.as_u16() >= 400 {
+        let body = response.bytes().await.unwrap_or_default();
+        reporter.finish(
+            status.as_u16(),
+            0,
+            0,
+            true,
+            false,
+            upstream_error_digest(&body),
+        );
+        // Rebuild rather than reuse the upstream headers: they can carry
+        // `transfer-encoding: chunked`, and forwarding that on a fixed-size body
+        // makes hyper drop the connection — the client sees an empty reply instead
+        // of the provider's explanation.
+        let mut builder = Response::builder()
+            .status(StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY))
+            .header(
+                header::CONTENT_TYPE,
+                headers
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or("application/json"),
+            );
+        if let Some(retry_after) = headers.get(reqwest::header::RETRY_AFTER)
+            && let Ok(value) = retry_after.to_str()
+        {
+            builder = builder.header(header::RETRY_AFTER, value);
+        }
+        return builder.body(Body::from(body)).unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::BAD_GATEWAY)
+                .body(Body::from("invalid upstream error response"))
+                .expect("static body is a valid response")
+        });
+    }
+
     let stream_request = reporter.stream;
 
     if stream_request {
@@ -1236,6 +1294,9 @@ async fn forward_backend_response(
         let mut acc = UsageAccumulator::default();
         let mut tap = SseUsageTap::default();
         let mut fixer = crate::compat::SseFixer::new();
+        // Gemini streams parallel tool_calls without the `index` the OpenAI schema
+        // requires; a conformant client then merges them into one malformed call.
+        let mut indexer = gemini.then(crate::gemini::stream::ToolCallIndexer::new);
         let mut stream = response.bytes_stream();
 
         tokio::spawn(async move {
@@ -1244,7 +1305,10 @@ async fn forward_backend_response(
             loop {
                 let next = tokio::time::timeout(Duration::from_secs(60), stream.next()).await;
                 match next {
-                    Ok(Some(Ok(bytes))) => {
+                    Ok(Some(Ok(mut bytes))) => {
+                        if let Some(indexer) = indexer.as_mut() {
+                            bytes = Bytes::from(indexer.feed(&bytes));
+                        }
                         if gemini {
                             // Gemini binds each functionCall to a thought_signature; keep it
                             // so the next request can replay it for the client.
@@ -1296,6 +1360,12 @@ async fn forward_backend_response(
                     let _ = tx.send(Ok(Bytes::from(tail))).await;
                 }
             }
+            if let Some(indexer) = indexer.as_mut() {
+                let tail = indexer.finish();
+                if !tail.is_empty() {
+                    let _ = tx.send(Ok(Bytes::from(tail))).await;
+                }
+            }
             tap.finish(format, &mut acc);
             let estimated = !acc.seen_usage;
             reporter.finish(
@@ -1336,20 +1406,13 @@ async fn forward_backend_response(
                     }
                     let acc = parse_usage_from_body(&body_bytes, format);
                     let estimated = !acc.seen_usage;
-                    // A provider rejection explains itself only in the response
-                    // body (tooling/signature rejections always arrive this way).
-                    // Keep a bounded digest so the ledger can answer "why 400?"
-                    // instead of storing a bare status.
-                    let error_class = (status.as_u16() >= 400)
-                        .then(|| upstream_error_digest(&body_bytes))
-                        .flatten();
                     reporter.finish(
                         status.as_u16(),
                         acc.input_tokens,
                         acc.output_tokens,
                         estimated,
                         false,
-                        error_class,
+                        None,
                     );
                     build_response(
                         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
