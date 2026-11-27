@@ -6,6 +6,42 @@ versions follow the `Cargo.toml` release line (`1.3.x`).
 
 ---
 
+## [1.3.4] — 2026-11-27
+
+Gemini tool calling finally works for a real coding agent.
+
+### Fixed
+
+- **`400 Function call is missing a thought_signature in functionCall parts …
+  position 2` on every multi-step tool loop.** The signature was re-injected into
+  the *last* assistant tool call only, so as soon as an agent had completed two
+  steps the older step came back unsigned and the whole request was rejected.
+  Google's rule is per step, not per message: **each step's first function call**
+  carries the signature, parallel siblings legitimately carry none, and a
+  multi-step history has to replay every step's signature.
+
+- `inject_into_request` now walks **every** assistant message with `tool_calls`
+  and signs the first call of each. Parallel siblings are left exactly as the
+  client sent them — they must not be given an invented signature.
+
+- **A tool call the router never saw no longer 400s.** Client-built history and
+  tool loops migrated from another provider have no signature to replay, so those
+  steps get Google's documented dummy, `skip_thought_signature_validator`,
+  instead of being dropped or rejected.
+
+- The two unit tests that encoded the old behaviour
+  (`only_the_last_assistant_call_is_touched`, `leaves_unsigned_unknown_calls_alone`)
+  are replaced by tests for the real contract: every step signed, parallel
+  siblings untouched, dummy for unknown calls, replayed signatures preserved.
+
+Reproduced and verified against the live B300 router with a coding-agent matrix
+(single call, parallel calls with and without client-stripped signatures,
+three-step sequential loop, unknown tool id, `tool_choice: required`, empty
+parameter object). Before: 2 of those 400'd. After: all pass. `cargo fmt --check`,
+`cargo clippy --all-targets -D warnings` and 145 unit tests are green.
+
+---
+
 ## [1.3.3] — 2026-11-23
 
 Dashboard summary is now precomputed instead of computed on demand.
