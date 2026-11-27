@@ -1187,6 +1187,34 @@ async fn forward_bridge_response(
     bridge_sse_response(status_code, Body::from_stream(rx), &request_id)
 }
 
+/// Longest upstream-error digest kept in `usage_ledger.error_class`.
+const ERROR_DIGEST_CHARS: usize = 240;
+
+/// Pull the provider's own error message out of a 4xx/5xx body.
+///
+/// Gemini's OpenAI-compatible endpoint answers with `[{"error": {...}}]`, other
+/// providers with `{"error": {"message": ...}}` or `{"error": "text"}`, so all
+/// three shapes are accepted. Returns `None` when nothing useful can be parsed.
+fn upstream_error_digest(body: &[u8]) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let root = match &value {
+        serde_json::Value::Array(items) => items.first()?,
+        other => other,
+    };
+    let message = root
+        .get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| root.get("message").and_then(serde_json::Value::as_str))
+        .or_else(|| root.get("error").and_then(serde_json::Value::as_str))?;
+    // Collapse newlines: the ledger column is a single line of text.
+    let collapsed = message.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    Some(collapsed.chars().take(ERROR_DIGEST_CHARS).collect())
+}
+
 async fn forward_backend_response(
     response: reqwest::Response,
     format: BackendFormat,
@@ -1308,13 +1336,20 @@ async fn forward_backend_response(
                     }
                     let acc = parse_usage_from_body(&body_bytes, format);
                     let estimated = !acc.seen_usage;
+                    // A provider rejection explains itself only in the response
+                    // body (tooling/signature rejections always arrive this way).
+                    // Keep a bounded digest so the ledger can answer "why 400?"
+                    // instead of storing a bare status.
+                    let error_class = (status.as_u16() >= 400)
+                        .then(|| upstream_error_digest(&body_bytes))
+                        .flatten();
                     reporter.finish(
                         status.as_u16(),
                         acc.input_tokens,
                         acc.output_tokens,
                         estimated,
                         false,
-                        None,
+                        error_class,
                     );
                     build_response(
                         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY),
@@ -1833,6 +1868,53 @@ fn now_secs() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upstream_error_digest_reads_gemini_array_shape() {
+        let body = br#"[{"error": {"code": 400, "message":
+            "Function call is missing a thought_signature in functionCall parts.",
+            "status": "INVALID_ARGUMENT"}}]"#;
+        assert_eq!(
+            upstream_error_digest(body).as_deref(),
+            Some("Function call is missing a thought_signature in functionCall parts.")
+        );
+    }
+
+    #[test]
+    fn upstream_error_digest_reads_openai_object_shape() {
+        let body = br#"{"error": {"message": "invalid api key", "type": "auth"}}"#;
+        assert_eq!(
+            upstream_error_digest(body).as_deref(),
+            Some("invalid api key")
+        );
+    }
+
+    #[test]
+    fn upstream_error_digest_reads_bare_string_error() {
+        let body = br#"{"error": "provider exploded"}"#;
+        assert_eq!(
+            upstream_error_digest(body).as_deref(),
+            Some("provider exploded")
+        );
+    }
+
+    #[test]
+    fn upstream_error_digest_is_bounded_and_single_line() {
+        let long = format!("line one\nline two {}", "x".repeat(600));
+        let body = serde_json::json!({"error": {"message": long}}).to_string();
+        let digest = upstream_error_digest(body.as_bytes()).expect("digest");
+        assert_eq!(digest.chars().count(), ERROR_DIGEST_CHARS);
+        assert!(digest.starts_with("line one line two "));
+        assert!(!digest.contains('\n'));
+    }
+
+    #[test]
+    fn upstream_error_digest_ignores_unusable_bodies() {
+        assert_eq!(upstream_error_digest(b""), None);
+        assert_eq!(upstream_error_digest(b"not json"), None);
+        assert_eq!(upstream_error_digest(b"[]"), None);
+        assert_eq!(upstream_error_digest(br#"{"ok": true}"#), None);
+    }
 
     #[test]
     fn target_url_supports_host_and_sdk_base_urls() {

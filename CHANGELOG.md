@@ -6,6 +6,27 @@ versions follow the `Cargo.toml` release line (`1.3.x`).
 
 ---
 
+## [1.3.5] — 2026-11-27
+
+A 4xx from a provider is now diagnosable instead of a bare status code.
+
+### Added
+
+- **`usage_ledger.error_class` carries the provider's own error message.** A 400
+  from a streaming or non-streaming completion was recorded with an empty
+  `error_class`, so a client reporting "400 tooling" left nothing to query — the
+  signature and tooling rejections only ever explain themselves in the response
+  body. The non-stream path now digests that body into a single bounded line
+  (240 chars, newlines collapsed) and stores it.
+  Handles all three shapes seen in the wild: Gemini's `[{"error": {...}}]` array,
+  OpenAI's `{"error": {"message": ...}}` and `{"error": "text"}`.
+
+Five unit tests cover the three shapes, the length bound and the unusable-body
+cases. `cargo fmt --check`, `cargo clippy --all-targets -D warnings` and 150 unit
+tests are green.
+
+---
+
 ## [1.3.4] — 2026-11-27
 
 Gemini tool calling finally works for a real coding agent.
